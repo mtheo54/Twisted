@@ -65,31 +65,42 @@ jamais. Animations réduites si le système demande `prefers-reduced-motion`.
 
 ## 3. Disposition
 
+Les knobs sont posés directement sur la scène 3D, en bas de l'image, sur un
+dégradé sombre qui garde la ville lisible. Ils sont volontairement simples :
+un anneau fin, un trait d'index, le nom et la valeur. Le Dry/Wet, plus grand,
+est au centre et affiche aussi l'heure du jour. Les autres réglages
+(suréchantillonnage, caractère, topologie, interrupteurs) restent dans une
+barre sous la scène.
+
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ TWISTED 物見櫓          Preset [Bus batterie ▾]  ◎ Analyser  ● Bypass │
 ├──────────────────────────────────────────────────────────────────┤
-│ ┌Reconnaissance──┐                                 ┌Niveaux─────┐ │
-│ │ Bus batterie 74%│          (scène 3D 16:8)        │ IN  ▮▮▮▮▯  │ │
-│ │ barres / classe │                                 │ OUT ▮▮▮▯▯  │ │
-│ └─────────────────┘                                 │ LUFS        │ │
-│ Wet 80 % · nuit                              ▶ Démo  Charger un son│
+│ ┌Reconnaissance──┐   [ effet du knob survolé ]    ┌Niveaux─────┐ │
+│ │ Bus batterie 74%│                                │ IN / OUT    │ │
+│ └─────────────────┘        (scène 3D 16:9)         │ LUFS        │ │
+│                                                     └────────────┘ │
+│ ░░░░░░░░░░░░░░░░░░░░░ dégradé ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│  ◯ Entrée  ◯ Sat ◯ Enh   ◯ Comp ◯ Punch ◯ Sub  (◯ DRY/WET)          │
+│            ◯ Stéréo ◯ Space   ◯ Coupe-bas ◯ Coupe-haut   ◯ Sortie   │
 ├──────────────────────────────────────────────────────────────────┤
-│ Gain │ Couleur │ Dynamique │ (DRY/WET) │ Espace │ Filtres │ Sortie   │
-│ Suréchantillonnage [1×…16×]  Caractère [▾]  Topologie [▾]  ◉ Gain auto  ◉ Caméra │
+│ Suréchantillonnage [1×…16×]  Caractère [▾]  Topologie [▾]          │
+│ ◉ Gain auto  ◉ Caméra sur les basses                               │
 ├──────────────────────────────────────────────────────────────────┤
 │ Latence 0 échantillon · OS 4× · SIMD AVX2 · Threads … · CPU 3 %     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Taille par défaut de la fenêtre : 1180 × 800 px, redimensionnable ; en
-dessous de 900 px de large, les knobs passent sur une grille et le Dry/Wet
-monte en tête.
+(Sur grand écran, les 12 knobs tiennent sur une seule ligne.)
+
+Taille par défaut de la fenêtre : 1180 × 830 px, redimensionnable. En
+dessous de 900 px de large, la scène n'a plus la place d'accueillir les
+knobs : ils passent juste sous l'image, Dry/Wet en tête.
 
 ## 4. Contrôles
 
-Les knobs sont regroupés : **Gain** · **Couleur** · **Dynamique** · **Mix** ·
-**Espace** · **Filtres** · **Sortie**.
+Les knobs sont regroupés par espacement (sans titres) : Gain · Couleur ·
+Dynamique · Mix · Espace · Filtres · Sortie.
 
 | Groupe | Contrôle | Plage | Défaut | Rôle audio |
 |---|---|---|---|---|

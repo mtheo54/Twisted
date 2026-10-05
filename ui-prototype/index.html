@@ -80,13 +80,9 @@ select {
 .btn.bypass[aria-pressed="true"] .led { background: #ffd9cf; box-shadow: 0 0 8px #ffd9cf; }
 
 /* ---------- viewport ---------- */
-.view {
-  position: relative;
-  aspect-ratio: 16 / 8;
-  max-width: 100%;
-  background: #000;
-}
-.view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: filter .6s ease; }
+.view { position: relative; background: #000; }
+.stage { position: relative; aspect-ratio: 16 / 9; max-width: 100%; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: filter .6s ease; }
 .overlay {
   position: absolute; top: 14px;
   background: color-mix(in srgb, var(--lacquer) 78%, transparent);
@@ -122,21 +118,13 @@ select {
 .gs { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 
 .badge {
-  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  position: absolute; left: 50%; top: 58px; transform: translateX(-50%);
   font-family: var(--f-display); letter-spacing: .3em; font-size: 15px;
   background: var(--shu); color: #fff; padding: 6px 16px; border-radius: 4px;
   white-space: nowrap;
 }
-.timeofday {
-  position: absolute; left: 14px; bottom: 14px;
-  font-family: var(--f-mono); font-size: 11px; color: var(--washi);
-  background: color-mix(in srgb, var(--lacquer) 70%, transparent);
-  padding: 4px 8px; border-radius: 4px;
-}
-.audio {
-  position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px;
-}
-.audio .btn { padding: 5px 10px; font-size: 12px; background: color-mix(in srgb, var(--lacquer) 80%, transparent); }
+.audio { display: flex; gap: 8px; }
+.audio .btn { padding: 5px 10px; font-size: 12px; }
 .audio input { display: none; }
 
 .fxhint {
@@ -149,35 +137,30 @@ select {
 }
 .fxhint b { color: var(--kin); font-weight: 500; }
 
-/* ---------- knob rail ---------- */
+/* ---------- knobs, laid over the bottom of the scene ---------- */
 .rail {
-  display: flex; flex-wrap: wrap;
-  justify-content: space-between; align-items: flex-end;
-  gap: 16px 12px;
-  padding: 14px 18px 12px;
-  border-top: 1px solid var(--line);
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 10px 22px;
+  padding: 56px 22px 14px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--sumi) 82%, transparent) 0%, color-mix(in srgb, var(--sumi) 55%, transparent) 55%, transparent 100%);
   transition: opacity .4s;
+  pointer-events: none;
 }
-.group { display: grid; gap: 8px; justify-items: center; }
-.gname {
-  width: 100%; text-align: center; padding-bottom: 4px;
-  border-bottom: 1px solid var(--line);
-  font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted);
-}
-.gknobs { display: flex; gap: 8px; align-items: flex-end; }
+.rail > * { pointer-events: auto; }
+.group { display: flex; gap: 10px; align-items: flex-end; }
 .plugin.bypassed .rail, .plugin.bypassed .opts { opacity: .45; }
-.knob { display: grid; justify-items: center; gap: 4px; user-select: none; touch-action: none; }
-.knob { min-width: 74px; }
-.knob svg { width: 56px; height: 56px; cursor: ns-resize; overflow: visible; }
-.knob.big svg { width: 96px; height: 96px; }
-.knob .lbl { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.knob .val { font-family: var(--f-mono); font-size: 12px; color: var(--kin); font-variant-numeric: tabular-nums; min-width: 8ch; text-align: center; }
-.knob .jp { font-family: var(--f-display); font-size: 11px; color: var(--muted); opacity: .7; }
-.k-track { fill: none; stroke: var(--line); stroke-width: 4; stroke-linecap: round; }
-.k-arc { fill: none; stroke: var(--kin); stroke-width: 4; stroke-linecap: round; }
-.k-body { fill: var(--panel); stroke: #000; stroke-width: 1; }
-.k-ptr { stroke: var(--washi); stroke-width: 2.5; stroke-linecap: round; }
-.knob.big .k-arc { stroke: url(#mixGrad); }
+.knob { display: grid; justify-items: center; gap: 2px; min-width: 68px; user-select: none; touch-action: none; }
+.knob svg { width: 44px; height: 44px; cursor: ns-resize; overflow: visible; }
+.knob.big svg { width: 74px; height: 74px; }
+.knob .lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--washi); opacity: .8; text-shadow: 0 1px 3px #000; }
+.knob .val { font-family: var(--f-mono); font-size: 11px; color: var(--kin); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.k-track { fill: none; stroke: color-mix(in srgb, var(--washi) 22%, transparent); stroke-width: 2.5; stroke-linecap: round; }
+.k-arc { fill: none; stroke: var(--kin); stroke-width: 2.5; stroke-linecap: round; }
+.k-body { fill: color-mix(in srgb, var(--sumi) 55%, transparent); }
+.k-ptr { stroke: var(--washi); stroke-width: 2; stroke-linecap: round; }
+.knob.big .k-arc { stroke: url(#mixGrad); stroke-width: 3; }
+.knob svg:hover .k-track { stroke: color-mix(in srgb, var(--washi) 40%, transparent); }
 
 /* ---------- options strip ---------- */
 .opts {
@@ -214,26 +197,24 @@ select {
 .caption kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 
 @media (max-width: 900px) {
-  .rail { justify-content: center; }
-  .group.mix { order: -1; flex-basis: 100%; }
+  .rail { position: static; flex-wrap: wrap; justify-content: center; padding: 14px 12px; background: var(--lacquer); border-top: 1px solid var(--line); }
+  .group.mix { order: -1; flex-basis: 100%; justify-content: center; }
   .fxhint { display: none; }
-  .view { aspect-ratio: 4 / 3; }
+  .stage { aspect-ratio: 4 / 3; }
   .recog { width: 220px; }
   .meters { display: none; }
 }
 @media (max-width: 520px) {
-  .view { aspect-ratio: 3 / 4; }
+  .stage { aspect-ratio: 3 / 4; }
   .recog { left: 10px; right: 10px; width: auto; top: 10px; }
   .classes { display: none; }
-  .timeofday { bottom: 54px; left: 10px; }
-  .badge { bottom: 92px; }
-  .audio { right: 10px; }
+  .badge { top: auto; bottom: 16px; }
   .opt { flex-wrap: wrap; }
-  .gknobs { flex-wrap: wrap; justify-content: center; }
+  .group { flex-wrap: wrap; justify-content: center; }
   .brand span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .view canvas, .rail, .opts, .cls .fill { transition: none; }
+  .stage canvas, .rail, .opts, .cls .fill { transition: none; }
 }
 </style>
 
@@ -257,7 +238,8 @@ select {
     <button class="btn bypass" id="bypassBtn" type="button" aria-pressed="false"><span class="led"></span>Bypass</button>
   </header>
 
-  <section class="view" id="view">
+  <section class="view">
+   <div class="stage" id="view">
     <canvas id="scene" aria-label="Tour d'observation en 3D, quartier japonais"></canvas>
 
     <div class="overlay recog" id="recog">
@@ -277,16 +259,10 @@ select {
     </div>
 
     <div class="fxhint" id="fxhint" hidden></div>
-    <div class="timeofday" id="tod">Wet 80 % · nuit</div>
     <div class="badge" id="badge" hidden>BYPASS · 素通し</div>
-    <div class="audio">
-      <button class="btn" id="demoBtn" type="button">▶ Groove démo</button>
-      <label class="btn" for="fileIn">Charger un son</label>
-      <input type="file" id="fileIn" accept="audio/*">
-    </div>
+   </div>
+   <div class="rail" id="rail"></div>
   </section>
-
-  <section class="rail" id="rail"></section>
 
   <section class="opts">
     <div class="opt"><span>Suréchantillonnage</span>
@@ -304,6 +280,11 @@ select {
     </div>
     <label class="toggle opt"><input type="checkbox" id="autoGain" checked><span>Gain staging auto</span></label>
     <label class="toggle opt"><input type="checkbox" id="camBass" checked><span>Caméra sur les basses</span></label>
+    <div class="opt audio"><span>Prototype</span>
+      <button class="btn" id="demoBtn" type="button">▶ Groove démo</button>
+      <label class="btn" for="fileIn">Charger un son</label>
+      <input type="file" id="fileIn" accept="audio/*">
+    </div>
   </section>
 
   <footer class="status">
@@ -315,7 +296,7 @@ select {
   </footer>
 </div>
 
-<p class="caption">Maquette interactive de l'interface. Tourne les knobs en glissant verticalement, molette ou flèches du clavier, double-clic pour la valeur par défaut. Survole un knob pour voir ce qu'il change dans la scène. Le <kbd>Dry / Wet</kbd> fait passer la ville du jour (dry) à la nuit (wet). Chaque coup de basse envoie une onde depuis l'antenne et fait tourner la caméra autour de la tour. Lance le groove démo ou charge ton propre son pour que les ondes suivent ta musique.</p>
+<p class="caption">Maquette interactive de l'interface. Tourne les knobs en glissant verticalement, molette ou flèches du clavier, double-clic pour la valeur par défaut. Les knobs sont posés sur la scène : survole-en un pour voir ce qu'il change dans la scène. Le <kbd>Dry / Wet</kbd> fait passer la ville du jour (dry) à la nuit (wet). Chaque coup de basse envoie une onde depuis l'antenne et fait tourner la caméra autour de la tour. Lance le groove démo ou charge ton propre son pour que les ondes suivent ta musique.</p>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -342,7 +323,7 @@ const PARAMS = {
              fx: "La caméra recule et les ondes s'élargissent" },
   space:   { label: "Space",       jp: "空間",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
              fx: "Le brouillard s'épaissit et les ondes laissent des échos" },
-  mix:     { label: "Dry / Wet",   jp: "昼 · 夜", min: 0,   max: 100,   def: 80,    fmt: v => v.toFixed(0) + " %", big: true,
+  mix:     { label: "Dry / Wet",   jp: "昼 · 夜", min: 0,   max: 100,   def: 80,    fmt: v => v.toFixed(0) + " % · " + todName(v), big: true,
              fx: "Fait passer la ville du jour (dry) à la nuit (wet)" },
   lowcut:  { label: "Coupe-bas",   jp: "低域",   min: 20,   max: 500,   def: 30,    log: true, fmt: hz,
              fx: "La caméra s'élève au-dessus des toits" },
@@ -414,12 +395,11 @@ function makeKnob(key, parent) {
     <svg viewBox="0 0 64 64" role="slider" tabindex="0" aria-label="${p.label}" id="knob-${key}">
       <path class="k-track" d="${arc(28, A0, A1)}"></path>
       <path class="k-arc"></path>
-      <circle class="k-body" cx="32" cy="32" r="21"></circle>
-      <line class="k-ptr" x1="32" y1="32" x2="32" y2="15"></line>
+      <circle class="k-body" cx="32" cy="32" r="22"></circle>
+      <line class="k-ptr" x1="32" y1="12" x2="32" y2="20"></line>
     </svg>
     <div class="lbl">${p.label}</div>
-    <div class="val"></div>
-    <div class="jp">${p.jp}</div>`;
+    <div class="val"></div>`;
   parent.appendChild(el);
   const svg = el.querySelector("svg");
   svg.addEventListener("pointerenter", () => showHint(key));
@@ -476,15 +456,14 @@ function setParam(key, v, user) {
   state[key] = Math.min(PARAMS[key].max, Math.max(PARAMS[key].min, v));
   drawKnob(key);
   if (user && presetSel.value !== "manual") presetSel.value = "manual";
-  if (key === "mix") updateTimeOfDay();
 }
 
 GROUPS.forEach(([name, keys]) => {
   const g = document.createElement("div");
   g.className = "group" + (name === "Mix" ? " mix" : "");
-  g.innerHTML = `<div class="gname">${name}</div><div class="gknobs"></div>`;
+  g.title = name;
   rail.appendChild(g);
-  keys.forEach(k => makeKnob(k, g.querySelector(".gknobs")));
+  keys.forEach(k => makeKnob(k, g));
 });
 
 /* animate knobs towards a preset */
@@ -548,12 +527,7 @@ bypassBtn.addEventListener("click", () => {
   document.getElementById("badge").hidden = !state.bypass;
 });
 
-function updateTimeOfDay() {
-  const m = state.mix;
-  const name = m < 25 ? "jour" : m < 45 ? "après-midi" : m < 62 ? "crépuscule" : m < 80 ? "soir" : "nuit";
-  document.getElementById("tod").textContent = `Wet ${m.toFixed(0)} % · ${name}`;
-}
-updateTimeOfDay();
+function todName(m) { return m < 25 ? "jour" : m < 45 ? "après-midi" : m < 62 ? "crépuscule" : m < 80 ? "soir" : "nuit"; }
 
 /* =====================================================================
    AUDIO: demo groove, file playback, bass detection, features
@@ -1165,8 +1139,8 @@ function applyKnobs(dt, night) {
 }
 
 /* --- camera: orbits the tower, pushed by each bass hit; bypass dollies in on the antenna --- */
-const CAM = { r: 143, h: 24, look: 33, fov: 38 };          // wide
-const CAM_CLOSE = { r: 64, h: 36, look: 45, fov: 40 };     // bypass
+const CAM = { r: 143, h: 24, look: 27, fov: 42 };          // wide
+const CAM_CLOSE = { r: 64, h: 36, look: 40, fov: 44 };     // bypass
 let zoom = 0, mx = 0, my = 0, theta = Math.atan2(80, 118), tall = 0;
 view.addEventListener("pointermove", e => { const r = view.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width - 0.5; my = (e.clientY - r.top) / r.height - 0.5; });
 view.addEventListener("pointerleave", () => { mx = my = 0; });
