@@ -51,6 +51,24 @@ du coup règle l'intensité de tous ces effets.
 
 Survoler ou tourner un knob affiche son effet en haut de la scène.
 
+### Créatures liées au suréchantillonnage
+
+| Suréchantillonnage | Jour : corbeaux | Nuit : dragon japonais (ryū) |
+|---|---|---|
+| 1× | aucun | absent |
+| 2× | 6 | jeune (petit, 26 segments) |
+| 4× | 14 | adulte (38 segments) |
+| 8× | 26 | ancien (50 segments) |
+| 16× | 40 | gigantesque (64 segments) |
+
+- Les corbeaux tournent autour de la tour à différentes hauteurs, ailes
+  battantes ; ils disparaissent quand la nuit tombe (Dry/Wet).
+- Le dragon est un long serpent low poly vert-jade : nageoires dorées sur le
+  dos, cornes, yeux rouges, moustaches. Il s'enroule autour de la tour entre
+  la plateforme et l'antenne, n'apparaît que la nuit et grandit doucement
+  quand on monte le suréchantillonnage. Son corps s'illumine sur les basses.
+- Changer le suréchantillonnage affiche un bandeau qui résume l'effet.
+
 ### Prise de vue
 
 Caméra en orbite autour de la tour, en légère contre-plongée depuis les toits.
@@ -179,3 +197,4 @@ la barre d'état les montre et qu'il faudra les tenir :
 - Ajout du **Clipper** (3 styles) et du **Limiter**.
 - Filtres (coupe-bas, coupe-haut, topologie) retirés.
 - Panneau de reconnaissance remplacé par un bandeau d'analyse.
+- Corbeaux (jour) et dragon (nuit) liés au suréchantillonnage.
