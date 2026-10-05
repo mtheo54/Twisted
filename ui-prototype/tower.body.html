@@ -259,15 +259,13 @@ select {
     <div class="opt"><span>Suréchantillonnage</span>
       <div class="seg" id="osSeg"></div>
     </div>
-    <div class="opt"><span>Caractère</span>
+    <div class="opt"><span>Caractère Elevate</span>
       <select id="charSel" aria-label="Caractère de saturation">
         <option>Bande magnétique</option><option>Lampe triode</option><option>Transistor</option><option>Wavefolder</option>
       </select>
     </div>
-    <div class="opt"><span>Topologie filtre</span>
-      <select id="topoSel" aria-label="Topologie des filtres">
-        <option>SVF TPT (ZDF)</option><option>Ladder ZDF 4 pôles</option><option>Biquad TDF-II</option><option>Linkwitz-Riley 24</option>
-      </select>
+    <div class="opt"><span>Clipper</span>
+      <div class="seg" id="clipSeg"></div>
     </div>
     <label class="toggle opt"><input type="checkbox" id="autoGain" checked><span>Gain staging auto</span></label>
     <label class="toggle opt"><input type="checkbox" id="camBass" checked><span>Caméra sur les basses</span></label>
@@ -281,6 +279,7 @@ select {
   <footer class="status">
     <span class="zero">Latence <b>0 échantillon</b></span>
     <span>OS <b id="stOs">4×</b> polyphase IIR min-phase</span>
+    <span>Plafond <b>−1 dBTP</b></span>
     <span>SIMD <b>AVX2 · 8 voies</b></span>
     <span>Threads <b>audio RT · analyse ×2 · UI</b> · files SPSC sans verrou</span>
     <span>CPU <b id="stCpu">3.1 %</b></span>
@@ -300,55 +299,51 @@ select {
 const PARAMS = {
   input:   { label: "Entrée",      jp: "入力",   min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB",
              fx: "L'antenne de la tour s'allonge ou se rétracte" },
-  drive:   { label: "Saturation",  jp: "歪み",   min: 0,    max: 100,   def: 25,    fmt: v => v.toFixed(0) + " %",
-             fx: "Les braises s'embrasent et l'acier de la tour rougeoie" },
-  enhance: { label: "Enhance",     jp: "輝き",   min: 0,    max: 100,   def: 20,    fmt: v => v.toFixed(0) + " %",
-             fx: "Les étoiles et les fenêtres scintillent" },
+  elevate: { label: "Elevate",     jp: "昇華",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
+             fx: "Saturation + enhance : les braises s'embrasent, l'acier rougeoie, les étoiles et les fenêtres scintillent" },
   comp:    { label: "Compression", jp: "圧縮",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
              fx: "Les immeubles pompent au passage de chaque onde" },
   punch:   { label: "Punch",       jp: "衝撃",   min: 0,    max: 100,   def: 40,    fmt: v => v.toFixed(0) + " %",
              fx: "La caméra tourne plus fort autour de la tour à chaque basse" },
   sub:     { label: "Sub",         jp: "重低音", min: 0,    max: 100,   def: 35,    fmt: v => v.toFixed(0) + " %",
              fx: "La tour et l'image tremblent sur les basses" },
-  width:   { label: "Stéréo",      jp: "広がり", min: 0,    max: 200,   def: 100,   fmt: v => v.toFixed(0) + " %",
-             fx: "La caméra recule et les ondes s'élargissent" },
-  space:   { label: "Space",       jp: "空間",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
-             fx: "Le brouillard s'épaissit et les ondes laissent des échos" },
   mix:     { label: "Dry / Wet",   jp: "昼 · 夜", min: 0,   max: 100,   def: 80,    fmt: v => v.toFixed(0) + " % · " + todName(v), big: true,
              fx: "Fait passer la ville du jour (dry) à la nuit (wet)" },
-  lowcut:  { label: "Coupe-bas",   jp: "低域",   min: 20,   max: 500,   def: 30,    log: true, fmt: hz,
-             fx: "La caméra s'élève au-dessus des toits" },
-  highcut: { label: "Coupe-haut",  jp: "高域",   min: 2000, max: 20000, def: 20000, log: true, fmt: hz,
-             fx: "Une couche de nuages descend sur la ville" },
+  space:   { label: "Space",       jp: "空間",   min: 0,    max: 100,   def: 40,    fmt: v => v.toFixed(0) + " %",
+             fx: "Stéréo + ambiance : la caméra recule, les ondes s'élargissent, le brouillard s'épaissit et laisse des échos" },
+  clip:    { label: "Clipper",     jp: "切断",   min: 0,    max: 100,   def: 20,    fmt: v => v.toFixed(0) + " %",
+             fx: "Un plafond lumineux descend sur la ville et écrase les toits qui dépassent (style : Hard, Soft ou Analog)" },
+  limit:   { label: "Limiter",     jp: "制限",   min: 0,    max: 100,   def: 40,    fmt: v => v.toFixed(0) + " %",
+             fx: "Une bulle de protection entoure l'antenne : les ondes s'y arrêtent et la font briller" },
   output:  { label: "Sortie",      jp: "出力",   min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB",
              fx: "Règle l'exposition de l'image" },
 };
 const GROUPS = [
   ["Gain", ["input"]],
-  ["Couleur", ["drive", "enhance"]],
+  ["Couleur", ["elevate"]],
   ["Dynamique", ["comp", "punch", "sub"]],
   ["Mix", ["mix"]],
-  ["Espace", ["width", "space"]],
-  ["Filtres", ["lowcut", "highcut"]],
+  ["Espace", ["space"]],
+  ["Loudness", ["clip", "limit"]],
   ["Sortie", ["output"]],
 ];
+const CLIP_STYLES = ["Hard", "Soft", "Analog"];
 const OS_STEPS = [1, 2, 4, 8, 16];
 
 function sign(v) { return v > 0.05 ? "+" : v < -0.05 ? "−" : ""; }
-function hz(v) { return v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + " kHz" : v.toFixed(0) + " Hz"; }
 for (const k in PARAMS) { const f = PARAMS[k].fmt; PARAMS[k].fmt = v => f(v).replace("−-", "−").replace(/^([+−])?-/, "$1"); }
 
-const state = { bypass: false, os: 4, autoGain: true, camBass: true };
+const state = { bypass: false, os: 4, autoGain: true, camBass: true, clipStyle: 1 };
 for (const k in PARAMS) state[k] = PARAMS[k].def;
 
 /* Presets chosen by the recognition step. */
 const PRESETS = {
-  "Kick / 808":       { input: -1.5, drive: 38, enhance: 15, comp: 45, punch: 75, sub: 70, width: 60,  space: 10, mix: 70,  lowcut: 25, highcut: 16000, output: -0.5, os: 4,  char: 2, topo: 1 },
-  "Basse":            { input: -2.0, drive: 30, enhance: 25, comp: 55, punch: 35, sub: 80, width: 40,  space: 8,  mix: 65,  lowcut: 32, highcut: 9000,  output: 0,    os: 4,  char: 1, topo: 0 },
-  "Voix":             { input: -3.0, drive: 18, enhance: 45, comp: 50, punch: 20, sub: 10, width: 110, space: 45, mix: 55,  lowcut: 90, highcut: 18500, output: 0.5,  os: 2,  char: 1, topo: 0 },
-  "Bus batterie":     { input: -2.5, drive: 42, enhance: 30, comp: 40, punch: 65, sub: 45, width: 120, space: 25, mix: 80,  lowcut: 35, highcut: 19000, output: 0,    os: 4,  char: 0, topo: 2 },
-  "Guitare / synthé": { input: -1.0, drive: 28, enhance: 35, comp: 30, punch: 30, sub: 15, width: 150, space: 50, mix: 75,  lowcut: 80, highcut: 15000, output: 0,    os: 8,  char: 0, topo: 1 },
-  "Master":           { input: -4.0, drive: 12, enhance: 18, comp: 25, punch: 20, sub: 30, width: 108, space: 15, mix: 100, lowcut: 22, highcut: 20000, output: 1.0,  os: 16, char: 0, topo: 3 },
+  "Kick / 808":       { input: -1.5, elevate: 30, comp: 45, punch: 75, sub: 70, space: 15, mix: 70,  clip: 40, limit: 40, output: -0.5, os: 4,  char: 2, clipStyle: 0 },
+  "Basse":            { input: -2.0, elevate: 28, comp: 55, punch: 35, sub: 80, space: 10, mix: 65,  clip: 20, limit: 45, output: 0,    os: 4,  char: 1, clipStyle: 1 },
+  "Voix":             { input: -3.0, elevate: 32, comp: 50, punch: 20, sub: 10, space: 55, mix: 55,  clip: 5,  limit: 35, output: 0.5,  os: 2,  char: 1, clipStyle: 1 },
+  "Bus batterie":     { input: -2.5, elevate: 36, comp: 40, punch: 65, sub: 45, space: 40, mix: 80,  clip: 30, limit: 40, output: 0,    os: 4,  char: 0, clipStyle: 2 },
+  "Guitare / synthé": { input: -1.0, elevate: 32, comp: 30, punch: 30, sub: 15, space: 65, mix: 75,  clip: 10, limit: 30, output: 0,    os: 8,  char: 0, clipStyle: 2 },
+  "Master":           { input: -4.0, elevate: 15, comp: 25, punch: 20, sub: 30, space: 35, mix: 100, clip: 15, limit: 70, output: 1.0,  os: 16, char: 0, clipStyle: 1 },
 };
 const CLASSES = Object.keys(PRESETS);
 
@@ -466,7 +461,7 @@ function applyPreset(name) {
   morph = { t: 0, from, to };
   setOs(pr.os);
   charSel.selectedIndex = pr.char;
-  topoSel.selectedIndex = pr.topo;
+  setClipStyle(pr.clipStyle);
 }
 function stepMorph(dt) {
   if (!morph) return;
@@ -482,7 +477,6 @@ function stepMorph(dt) {
 const plugin = document.getElementById("plugin");
 const presetSel = document.getElementById("presetSel");
 const charSel = document.getElementById("charSel");
-const topoSel = document.getElementById("topoSel");
 presetSel.innerHTML = `<option value="manual">Manuel</option>` +
   CLASSES.map(c => `<option value="${c}">${c}</option>`).join("");
 presetSel.addEventListener("change", () => { if (presetSel.value !== "manual") applyPreset(presetSel.value); });
@@ -500,6 +494,19 @@ function setOs(n) {
   document.getElementById("stOs").textContent = n + "×";
 }
 setOs(4);
+
+const clipSeg = document.getElementById("clipSeg");
+CLIP_STYLES.forEach((n, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = n; b.dataset.i = i;
+  b.addEventListener("click", () => setClipStyle(i));
+  clipSeg.appendChild(b);
+});
+function setClipStyle(i) {
+  state.clipStyle = i;
+  clipSeg.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+}
+setClipStyle(1);
 
 document.getElementById("autoGain").addEventListener("change", e => {
   state.autoGain = e.target.checked;
@@ -694,8 +701,9 @@ let lufsS = -30, cpuT = 0;
 function dbStr(d) { return d < -60 ? "−∞" : (d < 0 ? "−" : "+") + Math.abs(d).toFixed(1); }
 function stepMeters(dt) {
   const inDb = 20 * Math.log10(Math.max(feat.rms, 1e-6)) + 3;
-  const gain = state.bypass ? 0 : state.input + state.output + state.drive * 0.03 + state.enhance * 0.01;
-  const outDb = Math.min(-0.3, inDb + gain * (state.mix / 100));
+  const gain = state.bypass ? 0 : state.input + state.output + state.elevate * 0.04 + state.clip * 0.03 + state.limit * 0.05;
+  const ceil = state.bypass ? 0 : -0.3 - (1 - state.limit / 100) * 0.7;   // true-peak ceiling −1 … −0.3 dBTP
+  const outDb = Math.min(ceil, inDb + gain * (state.mix / 100));
   lufsS += ((outDb - 6) - lufsS) * Math.min(1, dt * 1.5);
   const pct = d => Math.max(0, Math.min(100, (d + 60) / 60 * 100)) + "%";
   mIn.style.width = pct(inDb); mOut.style.width = pct(outDb); mLufs.style.width = pct(lufsS);
@@ -869,6 +877,7 @@ function house(x, z, ry) {
     roof.position.y = h + h * 0.6 + roof.scale.y / 2; roof.scale.x *= 0.85; roof.scale.z *= 0.85;
     const eave = new THREE.Mesh(roofG, roof.material); eave.scale.set(w * 0.8, 0.8, d * 0.8); eave.position.y = h + 0.3; g.add(eave);
   }
+  g.userData.h = roof.position.y + roof.scale.y / 2;
   if (R() < 0.3) { // noren / sign glow
     const s = new THREE.Mesh(boxG, shopSignMats[(R() * 3) | 0]); s.scale.set(w * 0.5, 0.7, 0.15); s.position.set(0, h * 0.75, d / 2 + 0.1); g.add(s);
   }
@@ -883,6 +892,7 @@ function office(x, z, ry) {
   const glow = { m, base: 1.1, ph: R() * 6.28 }; nightGlow.push(glow); windowMats.push(glow);
   const b = new THREE.Mesh(boxG, m); b.scale.set(w, h, d); b.position.y = h / 2; g.add(b);
   const cap = new THREE.Mesh(boxG, roofMats[0]); cap.scale.set(w * 0.6, 1.2, d * 0.6); cap.position.y = h + 0.6; g.add(cap);
+  g.userData.h = h + 1.2;
   if (R() < 0.5) { // rooftop aerial
     const a = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 5, 4), steelDark); a.position.set(w * 0.2, h + 3.7, 0); g.add(a);
     const l = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), lanternMat); l.position.set(w * 0.2, h + 6.3, 0); g.add(l);
@@ -946,19 +956,20 @@ for (let i = 0; i < 28; i++) {
   m.position.set(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r); m.rotation.y = R() * 3; scene.add(m);
 }
 
-/* --- cloud deck (Coupe-haut lowers it onto the city) --- */
-const cloudMat = mat(0xd8d4d0, { transparent: true, opacity: 0.9 });
-const clouds = new THREE.Group(); scene.add(clouds);
-const puffG = new THREE.IcosahedronGeometry(1, 0);
-for (let i = 0; i < 54; i++) {
-  const a = R() * Math.PI * 2, r = 8 + R() * 150;
-  const p = new THREE.Mesh(puffG, cloudMat);
-  p.position.set(Math.cos(a) * r, (R() - 0.5) * 5, Math.sin(a) * r);
-  p.scale.set(10 + R() * 16, 2.5 + R() * 3, 8 + R() * 14); p.rotation.y = R() * 3;
-  clouds.add(p);
-}
+/* --- clipper ceiling: a glowing grid that flattens the skyline --- */
+const ceilGrid = new THREE.PolarGridHelper(170, 24, 10, 96, 0xff5a3c, 0xff5a3c);
+ceilGrid.material.transparent = true; ceilGrid.material.opacity = 0; ceilGrid.material.depthWrite = false;
+ceilGrid.material.blending = THREE.AdditiveBlending; ceilGrid.material.fog = false;
+scene.add(ceilGrid);
+let ceilY = 60, clipFlash = 0;
 
-/* --- stars (Enhance) --- */
+/* --- limiter bubble around the antenna --- */
+const domeMat = new THREE.MeshBasicMaterial({ color: 0x8ad6df, wireframe: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+const dome = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), domeMat);
+scene.add(dome);
+let domeR = 80, domeFlash = 0;
+
+/* --- stars (Elevate) --- */
 const STARS = 700, starPos = new Float32Array(STARS * 3);
 for (let i = 0; i < STARS; i++) {
   const a = R() * Math.PI * 2, el = 0.12 + R() * 1.3;
@@ -968,7 +979,7 @@ const starGeo = new THREE.BufferGeometry(); starGeo.setAttribute("position", new
 const starMat = new THREE.PointsMaterial({ color: 0xf4f0ff, size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false });
 scene.add(new THREE.Points(starGeo, starMat));
 
-/* --- embers / ash (Saturation) --- */
+/* --- embers / ash (Elevate) --- */
 const EMB = 420;
 const embGeo = new THREE.BufferGeometry();
 const embPos = new Float32Array(EMB * 3), embSpd = new Float32Array(EMB);
@@ -999,17 +1010,18 @@ const echoes = [];
 function spawnWave(s, echo) {
   const w = waves[wi++ % waves.length];
   w.age = 0; w.s = s; w.oy = tipPos.y; w.echo = echo;
-  w.life = 2.2 * (1 + state.space / 100 * 0.9);
+  w.life = 2.2 * (1 + state.space / 100 * 0.6);
   w.front = w.prevFront = 0;
   w.ring.visible = w.ring2.visible = w.shell.visible = true;
 }
 function bassHit(strength) {
-  const s = strength * (state.bypass ? 0.45 : 1) * (0.55 + 0.45 * state.drive / 100 + 0.25 * state.enhance / 100);
+  const s = strength * (state.bypass ? 0.45 : 1) * (0.55 + 0.6 * state.elevate / 100);
   spawnWave(s, false);
   // Space: echo waves
   const n = Math.round(state.space / 100 * 3);
   for (let i = 1; i <= n; i++) echoes.push({ at: T + i * 0.28, s: s * Math.pow(0.5, i) });
   flash = Math.max(flash, s);
+  clipFlash = Math.max(clipFlash, strength * state.clip / 100);
   // Sub: the tower and the picture shake
   quake = Math.max(quake, strength * state.sub / 100);
   // Punch: the camera turns around the tower, with a short zoom kick
@@ -1019,20 +1031,21 @@ function bassHit(strength) {
 function stepWaves(dt, night) {
   for (let i = echoes.length - 1; i >= 0; i--) if (T >= echoes[i].at) { spawnWave(echoes[i].s, true); echoes.splice(i, 1); }
   const col = new THREE.Color(0xf6e2b0).lerp(C(0x8ad6df), night);
-  const sizeMul = 0.6 + state.width / 200 * 0.8;   // stereo width widens the wave
+  const sizeMul = 0.6 + state.space / 100 * 0.8;   // Space widens the wave
   for (const w of waves) {
     if (w.age > w.life) { if (w.ring.visible) w.ring.visible = w.ring2.visible = w.shell.visible = false; w.front = w.prevFront = 999; continue; }
     w.age += dt;
     const k = Math.min(1, w.age / w.life), e = 1 - Math.pow(1 - k, 3), fade = Math.pow(1 - k, 1.6);
     w.prevFront = w.front; w.front = w.echo ? 0 : 175 * Math.min(1, w.age / 1.4);  // ground shockwave for the pumping
-    const rs = 1 + 52 * e * sizeMul;
+    let rs = 1 + 52 * e * sizeMul;
+    if (domeOn() && rs > domeR) { if (w.ring.scale.x < domeR) domeFlash = Math.max(domeFlash, w.s); rs = domeR; }
     w.ring.position.set(0, w.oy, 0);
     w.ring.scale.set(rs, rs, 1 + 3 * e);
     w.ring.material.opacity = fade * w.s * 0.95;
-    const k2 = Math.max(0, k - 0.12), e2 = 1 - Math.pow(1 - k2, 3), r2 = 1 + 40 * e2 * sizeMul;
+    const k2 = Math.max(0, k - 0.12), e2 = 1 - Math.pow(1 - k2, 3), r2 = Math.min(1 + 40 * e2 * sizeMul, domeOn() ? domeR : 1e9);
     w.ring2.scale.set(r2, r2, 1); w.ring2.position.set(0, w.oy - 10 * e2, 0);
     w.ring2.material.opacity = Math.pow(1 - k2, 2) * w.s * 0.5;
-    const ss = 1 + 26 * e * sizeMul; w.shell.scale.set(ss, ss * 0.55, ss); w.shell.position.set(0, w.oy, 0);
+    const ss = Math.min(1 + 26 * e * sizeMul, domeOn() ? domeR : 1e9); w.shell.scale.set(ss, ss * 0.55, ss); w.shell.position.set(0, w.oy, 0);
     w.shell.material.opacity = fade * w.s * 0.16;
     w.ring.material.color.copy(col); w.ring2.material.color.copy(col); w.shell.material.color.copy(col);
   }
@@ -1046,7 +1059,17 @@ function stepBuildings(dt) {
     for (const w of waves) if (!w.echo && b.d > w.prevFront && b.d <= w.front) b.v += w.s * 7;
     b.v += (-150 * b.y - 8 * b.v) * h; b.y += b.v * h;
     const s = Math.max(-0.6, Math.min(0.6, b.y)) * amt;
-    b.g.scale.set(1 - s * 0.35, 1 + s, 1 - s * 0.35);
+    // Clipper: anything above the ceiling is flattened, the curve depends on the style
+    const hb = (b.g.userData.h || 8) * (1 + s);
+    let hc = hb;
+    if (state.clip > 0.5) {
+      const c = ceilY;
+      if (state.clipStyle === 0) hc = Math.min(hb, c);                                         // Hard: flat cut
+      else if (state.clipStyle === 1) hc = hb < c * 0.6 ? hb : c * 0.6 + c * 0.4 * Math.tanh((hb - c * 0.6) / (c * 0.4)); // Soft knee
+      else hc = (hb < c * 0.5 ? hb : c * 0.5 + c * 0.5 * Math.tanh((hb - c * 0.5) / (c * 0.5))) * (1 + 0.08 * Math.sin(T * 9 + b.d) * clipFlash); // Analog: soft + wobble
+    }
+    const sy = hc / (b.g.userData.h || 8);
+    b.g.scale.set(1 - s * 0.35, sy, 1 - s * 0.35);
   }
 }
 
@@ -1078,11 +1101,11 @@ function applyTimeOfDay(dt) {
   rim.intensity = 0.35 * night;
   deckLight.intensity = 2.2 * night;
   steel.color.set(0x7d2a24).lerp(tmpA.set(0x5a1d1c), night);
-  cloudMat.color.set(0xd8d4d0).lerp(tmpA.set(0x3a3248), night);
   return night;
 }
 
 /* --- every knob's effect on the scene --- */
+function domeOn() { return state.limit > 0.5; }
 let lastFilter = "";
 function applyKnobs(dt, night) {
   const n = k => toNorm(PARAMS[k], state[k]);
@@ -1091,27 +1114,38 @@ function applyKnobs(dt, night) {
   antenna.scale.y += (antS - antenna.scale.y) * Math.min(1, dt * 6);
   tip.scale.y = 1 / antenna.scale.y;
   tipPos.set(0, ANT0 + (ANT_H + 0.6) * antenna.scale.y, 0);
-  // Saturation: embers and glowing steel
-  const d = n("drive");
+  // Elevate (saturation + enhance): embers, glowing steel, stars, twinkling windows
+  const d = n("elevate");
   embMat.size = 0.3 + d * 0.8;
   embMat.opacity = (0.1 + 0.75 * night) * (0.35 + d * 0.65);
   embMat.color.set(0x9a8f8a).lerp(tmpA.set(0xff7a3a), Math.min(1, d * 1.6));
   steel.emissiveIntensity = d * d * 0.55 * (0.35 + night) + flash * d * 0.4;
-  // Enhance: stars, twinkling windows, tip glow
-  const en = n("enhance");
-  starMat.opacity = night * (0.2 + 0.8 * en) * (0.9 + 0.1 * Math.sin(T * 3));
-  starMat.size = 1 + en * 1.8;
+  starMat.opacity = night * (0.2 + 0.8 * d) * (0.9 + 0.1 * Math.sin(T * 3));
+  starMat.size = 1 + d * 1.8;
   for (const g of nightGlow) g.m.emissiveIntensity = g.base * night;
-  for (const g of windowMats) g.m.emissiveIntensity = g.base * night * (1 + Math.sin(T * 6 + g.ph) * 0.25 * en);
-  // Space: fog thickness (echo waves are handled in bassHit)
+  for (const g of windowMats) g.m.emissiveIntensity = g.base * night * (1 + Math.sin(T * 6 + g.ph) * 0.25 * d);
+  // Space (stereo + ambience): fog thickness; camera distance and echoes are handled elsewhere
   const sp = n("space");
   // fog distances follow the camera so the tower never disappears
   scene.fog.near = CAM.r * (0.5 - sp * 0.4); scene.fog.far = CAM.r + 200 - sp * 140;
-  // Coupe-haut: the cloud deck comes down
-  const cy = 46 + n("highcut") * 140;
-  clouds.position.y += (cy - clouds.position.y) * Math.min(1, dt * 3);
-  clouds.visible = clouds.position.y < 170;
-  clouds.rotation.y += dt * 0.01;
+  // Clipper: the glowing ceiling comes down over the city
+  const cTarget = 34 - n("clip") * 28;
+  ceilY += (cTarget - ceilY) * Math.min(1, dt * 4);
+  clipFlash *= Math.exp(-dt * 5);
+  ceilGrid.position.y = ceilY;
+  ceilGrid.visible = state.clip > 0.5;
+  ceilGrid.material.color.set(state.clipStyle === 0 ? 0xff4a2c : state.clipStyle === 1 ? 0xffb35c : 0xd6b062);
+  ceilGrid.material.opacity = (0.12 + 0.5 * clipFlash) * (0.4 + 0.6 * n("clip"));
+  // Limiter: a bubble around the antenna tip shrinks as the limiter works harder
+  const lim = n("limit");
+  domeR += ((70 - lim * 52) - domeR) * Math.min(1, dt * 4);
+  domeFlash *= Math.exp(-dt * 4);
+  dome.visible = domeOn();
+  dome.scale.setScalar(domeR);
+  dome.position.copy(tipPos);
+  dome.rotation.y += dt * 0.05;
+  domeMat.opacity = 0.03 + 0.05 * lim + 0.35 * domeFlash;
+  domeMat.color.set(0x8ad6df).lerp(tmpA.set(0xf6e2b0), 1 - night);
   // Sub: tower shake
   quake *= Math.exp(-dt * 7);
   tower.position.set((Math.random() - 0.5) * quake * 0.9, 0, (Math.random() - 0.5) * quake * 0.9);
@@ -1136,8 +1170,8 @@ function stepCamera(dt, t) {
   orbitV *= Math.exp(-dt * 1.6);
   theta += (orbitV + 0.012 * sway) * dt;
   // Stéréo: distance; Coupe-bas: height
-  const wideR = (110 + state.width / 200 * 70) + tall * 40;
-  const wideH = 22 + toNorm(PARAMS.lowcut, state.lowcut) * 36 + tall * 6;
+  const wideR = (110 + state.space / 100 * 70) + tall * 40;
+  const wideH = 26 + tall * 6;
   CAM.r += (wideR - CAM.r) * Math.min(1, dt * 3);
   CAM.h += (wideH - CAM.h) * Math.min(1, dt * 3);
   const r = CAM.r + (CAM_CLOSE.r - CAM.r) * z;
@@ -1176,11 +1210,11 @@ function frame() {
   stepBuildings(dt);
   flash *= Math.pow(0.02, dt);
   tipLight.intensity = (0.4 + 6 * flash) * (0.3 + night);
-  const gs = (5 + 9 * flash) * (0.8 + 0.6 * toNorm(PARAMS.enhance, state.enhance));
+  const gs = (5 + 9 * flash) * (0.8 + 0.6 * toNorm(PARAMS.elevate, state.elevate));
   tipGlow.scale.set(gs, gs / antenna.scale.y, 1);
   tipMat.color.set(0xff5a3c).lerp(tmpA.set(0xd6fbff), Math.min(1, flash));
   const pos = embGeo.attributes.position.array;
-  const emSpeed = (0.5 + toNorm(PARAMS.drive, state.drive) * 2) * (reduceMotion ? 0.2 : 1);
+  const emSpeed = (0.5 + toNorm(PARAMS.elevate, state.elevate) * 2) * (reduceMotion ? 0.2 : 1);
   for (let i = 0; i < EMB; i++) {
     pos[i * 3 + 1] += embSpd[i] * dt * emSpeed;
     pos[i * 3] += Math.sin(T * 0.5 + i) * 0.02;

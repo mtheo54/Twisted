@@ -38,16 +38,14 @@ du coup règle l'intensité de tous ces effets.
 | Knob | Effet dans la scène | Type |
 |---|---|---|
 | Entrée | L'antenne s'allonge ou se rétracte (les ondes partent de plus haut) | Ville |
-| Saturation | Les braises s'embrasent (plus grosses, plus rapides, plus orange) et l'acier de la tour rougeoie | Ville |
-| Enhance | Les étoiles et les fenêtres scintillent, la pointe brille plus | Ville |
+| Elevate | Saturation + enhance : les braises s'embrasent, l'acier de la tour rougeoie, les étoiles et les fenêtres scintillent, la pointe brille plus | Ville |
 | Compression | Les immeubles pompent (ressort amorti) au passage de l'onde de choc | Physique |
 | Punch | Rotation plus forte de la caméra à chaque basse + petit zoom d'impact | Caméra |
 | Sub | La tour et l'image tremblent sur les basses | Physique / caméra |
-| Stéréo | La caméra recule ou s'approche, les ondes s'élargissent | Caméra |
-| Space | Le brouillard s'épaissit, chaque onde laisse 1 à 3 échos, les ondes durent plus longtemps | Ville |
+| Space | Stéréo + ambiance : la caméra recule, les ondes s'élargissent, le brouillard s'épaissit, chaque onde laisse 1 à 3 échos | Caméra / ville |
 | Dry / Wet | Heure du jour : 0 % jour, 40 % après-midi, 60 % crépuscule, 100 % nuit | Ville |
-| Coupe-bas | La caméra s'élève au-dessus des toits | Caméra |
-| Coupe-haut | Une couche de nuages descend sur la ville | Ville |
+| Clipper | Un plafond lumineux (grille circulaire) descend sur la ville et écrase les toits qui dépassent ; il flashe sur les basses. **Hard** : coupe nette, grille rouge. **Soft** : toits arrondis en douceur, grille ambre. **Analog** : coude doux + toits qui vibrent sur les coups, grille dorée | Physique 3D |
+| Limiter | Une bulle filaire entoure l'antenne et rétrécit quand on monte le knob ; les ondes s'y arrêtent et la font briller | 3D |
 | Sortie | Exposition de l'image | Image |
 | Bypass | Travelling avant sur l'antenne, image désaturée, bandeau « BYPASS · 素通し » | Caméra |
 
@@ -81,10 +79,10 @@ barre sous la scène.
 │                            (scène 3D 16:9)         │ LUFS        │ │
 │                                                     └────────────┘ │
 │ ░░░░░░░░░░░░░░░░░░░░░ dégradé ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
-│  ◯ Entrée  ◯ Sat ◯ Enh   ◯ Comp ◯ Punch ◯ Sub  (◯ DRY/WET)          │
-│            ◯ Stéréo ◯ Space   ◯ Coupe-bas ◯ Coupe-haut   ◯ Sortie   │
+│  ◯ Entrée  ◯ Elevate   ◯ Comp ◯ Punch ◯ Sub  (◯ DRY/WET)             │
+│     ◯ Space   ◯ Clipper ◯ Limiter   ◯ Sortie                         │
 ├──────────────────────────────────────────────────────────────────┤
-│ Suréchantillonnage [1×…16×]  Caractère [▾]  Topologie [▾]          │
+│ Suréchantillonnage [1×…16×]  Caractère [▾]  Clipper [Hard|Soft|Analog] │
 │ ◉ Gain auto  ◉ Caméra sur les basses                               │
 ├──────────────────────────────────────────────────────────────────┤
 │ Latence 0 échantillon · OS 4× · SIMD AVX2 · Threads … · CPU 3 %     │
@@ -105,25 +103,23 @@ sous 900 px (vumètres masqués), knobs compacts sous 520 px.
 ## 4. Contrôles
 
 Les knobs sont regroupés par espacement (sans titres) : Gain · Couleur ·
-Dynamique · Mix · Espace · Filtres · Sortie.
+Dynamique · Mix · Espace · Loudness · Sortie.
 
 | Groupe | Contrôle | Plage | Défaut | Rôle audio |
 |---|---|---|---|---|
 | Gain | Entrée | −24 … +24 dB | 0 dB | Trim d'entrée, piloté par le gain staging auto |
-| Couleur | Saturation | 0 … 100 % | 25 % | Drive de l'étage non linéaire |
-| Couleur | Enhance | 0 … 100 % | 20 % | Excitation harmonique des aigus |
+| Couleur | Elevate | 0 … 100 % | 30 % | Saturation + excitation harmonique liées sur un seul knob (« le son en mieux ») |
 | Dynamique | Compression | 0 … 100 % | 30 % | Compresseur de bus (glue), seuil et ratio liés |
 | Dynamique | Punch | 0 … 100 % | 40 % | Transient shaper (attaque) |
 | Dynamique | Sub | 0 … 100 % | 35 % | Renfort psychoacoustique et dynamique du sub (< 100 Hz) |
 | Mix | Dry / Wet | 0 … 100 % | 80 % | Mix parallèle |
-| Espace | Stéréo | 0 … 200 % | 100 % | Largeur Mid/Side (graves gardés mono) |
-| Espace | Space | 0 … 100 % | 30 % | Ambiance / réverbération courte sans pré-délai |
-| Filtres | Coupe-bas | 20 … 500 Hz (log) | 30 Hz | Passe-haut |
-| Filtres | Coupe-haut | 2 … 20 kHz (log) | 20 kHz | Passe-bas |
+| Espace | Space | 0 … 100 % | 40 % | Largeur Mid/Side (graves gardés mono) + ambiance courte sans pré-délai, liées |
+| Loudness | Clipper | 0 … 100 % | 20 % | Écrêtage des crêtes avant le limiteur (sans latence) |
+| Loudness | Limiter | 0 … 100 % | 40 % | Limiteur de sortie, plafond true peak −1 dBTP, sans look-ahead |
 | Sortie | Sortie | −24 … +24 dB | 0 dB | Gain de sortie |
 | | Suréchantillonnage | 1×, 2×, 4×, 8×, 16× | 4× | Facteur autour des étages non linéaires |
 | | Caractère | Bande, Lampe triode, Transistor, Wavefolder | Bande | Courbe de saturation |
-| | Topologie filtre | SVF TPT (ZDF), Ladder ZDF 4 pôles, Biquad TDF-II, Linkwitz-Riley 24 | SVF TPT | Structure numérique des filtres |
+| | Clipper (style) | Hard, Soft, Analog | Soft | Courbe d'écrêtage : coupe nette, coude doux (tanh), coude doux avec légère coloration |
 | | Gain staging auto | on / off | on | Vise −18 dBFS RMS en entrée, compense en sortie |
 | | Caméra sur les basses | on / off | on | Rotation de la caméra à chaque basse |
 | | Analyser | bouton | | Écoute 2 s, reconnaît la source, applique le preset |
@@ -175,3 +171,11 @@ la barre d'état les montre et qu'il faudra les tenir :
 2. Dry/Wet : jour = dry et nuit = wet (comme la maquette), ou l'inverse ?
 3. Ajouter un mode « vue libre » (orbite manuelle à la souris) en plus de l'orbite sur les basses ?
 4. Liste des classes de reconnaissance et des presets à compléter.
+
+## 9. Historique des décisions
+
+- Saturation + Enhance fusionnés en **Elevate**.
+- Stéréo + Space fusionnés en **Space**.
+- Ajout du **Clipper** (3 styles) et du **Limiter**.
+- Filtres (coupe-bas, coupe-haut, topologie) retirés.
+- Panneau de reconnaissance remplacé par un bandeau d'analyse.
