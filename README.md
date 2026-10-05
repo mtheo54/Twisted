@@ -5,6 +5,8 @@ Plugin de mixage CLAP + VST3 pour Windows et macOS. Il reconnaît la source audi
 adapté. L'interface est une tour d'observation japonaise en 3D dont chaque knob
 change la scène.
 
+![Interface native, nuit](docs/img/native-night.png)
+
 Tout est écrit à la main : pas de JUCE, pas d'iPlug, pas de framework d'interface.
 Le build ne demande que **CMake** et un compilateur C++17. CMake télécharge tout seul
 trois dépendances d'en-têtes, toutes sous licence libre :
