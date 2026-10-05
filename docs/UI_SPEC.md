@@ -76,9 +76,9 @@ barre sous la scène.
 ┌──────────────────────────────────────────────────────────────────┐
 │ TWISTED 物見櫓          Preset [Bus batterie ▾]  ◎ Analyser  ● Bypass │
 ├──────────────────────────────────────────────────────────────────┤
-│ ┌Reconnaissance──┐   [ effet du knob survolé ]    ┌Niveaux─────┐ │
-│ │ Bus batterie 74%│                                │ IN / OUT    │ │
-│ └─────────────────┘        (scène 3D 16:9)         │ LUFS        │ │
+│ [◎ Détecté : Bus batterie]  [ effet du knob ]  ┌Niveaux─────┐ │
+│                                                    │ IN / OUT    │ │
+│                            (scène 3D 16:9)         │ LUFS        │ │
 │                                                     └────────────┘ │
 │ ░░░░░░░░░░░░░░░░░░░░░ dégradé ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
 │  ◯ Entrée  ◯ Sat ◯ Enh   ◯ Comp ◯ Punch ◯ Sub  (◯ DRY/WET)          │
@@ -93,9 +93,14 @@ barre sous la scène.
 
 (Sur grand écran, les 12 knobs tiennent sur une seule ligne.)
 
-Taille par défaut de la fenêtre : 1180 × 830 px, redimensionnable. En
-dessous de 900 px de large, la scène n'a plus la place d'accueillir les
-knobs : ils passent juste sous l'image, Dry/Wet en tête.
+Il n'y a pas de panneau de reconnaissance : le bouton **Analyser** affiche
+un petit bandeau en haut à gauche de la scène (« Écoute… 2,0 s », puis
+« Détecté : Bus batterie 74 % · preset appliqué »), qui disparaît après
+quelques secondes.
+
+Taille par défaut de la fenêtre : 1180 × 830 px, redimensionnable. Les knobs
+restent sur la scène à toutes les tailles : une ligne en grand, deux lignes
+sous 900 px (vumètres masqués), knobs compacts sous 520 px.
 
 ## 4. Contrôles
 
@@ -131,8 +136,8 @@ gain sont bipolaires (l'arc part du centre).
 ## 5. Reconnaissance audio et presets
 
 Classes proposées : **Kick / 808**, **Basse**, **Voix**, **Bus batterie**,
-**Guitare / synthé**, **Master**. Le panneau affiche la confiance de chaque
-classe ; la meilleure choisit le preset, et les knobs glissent vers leurs
+**Guitare / synthé**, **Master**. La classe la plus probable s'affiche avec sa
+confiance dans le bandeau d'analyse ; elle choisit le preset, et les knobs glissent vers leurs
 nouvelles valeurs en 0,7 s pour qu'on voie ce qui change.
 
 Dans la maquette, la reconnaissance est une heuristique spectrale (rapport

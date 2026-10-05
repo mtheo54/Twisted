@@ -92,23 +92,13 @@ select {
   padding: 12px 14px;
   font-size: 12px;
 }
-.recog { left: 14px; width: 260px; }
 .meters { right: 14px; width: 190px; }
 .overlay h2 {
   margin: 0 0 8px; font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
   color: var(--muted); font-weight: 500;
 }
-.detected { font-family: var(--f-display); font-size: 18px; margin-bottom: 2px; }
-.detected small { font-family: var(--f-mono); font-size: 12px; color: var(--rei); margin-left: 6px; }
-.classes { display: grid; gap: 5px; margin: 10px 0 8px; }
-.cls { display: grid; grid-template-columns: 96px 1fr 34px; align-items: center; gap: 8px; color: var(--muted); }
-.cls .track { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
-.cls .fill { height: 100%; width: 0; background: var(--rei); transition: width .5s ease; }
-.cls b { font-family: var(--f-mono); font-weight: 400; font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
 .note { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .note strong { color: var(--washi); font-weight: 500; }
-.progress { height: 2px; background: var(--line); margin: 8px 0 0; }
-.progress i { display: block; height: 100%; width: 0; background: var(--rei); }
 
 .mrow { display: grid; grid-template-columns: 30px 1fr 52px; gap: 8px; align-items: center; margin-bottom: 7px; }
 .mrow span { color: var(--muted); font-size: 11px; }
@@ -129,13 +119,23 @@ select {
 
 .fxhint {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-  max-width: calc(100% - 520px);
+  max-width: calc(100% - 460px);
   background: color-mix(in srgb, var(--lacquer) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--kin) 45%, var(--line));
   border-radius: 6px; padding: 7px 12px;
   font-size: 12px; line-height: 1.4; text-align: center;
 }
 .fxhint b { color: var(--kin); font-weight: 500; }
+.toast {
+  position: absolute; top: 14px; left: 14px;
+  background: color-mix(in srgb, var(--lacquer) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rei) 45%, var(--line));
+  border-radius: 6px; padding: 7px 12px; font-size: 12px; color: var(--washi);
+  transition: opacity .5s;
+}
+.toast b { color: var(--rei); font-weight: 500; }
+.toast small { font-family: var(--f-mono); color: var(--rei); margin-left: 6px; }
+.toast.fade { opacity: 0; }
 
 /* ---------- knobs, laid over the bottom of the scene ---------- */
 .rail {
@@ -197,24 +197,28 @@ select {
 .caption kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 
 @media (max-width: 900px) {
-  .rail { position: static; flex-wrap: wrap; justify-content: center; padding: 14px 12px; background: var(--lacquer); border-top: 1px solid var(--line); }
-  .group.mix { order: -1; flex-basis: 100%; justify-content: center; }
-  .fxhint { display: none; }
+  .rail { flex-wrap: wrap; justify-content: center; gap: 4px 16px; padding: 70px 10px 10px; }
+  .knob { min-width: 60px; }
+  .knob svg { width: 38px; height: 38px; }
+  .knob.big svg { width: 60px; height: 60px; }
+  .fxhint { top: 54px; max-width: calc(100% - 28px); }
   .stage { aspect-ratio: 4 / 3; }
-  .recog { width: 220px; }
   .meters { display: none; }
 }
 @media (max-width: 520px) {
-  .stage { aspect-ratio: 3 / 4; }
-  .recog { left: 10px; right: 10px; width: auto; top: 10px; }
-  .classes { display: none; }
-  .badge { top: auto; bottom: 16px; }
+  .stage { aspect-ratio: 3 / 4.4; }
+  .rail { gap: 2px 4px; padding: 50px 6px 8px; }
+  .group { display: contents; }
+  .knob { min-width: 50px; }
+  .knob svg { width: 30px; height: 30px; }
+  .knob.big svg { width: 44px; height: 44px; }
+  .knob .lbl { font-size: 8px; letter-spacing: .04em; }
+  .knob .val { font-size: 10px; }
   .opt { flex-wrap: wrap; }
-  .group { flex-wrap: wrap; justify-content: center; }
   .brand span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stage canvas, .rail, .opts, .cls .fill { transition: none; }
+  .stage canvas, .rail, .opts, .toast { transition: none; }
 }
 </style>
 
@@ -242,13 +246,7 @@ select {
    <div class="stage" id="view">
     <canvas id="scene" aria-label="Tour d'observation en 3D, quartier japonais"></canvas>
 
-    <div class="overlay recog" id="recog">
-      <h2>Reconnaissance audio</h2>
-      <div class="detected" id="detected">Bus batterie <small id="conf">74 %</small></div>
-      <div class="classes" id="classes"></div>
-      <div class="note" id="recogNote">Preset auto appliqué. Clique <strong>Analyser</strong> pour réécouter la source.</div>
-      <div class="progress"><i id="prog"></i></div>
-    </div>
+    <div class="toast fade" id="toast" aria-live="polite"></div>
 
     <div class="overlay meters">
       <h2>Niveaux</h2>
@@ -601,7 +599,7 @@ document.getElementById("fileIn").addEventListener("change", async e => {
     fileSrc.connect(analyser); fileSrc.start();
     demoBtn.textContent = "▶ Groove démo";
   } catch (err) {
-    document.getElementById("recogNote").textContent = "Ce fichier ne peut pas être décodé par le navigateur. Essaie un WAV, MP3 ou OGG.";
+    say("Ce fichier ne peut pas être décodé par le navigateur. Essaie un WAV, MP3 ou OGG.");
   }
 });
 const audioLive = () => ac && (demoOn || fileSrc);
@@ -644,15 +642,12 @@ function analyseFrame(now, dt) {
 /* =====================================================================
    RECOGNITION (prototype heuristic; the plugin uses a trained classifier)
    ===================================================================== */
-const classesEl = document.getElementById("classes");
-classesEl.innerHTML = CLASSES.map((c, i) => `<div class="cls"><span>${c}</span><div class="track"><div class="fill" id="cf${i}"></div></div><b id="cv${i}">–</b></div>`).join("");
-function showScores(scores) {
-  const order = scores.map((s, i) => [s, i]).sort((a, b) => b[0] - a[0]);
-  CLASSES.forEach((c, i) => {
-    document.getElementById("cf" + i).style.width = (scores[i] * 100).toFixed(0) + "%";
-    document.getElementById("cv" + i).textContent = (scores[i] * 100).toFixed(0) + "%";
-  });
-  return order[0][1];
+const toast = document.getElementById("toast");
+let toastTimer = null;
+function say(html, keep) {
+  toast.innerHTML = html; toast.classList.remove("fade");
+  clearTimeout(toastTimer);
+  if (!keep) toastTimer = setTimeout(() => toast.classList.add("fade"), 4500);
 }
 function classify(acc) {
   const n = Math.max(1, acc.n);
@@ -671,22 +666,19 @@ function classify(acc) {
 let listening = null;
 document.getElementById("analyseBtn").addEventListener("click", () => {
   listening = { t: 0, low: 0, mid: 0, high: 0, flux: 0, rms: 0, n: 0 };
-  document.getElementById("detected").innerHTML = `Écoute… <small>2.0 s</small>`;
-  document.getElementById("recogNote").textContent = "Analyse du spectre, des transitoires et de la dynamique.";
+  say(`◎ Écoute… <small>2.0 s</small>`, true);
 });
 function stepListening(dt) {
   if (!listening) return;
   listening.t += dt;
   listening.low += feat.low; listening.mid += feat.mid; listening.high += feat.high; listening.flux += feat.flux; listening.rms += feat.rms; listening.n++;
-  document.getElementById("prog").style.width = Math.min(100, listening.t / 2 * 100) + "%";
-  document.querySelector("#detected small").textContent = Math.max(0, 2 - listening.t).toFixed(1) + " s";
+  const sm = toast.querySelector("small"); if (sm) sm.textContent = Math.max(0, 2 - listening.t).toFixed(1) + " s";
   if (listening.t >= 2) {
     const scores = audioLive() ? classify(listening) : [0.06, 0.08, 0.03, 0.74, 0.05, 0.04];
-    const best = showScores(scores);
+    const best = scores.indexOf(Math.max(...scores));
     const name = CLASSES[best];
     const rms = listening.rms / listening.n;
     const rmsDb = 20 * Math.log10(Math.max(rms, 1e-5));
-    document.getElementById("detected").innerHTML = `${name} <small>${(scores[best] * 100).toFixed(0)} %</small>`;
     applyPreset(name);
     presetSel.value = name;
     const trim = state.autoGain ? Math.max(-24, Math.min(24, -18 - rmsDb)) : null;
@@ -694,13 +686,11 @@ function stepListening(dt) {
       morph.to.input = toNorm(PARAMS.input, trim);
       document.getElementById("gsNote").innerHTML = `Gain staging auto : <strong>${PARAMS.input.fmt(trim)}</strong> en entrée, cible −18 dBFS RMS`;
     }
-    document.getElementById("recogNote").innerHTML = `Preset <strong>${name}</strong> appliqué. ` +
-      (audioLive() ? "Mesuré sur ton signal." : "Sans audio : résultat de démonstration.");
-    document.getElementById("prog").style.width = "0";
+    say(`Détecté : <b>${name}</b><small>${(scores[best] * 100).toFixed(0)} %</small> · preset appliqué` +
+      (audioLive() ? "" : " (démo, sans audio)"));
     listening = null;
   }
 }
-showScores([0.06, 0.08, 0.03, 0.74, 0.05, 0.04]);
 applyPreset("Bus batterie"); presetSel.value = "Bus batterie";
 morph.t = 1; stepMorph(0);
 
