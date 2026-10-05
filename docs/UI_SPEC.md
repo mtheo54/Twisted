@@ -89,7 +89,7 @@ barre sous la scène.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-(Sur grand écran, les 12 knobs tiennent sur une seule ligne.)
+(Sur grand écran, les 10 knobs tiennent sur une seule ligne.)
 
 Il n'y a pas de panneau de reconnaissance : le bouton **Analyser** affiche
 un petit bandeau en haut à gauche de la scène (« Écoute… 2,0 s », puis
