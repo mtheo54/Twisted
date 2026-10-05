@@ -87,7 +87,6 @@ select {
   background: #000;
 }
 .view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; transition: filter .6s ease; }
-.plugin.bypassed .view canvas { filter: saturate(.25) brightness(.8); }
 .overlay {
   position: absolute; top: 14px;
   background: color-mix(in srgb, var(--lacquer) 78%, transparent);
@@ -140,22 +139,38 @@ select {
 .audio .btn { padding: 5px 10px; font-size: 12px; background: color-mix(in srgb, var(--lacquer) 80%, transparent); }
 .audio input { display: none; }
 
+.fxhint {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 520px);
+  background: color-mix(in srgb, var(--lacquer) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kin) 45%, var(--line));
+  border-radius: 6px; padding: 7px 12px;
+  font-size: 12px; line-height: 1.4; text-align: center;
+}
+.fxhint b { color: var(--kin); font-weight: 500; }
+
 /* ---------- knob rail ---------- */
 .rail {
-  display: grid;
-  grid-template-columns: repeat(4, auto) 1px auto 1px repeat(3, auto);
-  justify-content: space-between; align-items: end;
-  gap: 14px 18px;
-  padding: 18px 22px 14px;
+  display: flex; flex-wrap: wrap;
+  justify-content: space-between; align-items: flex-end;
+  gap: 16px 12px;
+  padding: 14px 18px 12px;
   border-top: 1px solid var(--line);
   transition: opacity .4s;
 }
+.group { display: grid; gap: 8px; justify-items: center; }
+.gname {
+  width: 100%; text-align: center; padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted);
+}
+.gknobs { display: flex; gap: 8px; align-items: flex-end; }
 .plugin.bypassed .rail, .plugin.bypassed .opts { opacity: .45; }
-.sep { width: 1px; align-self: stretch; background: var(--line); }
 .knob { display: grid; justify-items: center; gap: 4px; user-select: none; touch-action: none; }
-.knob svg { width: 64px; height: 64px; cursor: ns-resize; overflow: visible; }
+.knob { min-width: 74px; }
+.knob svg { width: 56px; height: 56px; cursor: ns-resize; overflow: visible; }
 .knob.big svg { width: 96px; height: 96px; }
-.knob .lbl { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.knob .lbl { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .knob .val { font-family: var(--f-mono); font-size: 12px; color: var(--kin); font-variant-numeric: tabular-nums; min-width: 8ch; text-align: center; }
 .knob .jp { font-family: var(--f-display); font-size: 11px; color: var(--muted); opacity: .7; }
 .k-track { fill: none; stroke: var(--line); stroke-width: 4; stroke-linecap: round; }
@@ -199,9 +214,9 @@ select {
 .caption kbd { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
 
 @media (max-width: 900px) {
-  .rail { grid-template-columns: repeat(4, 1fr); justify-items: center; }
-  .sep { display: none; }
-  .knob.big { grid-column: span 4; order: -1; }
+  .rail { justify-content: center; }
+  .group.mix { order: -1; flex-basis: 100%; }
+  .fxhint { display: none; }
   .view { aspect-ratio: 4 / 3; }
   .recog { width: 220px; }
   .meters { display: none; }
@@ -214,8 +229,7 @@ select {
   .badge { bottom: 92px; }
   .audio { right: 10px; }
   .opt { flex-wrap: wrap; }
-  .rail { grid-template-columns: repeat(2, 1fr); }
-  .knob.big { grid-column: span 2; }
+  .gknobs { flex-wrap: wrap; justify-content: center; }
   .brand span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -262,6 +276,7 @@ select {
       <div class="gs note" id="gsNote">Gain staging auto : <strong>−2.5 dB</strong> en entrée, cible −18 dBFS RMS</div>
     </div>
 
+    <div class="fxhint" id="fxhint" hidden></div>
     <div class="timeofday" id="tod">Wet 80 % · nuit</div>
     <div class="badge" id="badge" hidden>BYPASS · 素通し</div>
     <div class="audio">
@@ -288,6 +303,7 @@ select {
       </select>
     </div>
     <label class="toggle opt"><input type="checkbox" id="autoGain" checked><span>Gain staging auto</span></label>
+    <label class="toggle opt"><input type="checkbox" id="camBass" checked><span>Caméra sur les basses</span></label>
   </section>
 
   <footer class="status">
@@ -299,7 +315,7 @@ select {
   </footer>
 </div>
 
-<p class="caption">Maquette interactive de l'interface. Tourne les knobs en glissant verticalement, molette ou flèches du clavier, double-clic pour la valeur par défaut. Le <kbd>Dry / Wet</kbd> fait passer la ville du jour (dry) à la nuit (wet). Chaque coup de basse envoie une onde depuis l'antenne. Lance le groove démo ou charge ton propre son pour que les ondes suivent ta musique.</p>
+<p class="caption">Maquette interactive de l'interface. Tourne les knobs en glissant verticalement, molette ou flèches du clavier, double-clic pour la valeur par défaut. Survole un knob pour voir ce qu'il change dans la scène. Le <kbd>Dry / Wet</kbd> fait passer la ville du jour (dry) à la nuit (wet). Chaque coup de basse envoie une onde depuis l'antenne et fait tourner la caméra autour de la tour. Lance le groove démo ou charge ton propre son pour que les ondes suivent ta musique.</p>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
@@ -310,33 +326,57 @@ select {
    PARAMETERS
    ===================================================================== */
 const PARAMS = {
-  input:   { label: "Entrée",     jp: "入力", min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB" },
-  drive:   { label: "Saturation", jp: "歪み", min: 0,    max: 100,   def: 25,    fmt: v => v.toFixed(0) + " %" },
-  width:   { label: "Stéréo",     jp: "広がり", min: 0,  max: 200,   def: 100,   fmt: v => v.toFixed(0) + " %" },
-  enhance: { label: "Enhance",    jp: "輝き", min: 0,    max: 100,   def: 20,    fmt: v => v.toFixed(0) + " %" },
-  mix:     { label: "Dry / Wet",  jp: "昼 · 夜", min: 0, max: 100,   def: 80,    fmt: v => v.toFixed(0) + " %", big: true },
-  lowcut:  { label: "Coupe-bas",  jp: "低域", min: 20,   max: 500,   def: 30,    log: true, fmt: hz },
-  highcut: { label: "Coupe-haut", jp: "高域", min: 2000, max: 20000, def: 20000, log: true, fmt: hz },
-  output:  { label: "Sortie",     jp: "出力", min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB" },
+  input:   { label: "Entrée",      jp: "入力",   min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB",
+             fx: "L'antenne de la tour s'allonge ou se rétracte" },
+  drive:   { label: "Saturation",  jp: "歪み",   min: 0,    max: 100,   def: 25,    fmt: v => v.toFixed(0) + " %",
+             fx: "Les braises s'embrasent et l'acier de la tour rougeoie" },
+  enhance: { label: "Enhance",     jp: "輝き",   min: 0,    max: 100,   def: 20,    fmt: v => v.toFixed(0) + " %",
+             fx: "Les étoiles et les fenêtres scintillent" },
+  comp:    { label: "Compression", jp: "圧縮",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
+             fx: "Les immeubles pompent au passage de chaque onde" },
+  punch:   { label: "Punch",       jp: "衝撃",   min: 0,    max: 100,   def: 40,    fmt: v => v.toFixed(0) + " %",
+             fx: "La caméra tourne plus fort autour de la tour à chaque basse" },
+  sub:     { label: "Sub",         jp: "重低音", min: 0,    max: 100,   def: 35,    fmt: v => v.toFixed(0) + " %",
+             fx: "La tour et l'image tremblent sur les basses" },
+  width:   { label: "Stéréo",      jp: "広がり", min: 0,    max: 200,   def: 100,   fmt: v => v.toFixed(0) + " %",
+             fx: "La caméra recule et les ondes s'élargissent" },
+  space:   { label: "Space",       jp: "空間",   min: 0,    max: 100,   def: 30,    fmt: v => v.toFixed(0) + " %",
+             fx: "Le brouillard s'épaissit et les ondes laissent des échos" },
+  mix:     { label: "Dry / Wet",   jp: "昼 · 夜", min: 0,   max: 100,   def: 80,    fmt: v => v.toFixed(0) + " %", big: true,
+             fx: "Fait passer la ville du jour (dry) à la nuit (wet)" },
+  lowcut:  { label: "Coupe-bas",   jp: "低域",   min: 20,   max: 500,   def: 30,    log: true, fmt: hz,
+             fx: "La caméra s'élève au-dessus des toits" },
+  highcut: { label: "Coupe-haut",  jp: "高域",   min: 2000, max: 20000, def: 20000, log: true, fmt: hz,
+             fx: "Une couche de nuages descend sur la ville" },
+  output:  { label: "Sortie",      jp: "出力",   min: -24,  max: 24,    def: 0,     fmt: v => sign(v) + v.toFixed(1) + " dB",
+             fx: "Règle l'exposition de l'image" },
 };
-const ORDER = ["input", "drive", "width", "enhance", "|", "mix", "|", "lowcut", "highcut", "output"];
+const GROUPS = [
+  ["Gain", ["input"]],
+  ["Couleur", ["drive", "enhance"]],
+  ["Dynamique", ["comp", "punch", "sub"]],
+  ["Mix", ["mix"]],
+  ["Espace", ["width", "space"]],
+  ["Filtres", ["lowcut", "highcut"]],
+  ["Sortie", ["output"]],
+];
 const OS_STEPS = [1, 2, 4, 8, 16];
 
 function sign(v) { return v > 0.05 ? "+" : v < -0.05 ? "−" : ""; }
 function hz(v) { return v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 1 : 2) + " kHz" : v.toFixed(0) + " Hz"; }
 for (const k in PARAMS) { const f = PARAMS[k].fmt; PARAMS[k].fmt = v => f(v).replace("−-", "−").replace(/^([+−])?-/, "$1"); }
 
-const state = { bypass: false, os: 4, autoGain: true };
+const state = { bypass: false, os: 4, autoGain: true, camBass: true };
 for (const k in PARAMS) state[k] = PARAMS[k].def;
 
 /* Presets chosen by the recognition step. */
 const PRESETS = {
-  "Kick / 808":       { input: -1.5, drive: 38, width: 60,  enhance: 15, mix: 70,  lowcut: 25,  highcut: 16000, output: -0.5, os: 4,  char: 2, topo: 1 },
-  "Basse":            { input: -2.0, drive: 30, width: 40,  enhance: 25, mix: 65,  lowcut: 32,  highcut: 9000,  output: 0,    os: 4,  char: 1, topo: 0 },
-  "Voix":             { input: -3.0, drive: 18, width: 110, enhance: 45, mix: 55,  lowcut: 90,  highcut: 18500, output: 0.5,  os: 2,  char: 1, topo: 0 },
-  "Bus batterie":     { input: -2.5, drive: 42, width: 120, enhance: 30, mix: 80,  lowcut: 35,  highcut: 19000, output: 0,    os: 4,  char: 0, topo: 2 },
-  "Guitare / synthé": { input: -1.0, drive: 28, width: 150, enhance: 35, mix: 75,  lowcut: 80,  highcut: 15000, output: 0,    os: 8,  char: 0, topo: 1 },
-  "Master":           { input: -4.0, drive: 12, width: 108, enhance: 18, mix: 100, lowcut: 22,  highcut: 20000, output: 1.0,  os: 16, char: 0, topo: 3 },
+  "Kick / 808":       { input: -1.5, drive: 38, enhance: 15, comp: 45, punch: 75, sub: 70, width: 60,  space: 10, mix: 70,  lowcut: 25, highcut: 16000, output: -0.5, os: 4,  char: 2, topo: 1 },
+  "Basse":            { input: -2.0, drive: 30, enhance: 25, comp: 55, punch: 35, sub: 80, width: 40,  space: 8,  mix: 65,  lowcut: 32, highcut: 9000,  output: 0,    os: 4,  char: 1, topo: 0 },
+  "Voix":             { input: -3.0, drive: 18, enhance: 45, comp: 50, punch: 20, sub: 10, width: 110, space: 45, mix: 55,  lowcut: 90, highcut: 18500, output: 0.5,  os: 2,  char: 1, topo: 0 },
+  "Bus batterie":     { input: -2.5, drive: 42, enhance: 30, comp: 40, punch: 65, sub: 45, width: 120, space: 25, mix: 80,  lowcut: 35, highcut: 19000, output: 0,    os: 4,  char: 0, topo: 2 },
+  "Guitare / synthé": { input: -1.0, drive: 28, enhance: 35, comp: 30, punch: 30, sub: 15, width: 150, space: 50, mix: 75,  lowcut: 80, highcut: 15000, output: 0,    os: 8,  char: 0, topo: 1 },
+  "Master":           { input: -4.0, drive: 12, enhance: 18, comp: 25, punch: 20, sub: 30, width: 108, space: 15, mix: 100, lowcut: 22, highcut: 20000, output: 1.0,  os: 16, char: 0, topo: 3 },
 };
 const CLASSES = Object.keys(PRESETS);
 
@@ -356,7 +396,17 @@ function arc(r, a, b) {
   return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${Math.abs(b - a) > 180 ? 1 : 0} ${b > a ? 1 : 0} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-function makeKnob(key) {
+const fxhint = document.getElementById("fxhint");
+let hintKey = null, hintHold = false;
+function showHint(key) {
+  hintKey = key;
+  const p = PARAMS[key];
+  fxhint.innerHTML = `<b>${p.label}</b> · ${p.fx}`;
+  fxhint.hidden = false;
+}
+function hideHint(key) { if (hintKey === key && !hintHold) { fxhint.hidden = true; hintKey = null; } }
+
+function makeKnob(key, parent) {
   const p = PARAMS[key];
   const el = document.createElement("div");
   el.className = "knob" + (p.big ? " big" : "");
@@ -370,14 +420,18 @@ function makeKnob(key) {
     <div class="lbl">${p.label}</div>
     <div class="val"></div>
     <div class="jp">${p.jp}</div>`;
-  rail.appendChild(el);
+  parent.appendChild(el);
   const svg = el.querySelector("svg");
+  svg.addEventListener("pointerenter", () => showHint(key));
+  svg.addEventListener("pointerleave", () => hideHint(key));
+  svg.addEventListener("focus", () => showHint(key));
+  svg.addEventListener("blur", () => { hintHold = false; hideHint(key); });
   const k = { el, svg, arcEl: el.querySelector(".k-arc"), ptr: el.querySelector(".k-ptr"), val: el.querySelector(".val"), p, key };
   knobs[key] = k;
 
   let startY = 0, startN = 0, dragging = false;
   svg.addEventListener("pointerdown", e => {
-    dragging = true; startY = e.clientY; startN = toNorm(p, state[key]);
+    dragging = true; hintHold = true; showHint(key); startY = e.clientY; startN = toNorm(p, state[key]);
     svg.setPointerCapture(e.pointerId); e.preventDefault();
   });
   svg.addEventListener("pointermove", e => {
@@ -385,7 +439,7 @@ function makeKnob(key) {
     const fine = e.shiftKey ? 0.25 : 1;
     setParam(key, fromNorm(p, startN + (startY - e.clientY) / 220 * fine), true);
   });
-  const end = () => { dragging = false; };
+  const end = () => { dragging = false; hintHold = false; if (!svg.matches(":hover")) hideHint(key); };
   svg.addEventListener("pointerup", end);
   svg.addEventListener("pointercancel", end);
   svg.addEventListener("dblclick", () => setParam(key, p.def, true));
@@ -425,9 +479,12 @@ function setParam(key, v, user) {
   if (key === "mix") updateTimeOfDay();
 }
 
-ORDER.forEach(k => {
-  if (k === "|") { const s = document.createElement("div"); s.className = "sep"; rail.appendChild(s); }
-  else makeKnob(k);
+GROUPS.forEach(([name, keys]) => {
+  const g = document.createElement("div");
+  g.className = "group" + (name === "Mix" ? " mix" : "");
+  g.innerHTML = `<div class="gname">${name}</div><div class="gknobs"></div>`;
+  rail.appendChild(g);
+  keys.forEach(k => makeKnob(k, g.querySelector(".gknobs")));
 });
 
 /* animate knobs towards a preset */
@@ -480,6 +537,8 @@ document.getElementById("autoGain").addEventListener("change", e => {
     ? `Gain staging auto : <strong>${PARAMS.input.fmt(state.input)}</strong> en entrée, cible −18 dBFS RMS`
     : `Gain staging manuel`;
 });
+
+document.getElementById("camBass").addEventListener("change", e => { state.camBass = e.target.checked; });
 
 const bypassBtn = document.getElementById("bypassBtn");
 bypassBtn.addEventListener("click", () => {
@@ -798,20 +857,22 @@ function deck(y, r0, r1, h) {
 }
 deck(21, 6.4, 5.6, 3.4);
 deck(37, 3.4, 3.0, 2.2);
-// antenna
-const ANT0 = TOP, ANT1 = 68;
-for (let i = 0, y = ANT0; y < ANT1; i++, y += 2.5) {
-  const t0 = (y - ANT0) / (ANT1 - ANT0), t1 = Math.min(1, (y + 2.5 - ANT0) / (ANT1 - ANT0));
+// antenna (its own group so the Entrée knob can stretch it)
+const ANT0 = TOP, ANT1 = 68, ANT_H = ANT1 - ANT0;
+const antenna = new THREE.Group(); antenna.position.y = ANT0; tower.add(antenna);
+for (let i = 0, y = 0; y < ANT_H; i++, y += 2.5) {
+  const t0 = y / ANT_H, t1 = Math.min(1, (y + 2.5) / ANT_H);
   const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.7 - 0.6 * t1, 0.7 - 0.6 * t0, 2.5, 6), i % 2 ? bone : steel);
-  seg.position.y = y + 1.25; tower.add(seg);
+  seg.position.y = y + 1.25; antenna.add(seg);
 }
 const tipPos = new THREE.Vector3(0, ANT1 + 0.6, 0);
 const tipMat = new THREE.MeshBasicMaterial({ color: 0xff5a3c });
-const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.7, 0), tipMat); tip.position.copy(tipPos); tower.add(tip);
+const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.7, 0), tipMat); tip.position.y = ANT_H + 0.6; antenna.add(tip);
 const tipGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex("rgba(255,120,90,0.9)", "rgba(255,120,90,0)"), blending: THREE.AdditiveBlending, depthWrite: false }));
-tipGlow.position.copy(tipPos); tipGlow.scale.set(6, 6, 1); tower.add(tipGlow);
-const tipLight = new THREE.PointLight(0x8ad6df, 0, 90, 2); tipLight.position.copy(tipPos); tower.add(tipLight);
+tipGlow.position.y = ANT_H + 0.6; tipGlow.scale.set(6, 6, 1); antenna.add(tipGlow);
+const tipLight = new THREE.PointLight(0x8ad6df, 0, 90, 2); tipLight.position.y = ANT_H + 0.6; antenna.add(tipLight);
 const deckLight = new THREE.PointLight(0xffb066, 0, 40, 2); deckLight.position.set(0, 21, 0); tower.add(deckLight);
+steel.emissive = C(0xff2a10); steel.emissiveIntensity = 0;
 
 /* --- the neighbourhood --- */
 function windowTex() {
@@ -823,10 +884,7 @@ function windowTex() {
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; return t;
 }
 const winTex = windowTex();
-const officeMats = [0x3b3a45, 0x463c44, 0x30343d].map(col => {
-  const m = mat(col, { emissive: C(0xffffff), emissiveMap: winTex, emissiveIntensity: 0 });
-  nightGlow.push({ m, base: 1.1 }); return m;
-});
+const officeCols = [0x3b3a45, 0x463c44, 0x30343d];
 const plasterMats = [0x8c7f70, 0x6f655c, 0x5a4d47, 0x7a6a5e].map(c => mat(c));
 const roofMats = [0x2a2c35, 0x3b2a2c, 0x26302f].map(c => mat(c));
 const boxG = new THREE.BoxGeometry(1, 1, 1);
@@ -834,11 +892,18 @@ const roofG = new THREE.ConeGeometry(1, 1, 4); roofG.rotateY(Math.PI / 4);
 const lanternMat = glowMat(0xff6a3a, 2.2);
 const shopSignMats = [glowMat(0xff3d6e, 1.6), glowMat(0x8ad6df, 1.6), glowMat(0xffd27a, 1.6)];
 const city = new THREE.Group(); scene.add(city);
+const windowMats = [];   // office windows, they twinkle with Enhance
+const buildings = [];    // spring state for the Compression pumping
 
 function addBox(x, y, z, w, h, d, m, ry) { const b = new THREE.Mesh(boxG, m); b.scale.set(w, h, d); b.position.set(x, y + h / 2, z); b.rotation.y = ry || 0; city.add(b); return b; }
+function building(x, z, ry) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; city.add(g);
+  buildings.push({ g, d: Math.hypot(x, z), y: 0, v: 0 });
+  return g;
+}
 function house(x, z, ry) {
   const w = 5 + R() * 3, d = 5 + R() * 3, h = 3 + R() * 3.5;
-  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; city.add(g);
+  const g = building(x, z, ry);
   const body = new THREE.Mesh(boxG, plasterMats[(R() * 4) | 0]); body.scale.set(w, h, d); body.position.y = h / 2; g.add(body);
   const roof = new THREE.Mesh(roofG, roofMats[(R() * 3) | 0]);
   roof.scale.set(w * 0.82, 2 + R() * 1.4, d * 0.82); roof.position.y = h + roof.scale.y / 2; g.add(roof);
@@ -852,15 +917,18 @@ function house(x, z, ry) {
   }
 }
 function office(x, z, ry) {
-  const w = 7 + R() * 4, d = 7 + R() * 4, h = 14 + R() * 26;
-  const b = addBox(x, 0, z, w, h, d, officeMats[(R() * 3) | 0], ry);
-  b.material = b.material.clone(); b.material.emissiveMap = winTex.clone(); b.material.emissiveMap.needsUpdate = true;
-  b.material.emissiveMap.repeat.set(Math.round(w / 4), Math.round(h / 8)); b.material.emissiveMap.offset.set(R(), R());
-  nightGlow.push({ m: b.material, base: 1.1 });
-  addBox(x, h, z, w * 0.6, 1.2, d * 0.6, roofMats[0], ry);
+  // capped height: the camera orbits, so no building may hide the tower's decks
+  const w = 7 + R() * 4, d = 7 + R() * 4, h = 12 + R() * 9;
+  const g = building(x, z, ry);
+  const m = mat(officeCols[(R() * 3) | 0], { emissive: C(0xffffff), emissiveMap: winTex.clone(), emissiveIntensity: 0 });
+  m.emissiveMap.needsUpdate = true;
+  m.emissiveMap.repeat.set(Math.round(w / 4), Math.round(h / 8)); m.emissiveMap.offset.set(R(), R());
+  const glow = { m, base: 1.1, ph: R() * 6.28 }; nightGlow.push(glow); windowMats.push(glow);
+  const b = new THREE.Mesh(boxG, m); b.scale.set(w, h, d); b.position.y = h / 2; g.add(b);
+  const cap = new THREE.Mesh(boxG, roofMats[0]); cap.scale.set(w * 0.6, 1.2, d * 0.6); cap.position.y = h + 0.6; g.add(cap);
   if (R() < 0.5) { // rooftop aerial
-    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 5, 4), steelDark); a.position.set(x + w * 0.2, h + 3.7, z); city.add(a);
-    const l = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), lanternMat); l.position.set(x + w * 0.2, h + 6.3, z); city.add(l);
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.15, 5, 4), steelDark); a.position.set(w * 0.2, h + 3.7, 0); g.add(a);
+    const l = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), lanternMat); l.position.set(w * 0.2, h + 6.3, 0); g.add(l);
   }
 }
 function lantern(x, z) {
@@ -902,9 +970,8 @@ for (let ix = -11; ix <= 11; ix++) for (let iz = -11; iz <= 11; iz++) {
   const x = ix * STEP + (R() - 0.5) * 2, z = iz * STEP + (R() - 0.5) * 2, dist = Math.hypot(x, z);
   if (dist < 21) continue;
   const ry = ((R() * 4) | 0) * Math.PI / 2 + (R() - 0.5) * 0.12;
-  // keep the sightline from the camera to the tower free of high-rises
-  const inView = (x * 0.56 + z * 0.83) / dist > 0.82;
-  const r = R(), pTall = inView ? 0 : Math.min(0.45, dist / 260);
+  // high-rises only in a middle ring: never next to the tower, never next to the orbiting camera
+  const r = R(), pTall = dist < 55 || dist > 105 ? 0 : 0.45;
   if (r < pTall) office(x, z, ry);
   else if (r < 0.9) house(x, z, ry);
   else deadTree(x, z);
@@ -922,7 +989,29 @@ for (let i = 0; i < 28; i++) {
   m.position.set(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r); m.rotation.y = R() * 3; scene.add(m);
 }
 
-/* --- embers / ash --- */
+/* --- cloud deck (Coupe-haut lowers it onto the city) --- */
+const cloudMat = mat(0xd8d4d0, { transparent: true, opacity: 0.9 });
+const clouds = new THREE.Group(); scene.add(clouds);
+const puffG = new THREE.IcosahedronGeometry(1, 0);
+for (let i = 0; i < 54; i++) {
+  const a = R() * Math.PI * 2, r = 8 + R() * 150;
+  const p = new THREE.Mesh(puffG, cloudMat);
+  p.position.set(Math.cos(a) * r, (R() - 0.5) * 5, Math.sin(a) * r);
+  p.scale.set(10 + R() * 16, 2.5 + R() * 3, 8 + R() * 14); p.rotation.y = R() * 3;
+  clouds.add(p);
+}
+
+/* --- stars (Enhance) --- */
+const STARS = 700, starPos = new Float32Array(STARS * 3);
+for (let i = 0; i < STARS; i++) {
+  const a = R() * Math.PI * 2, el = 0.12 + R() * 1.3;
+  starPos[i * 3] = Math.cos(a) * Math.cos(el) * 480; starPos[i * 3 + 1] = Math.sin(el) * 480; starPos[i * 3 + 2] = Math.sin(a) * Math.cos(el) * 480;
+}
+const starGeo = new THREE.BufferGeometry(); starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xf4f0ff, size: 1.5, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false });
+scene.add(new THREE.Points(starGeo, starMat));
+
+/* --- embers / ash (Saturation) --- */
 const EMB = 420;
 const embGeo = new THREE.BufferGeometry();
 const embPos = new Float32Array(EMB * 3), embSpd = new Float32Array(EMB);
@@ -938,39 +1027,69 @@ scene.add(new THREE.Points(embGeo, embMat));
 const waves = [];
 const ringGeo = new THREE.TorusGeometry(1, 0.035, 4, 64);
 const shellGeo = new THREE.IcosahedronGeometry(1, 2);
-for (let i = 0; i < 10; i++) {
+for (let i = 0; i < 14; i++) {
   const rm = new THREE.MeshBasicMaterial({ color: 0x8ad6df, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
   const sm = new THREE.MeshBasicMaterial({ color: 0x8ad6df, wireframe: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-  const ring = new THREE.Mesh(ringGeo, rm); ring.rotation.x = Math.PI / 2; ring.position.copy(tipPos);
-  const ring2 = new THREE.Mesh(ringGeo, rm.clone()); ring2.rotation.x = Math.PI / 2; ring2.position.copy(tipPos);
-  const shell = new THREE.Mesh(shellGeo, sm); shell.position.copy(tipPos);
+  const ring = new THREE.Mesh(ringGeo, rm); ring.rotation.x = Math.PI / 2;
+  const ring2 = new THREE.Mesh(ringGeo, rm.clone()); ring2.rotation.x = Math.PI / 2;
+  const shell = new THREE.Mesh(shellGeo, sm);
   ring.visible = ring2.visible = shell.visible = false;
   scene.add(ring, ring2, shell);
-  waves.push({ ring, ring2, shell, age: 99, s: 0 });
+  waves.push({ ring, ring2, shell, age: 99, life: 2.2, s: 0, oy: 0, front: 0, prevFront: 0, echo: false });
 }
-let flash = 0, wi = 0;
-function bassHit(strength) {
+let flash = 0, wi = 0, quake = 0, fovKick = 0, orbitV = 0;
+const echoes = [];
+function spawnWave(s, echo) {
   const w = waves[wi++ % waves.length];
-  w.age = 0; w.s = strength * (state.bypass ? 0.45 : 1) * (0.55 + 0.45 * state.drive / 100 + 0.25 * state.enhance / 100);
+  w.age = 0; w.s = s; w.oy = tipPos.y; w.echo = echo;
+  w.life = 2.2 * (1 + state.space / 100 * 0.9);
+  w.front = w.prevFront = 0;
   w.ring.visible = w.ring2.visible = w.shell.visible = true;
-  flash = Math.max(flash, w.s);
+}
+function bassHit(strength) {
+  const s = strength * (state.bypass ? 0.45 : 1) * (0.55 + 0.45 * state.drive / 100 + 0.25 * state.enhance / 100);
+  spawnWave(s, false);
+  // Space: echo waves
+  const n = Math.round(state.space / 100 * 3);
+  for (let i = 1; i <= n; i++) echoes.push({ at: T + i * 0.28, s: s * Math.pow(0.5, i) });
+  flash = Math.max(flash, s);
+  // Sub: the tower and the picture shake
+  quake = Math.max(quake, strength * state.sub / 100);
+  // Punch: the camera turns around the tower, with a short zoom kick
+  if (state.camBass && !reduceMotion) orbitV += strength * (0.08 + 0.55 * state.punch / 100);
+  fovKick = Math.max(fovKick, strength * state.punch / 100 * 3.5);
 }
 function stepWaves(dt, night) {
+  for (let i = echoes.length - 1; i >= 0; i--) if (T >= echoes[i].at) { spawnWave(echoes[i].s, true); echoes.splice(i, 1); }
   const col = new THREE.Color(0xf6e2b0).lerp(C(0x8ad6df), night);
+  const sizeMul = 0.6 + state.width / 200 * 0.8;   // stereo width widens the wave
   for (const w of waves) {
-    if (w.age > 2.2) { if (w.ring.visible) w.ring.visible = w.ring2.visible = w.shell.visible = false; continue; }
+    if (w.age > w.life) { if (w.ring.visible) w.ring.visible = w.ring2.visible = w.shell.visible = false; w.front = w.prevFront = 999; continue; }
     w.age += dt;
-    const k = Math.min(1, w.age / 2.2), e = 1 - Math.pow(1 - k, 3), fade = Math.pow(1 - k, 1.6);
-    const sizeMul = 0.6 + state.width / 200 * 0.8;   // stereo width widens the wave
+    const k = Math.min(1, w.age / w.life), e = 1 - Math.pow(1 - k, 3), fade = Math.pow(1 - k, 1.6);
+    w.prevFront = w.front; w.front = w.echo ? 0 : 175 * Math.min(1, w.age / 1.4);  // ground shockwave for the pumping
     const rs = 1 + 52 * e * sizeMul;
+    w.ring.position.set(0, w.oy, 0);
     w.ring.scale.set(rs, rs, 1 + 3 * e);
     w.ring.material.opacity = fade * w.s * 0.95;
     const k2 = Math.max(0, k - 0.12), e2 = 1 - Math.pow(1 - k2, 3), r2 = 1 + 40 * e2 * sizeMul;
-    w.ring2.scale.set(r2, r2, 1); w.ring2.position.y = tipPos.y - 10 * e2;
+    w.ring2.scale.set(r2, r2, 1); w.ring2.position.set(0, w.oy - 10 * e2, 0);
     w.ring2.material.opacity = Math.pow(1 - k2, 2) * w.s * 0.5;
-    const ss = 1 + 26 * e * sizeMul; w.shell.scale.set(ss, ss * 0.55, ss);
+    const ss = 1 + 26 * e * sizeMul; w.shell.scale.set(ss, ss * 0.55, ss); w.shell.position.set(0, w.oy, 0);
     w.shell.material.opacity = fade * w.s * 0.16;
     w.ring.material.color.copy(col); w.ring2.material.color.copy(col); w.shell.material.color.copy(col);
+  }
+}
+
+/* Compression: buildings pump (spring) when the shockwave front passes them */
+function stepBuildings(dt) {
+  const amt = state.comp / 100 * 0.5;
+  const h = Math.min(dt, 1 / 30);
+  for (const b of buildings) {
+    for (const w of waves) if (!w.echo && b.d > w.prevFront && b.d <= w.front) b.v += w.s * 7;
+    b.v += (-150 * b.y - 8 * b.v) * h; b.y += b.v * h;
+    const s = Math.max(-0.6, Math.min(0.6, b.y)) * amt;
+    b.g.scale.set(1 - s * 0.35, 1 + s, 1 - s * 0.35);
   }
 }
 
@@ -999,32 +1118,79 @@ function applyTimeOfDay(dt) {
   halo.position.copy(orb.position);
   halo.material.opacity = 0.5 + 0.5 * Math.abs(arcK - 0.5) * 2;
   const night = Math.max(0, (tod - 0.35) / 0.65);
-  for (const g of nightGlow) g.m.emissiveIntensity = g.base * night;
   rim.intensity = 0.35 * night;
   deckLight.intensity = 2.2 * night;
-  embMat.opacity = 0.15 + 0.7 * night;
   steel.color.set(0x7d2a24).lerp(tmpA.set(0x5a1d1c), night);
+  cloudMat.color.set(0xd8d4d0).lerp(tmpA.set(0x3a3248), night);
   return night;
 }
 
-/* --- camera: wide 3/4 view from across the rooftops; bypass dollies in on the antenna --- */
-const CAM_WIDE  = { pos: new THREE.Vector3(80, 24, 118), look: new THREE.Vector3(0, 33, 0), fov: 38 };
-const CAM_CLOSE = { pos: new THREE.Vector3(30, 36, 56),   look: new THREE.Vector3(0, 45, 0), fov: 40 };
-let zoom = 0, mx = 0, my = 0;
+/* --- every knob's effect on the scene --- */
+let lastFilter = "";
+function applyKnobs(dt, night) {
+  const n = k => toNorm(PARAMS[k], state[k]);
+  // Entrée: antenna length
+  const antS = 0.7 + n("input") * 0.6;
+  antenna.scale.y += (antS - antenna.scale.y) * Math.min(1, dt * 6);
+  tip.scale.y = 1 / antenna.scale.y;
+  tipPos.set(0, ANT0 + (ANT_H + 0.6) * antenna.scale.y, 0);
+  // Saturation: embers and glowing steel
+  const d = n("drive");
+  embMat.size = 0.3 + d * 0.8;
+  embMat.opacity = (0.1 + 0.75 * night) * (0.35 + d * 0.65);
+  embMat.color.set(0x9a8f8a).lerp(tmpA.set(0xff7a3a), Math.min(1, d * 1.6));
+  steel.emissiveIntensity = d * d * 0.55 * (0.35 + night) + flash * d * 0.4;
+  // Enhance: stars, twinkling windows, tip glow
+  const en = n("enhance");
+  starMat.opacity = night * (0.2 + 0.8 * en) * (0.9 + 0.1 * Math.sin(T * 3));
+  starMat.size = 1 + en * 1.8;
+  for (const g of nightGlow) g.m.emissiveIntensity = g.base * night;
+  for (const g of windowMats) g.m.emissiveIntensity = g.base * night * (1 + Math.sin(T * 6 + g.ph) * 0.25 * en);
+  // Space: fog thickness (echo waves are handled in bassHit)
+  const sp = n("space");
+  // fog distances follow the camera so the tower never disappears
+  scene.fog.near = CAM.r * (0.5 - sp * 0.4); scene.fog.far = CAM.r + 200 - sp * 140;
+  // Coupe-haut: the cloud deck comes down
+  const cy = 46 + n("highcut") * 140;
+  clouds.position.y += (cy - clouds.position.y) * Math.min(1, dt * 3);
+  clouds.visible = clouds.position.y < 170;
+  clouds.rotation.y += dt * 0.01;
+  // Sub: tower shake
+  quake *= Math.exp(-dt * 7);
+  tower.position.set((Math.random() - 0.5) * quake * 0.9, 0, (Math.random() - 0.5) * quake * 0.9);
+  // Sortie: exposure, plus the bypass grade
+  const bright = Math.max(0.55, Math.min(1.6, Math.pow(2, state.output / 18))) * (state.bypass ? 0.8 : 1);
+  const f = `brightness(${bright.toFixed(2)})` + (state.bypass ? " saturate(0.25)" : "");
+  if (f !== lastFilter) { canvas.style.filter = f; lastFilter = f; }
+}
+
+/* --- camera: orbits the tower, pushed by each bass hit; bypass dollies in on the antenna --- */
+const CAM = { r: 143, h: 24, look: 33, fov: 38 };          // wide
+const CAM_CLOSE = { r: 64, h: 36, look: 45, fov: 40 };     // bypass
+let zoom = 0, mx = 0, my = 0, theta = Math.atan2(80, 118), tall = 0;
 view.addEventListener("pointermove", e => { const r = view.getBoundingClientRect(); mx = (e.clientX - r.left) / r.width - 0.5; my = (e.clientY - r.top) / r.height - 0.5; });
 view.addEventListener("pointerleave", () => { mx = my = 0; });
-const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
+const camLook = new THREE.Vector3();
 function stepCamera(dt, t) {
   zoom += ((state.bypass ? 1 : 0) - zoom) * Math.min(1, dt * 2.2);
   const z = zoom * zoom * (3 - 2 * zoom);
-  camPos.lerpVectors(CAM_WIDE.pos, CAM_CLOSE.pos, z);
-  camLook.lerpVectors(CAM_WIDE.look, CAM_CLOSE.look, z);
   const sway = reduceMotion ? 0 : 1;
-  camPos.x += (Math.sin(t * 0.07) * 4 + mx * 6) * sway * (1 - z * 0.6);
-  camPos.y += (Math.sin(t * 0.11) * 1.2 - my * 3) * sway;
-  camera.position.copy(camPos);
+  // orbit
+  orbitV *= Math.exp(-dt * 1.6);
+  theta += (orbitV + 0.012 * sway) * dt;
+  // Stéréo: distance; Coupe-bas: height
+  const wideR = (110 + state.width / 200 * 70) + tall * 40;
+  const wideH = 22 + toNorm(PARAMS.lowcut, state.lowcut) * 36 + tall * 6;
+  CAM.r += (wideR - CAM.r) * Math.min(1, dt * 3);
+  CAM.h += (wideH - CAM.h) * Math.min(1, dt * 3);
+  const r = CAM.r + (CAM_CLOSE.r - CAM.r) * z;
+  const h = CAM.h + (CAM_CLOSE.h - CAM.h) * z + (Math.sin(t * 0.11) * 1.2 - my * 3) * sway;
+  const th = theta + mx * 0.12 * sway;
+  camera.position.set(Math.sin(th) * r, h + (Math.random() - 0.5) * quake * 1.4, Math.cos(th) * r);
+  camLook.set(0, CAM.look + (CAM_CLOSE.look - CAM.look) * z, 0);
   camera.lookAt(camLook);
-  const fov = CAM_WIDE.fov + (CAM_CLOSE.fov - CAM_WIDE.fov) * z;
+  fovKick *= Math.exp(-dt * 8);
+  const fov = CAM.fov + (CAM_CLOSE.fov - CAM.fov) * z - fovKick;
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 }
 const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1034,9 +1200,7 @@ function resize() {
   const w = view.clientWidth, h = view.clientHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
-  // keep the tower framed on tall phone screens
-  const tall = Math.max(0, 1.6 - camera.aspect);
-  CAM_WIDE.pos.set(80 + tall * 40, 24 + tall * 6, 118 + tall * 60);
+  tall = Math.max(0, 1.6 - camera.aspect);   // keep the tower framed on tall phone screens
   camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(view); resize();
@@ -1050,14 +1214,18 @@ function frame() {
   stepMorph(dt);
   stepMeters(dt);
   const night = applyTimeOfDay(dt);
+  applyKnobs(dt, night);
   stepWaves(dt, night);
+  stepBuildings(dt);
   flash *= Math.pow(0.02, dt);
   tipLight.intensity = (0.4 + 6 * flash) * (0.3 + night);
-  tipGlow.scale.setScalar(5 + 9 * flash);
+  const gs = (5 + 9 * flash) * (0.8 + 0.6 * toNorm(PARAMS.enhance, state.enhance));
+  tipGlow.scale.set(gs, gs / antenna.scale.y, 1);
   tipMat.color.set(0xff5a3c).lerp(tmpA.set(0xd6fbff), Math.min(1, flash));
   const pos = embGeo.attributes.position.array;
+  const emSpeed = (0.5 + toNorm(PARAMS.drive, state.drive) * 2) * (reduceMotion ? 0.2 : 1);
   for (let i = 0; i < EMB; i++) {
-    pos[i * 3 + 1] += embSpd[i] * dt * (reduceMotion ? 0.2 : 1);
+    pos[i * 3 + 1] += embSpd[i] * dt * emSpeed;
     pos[i * 3] += Math.sin(T * 0.5 + i) * 0.02;
     if (pos[i * 3 + 1] > 85) pos[i * 3 + 1] = 0;
   }

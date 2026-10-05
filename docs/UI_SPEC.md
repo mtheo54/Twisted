@@ -19,27 +19,49 @@ Touche dark fantasy, gardée légère :
 
 ## 2. Comportements de la scène
 
-| Événement | Rendu | Source dans le plugin |
+### Sur chaque coup de basse
+
+- Une onde part du sommet de l'antenne : anneau horizontal qui s'élargit,
+  second anneau qui descend, coque filaire qui se dilate, flash de la pointe.
+- **La caméra tourne autour de la tour** : chaque coup lui donne une
+  impulsion de rotation qui s'amortit en ~0,6 s (un tour complet en une
+  vingtaine de secondes à 92 BPM avec le Punch par défaut). Désactivable avec
+  l'option « Caméra sur les basses ».
+- Une onde de choc au sol traverse la ville ; les immeubles pompent à son
+  passage (si Compression > 0).
+
+Détection : transitoires sur la bande 20-150 Hz (thread d'analyse) ; la force
+du coup règle l'intensité de tous ces effets.
+
+### Effet de chaque knob sur la scène
+
+| Knob | Effet dans la scène | Type |
 |---|---|---|
-| Coup de basse (kick, 808, note de basse) | Onde qui part du sommet de l'antenne : anneau horizontal qui s'élargit, second anneau qui descend, coque filaire qui se dilate, flash de la pointe | Détecteur de transitoires sur la bande 20-150 Hz (thread d'analyse) |
-| Force du coup | Opacité de l'onde | Énergie du transitoire au-dessus de la moyenne glissante |
-| Knob **Stéréo** | Diamètre de l'onde | Largeur stéréo |
-| Knobs **Saturation** / **Enhance** | Intensité de l'onde | Quantité de traitement |
-| Knob **Dry / Wet** | Heure du jour : 0 % = jour, 40 % = après-midi, 60 % = crépuscule, 100 % = nuit | Mix |
-| Nuit | Fenêtres, lanternes, enseignes et plateformes s'allument, les braises ressortent | Mix > 35 % |
-| Bouton **Bypass** | Travelling avant sur la tour jusqu'à l'antenne, image désaturée, bandeau « BYPASS · 素通し », knobs grisés | Bypass |
+| Entrée | L'antenne s'allonge ou se rétracte (les ondes partent de plus haut) | Ville |
+| Saturation | Les braises s'embrasent (plus grosses, plus rapides, plus orange) et l'acier de la tour rougeoie | Ville |
+| Enhance | Les étoiles et les fenêtres scintillent, la pointe brille plus | Ville |
+| Compression | Les immeubles pompent (ressort amorti) au passage de l'onde de choc | Physique |
+| Punch | Rotation plus forte de la caméra à chaque basse + petit zoom d'impact | Caméra |
+| Sub | La tour et l'image tremblent sur les basses | Physique / caméra |
+| Stéréo | La caméra recule ou s'approche, les ondes s'élargissent | Caméra |
+| Space | Le brouillard s'épaissit, chaque onde laisse 1 à 3 échos, les ondes durent plus longtemps | Ville |
+| Dry / Wet | Heure du jour : 0 % jour, 40 % après-midi, 60 % crépuscule, 100 % nuit | Ville |
+| Coupe-bas | La caméra s'élève au-dessus des toits | Caméra |
+| Coupe-haut | Une couche de nuages descend sur la ville | Ville |
+| Sortie | Exposition de l'image | Image |
+| Bypass | Travelling avant sur l'antenne, image désaturée, bandeau « BYPASS · 素通し » | Caméra |
 
-### Prise de vue retenue
+Survoler ou tourner un knob affiche son effet en haut de la scène.
 
-Plan large en trois-quarts, depuis les toits de l'autre côté du quartier,
-légèrement en contre-plongée. La tour reste au centre, la ville se lit au
-premier plan et la lune se place derrière l'antenne. La caméra dérive
-lentement et suit la souris en léger parallaxe. Les immeubles hauts sont
-interdits dans l'axe caméra → tour pour que rien ne cache la tour.
+### Prise de vue
 
-En bypass, la caméra avance jusqu'à cadrer la plateforme haute et l'antenne
-(transition d'environ 1 s). Les animations sont réduites si le système
-demande `prefers-reduced-motion`.
+Caméra en orbite autour de la tour, en légère contre-plongée depuis les toits.
+Elle dérive lentement d'elle-même, accélère à chaque basse et suit la souris
+en léger parallaxe. Les immeubles hauts ne sont placés que dans un anneau
+intermédiaire, ni collés à la tour ni sur le trajet de la caméra, et leur
+hauteur est limitée pour que la tour reste visible sous tous les angles.
+Le brouillard suit la distance de la caméra pour que la tour ne disparaisse
+jamais. Animations réduites si le système demande `prefers-reduced-motion`.
 
 ## 3. Disposition
 
@@ -53,8 +75,8 @@ demande `prefers-reduced-motion`.
 │ └─────────────────┘                                 │ LUFS        │ │
 │ Wet 80 % · nuit                              ▶ Démo  Charger un son│
 ├──────────────────────────────────────────────────────────────────┤
-│ Entrée Saturation Stéréo Enhance │ (DRY/WET) │ Coupe-bas Coupe-haut Sortie │
-│ Suréchantillonnage [1× 2× 4× 8× 16×]  Caractère [▾]  Topologie [▾]  ◉ Gain auto │
+│ Gain │ Couleur │ Dynamique │ (DRY/WET) │ Espace │ Filtres │ Sortie   │
+│ Suréchantillonnage [1×…16×]  Caractère [▾]  Topologie [▾]  ◉ Gain auto  ◉ Caméra │
 ├──────────────────────────────────────────────────────────────────┤
 │ Latence 0 échantillon · OS 4× · SIMD AVX2 · Threads … · CPU 3 %     │
 └──────────────────────────────────────────────────────────────────┘
@@ -66,22 +88,30 @@ monte en tête.
 
 ## 4. Contrôles
 
-| Contrôle | Plage | Défaut | Rôle |
-|---|---|---|---|
-| Entrée | −24 … +24 dB | 0 dB | Trim d'entrée, piloté par le gain staging auto |
-| Saturation | 0 … 100 % | 25 % | Drive de l'étage non linéaire |
-| Stéréo | 0 … 200 % | 100 % | Largeur Mid/Side (0 = mono, 200 = très large) |
-| Enhance | 0 … 100 % | 20 % | Excitation harmonique des aigus + punch transitoire |
-| Dry / Wet | 0 … 100 % | 80 % | Mix parallèle (et heure du jour) |
-| Coupe-bas | 20 … 500 Hz (log) | 30 Hz | Passe-haut |
-| Coupe-haut | 2 … 20 kHz (log) | 20 kHz | Passe-bas |
-| Sortie | −24 … +24 dB | 0 dB | Gain de sortie |
-| Suréchantillonnage | 1×, 2×, 4×, 8×, 16× | 4× | Facteur autour de l'étage non linéaire |
-| Caractère | Bande, Lampe triode, Transistor, Wavefolder | Bande | Courbe de saturation |
-| Topologie filtre | SVF TPT (ZDF), Ladder ZDF 4 pôles, Biquad TDF-II, Linkwitz-Riley 24 | SVF TPT | Structure numérique des filtres |
-| Gain staging auto | on / off | on | Vise −18 dBFS RMS en entrée, compense en sortie |
-| Analyser | bouton | | Écoute 2 s, reconnaît la source, applique le preset |
-| Bypass | bouton | off | Bypass sans clic (crossfade court) |
+Les knobs sont regroupés : **Gain** · **Couleur** · **Dynamique** · **Mix** ·
+**Espace** · **Filtres** · **Sortie**.
+
+| Groupe | Contrôle | Plage | Défaut | Rôle audio |
+|---|---|---|---|---|
+| Gain | Entrée | −24 … +24 dB | 0 dB | Trim d'entrée, piloté par le gain staging auto |
+| Couleur | Saturation | 0 … 100 % | 25 % | Drive de l'étage non linéaire |
+| Couleur | Enhance | 0 … 100 % | 20 % | Excitation harmonique des aigus |
+| Dynamique | Compression | 0 … 100 % | 30 % | Compresseur de bus (glue), seuil et ratio liés |
+| Dynamique | Punch | 0 … 100 % | 40 % | Transient shaper (attaque) |
+| Dynamique | Sub | 0 … 100 % | 35 % | Renfort psychoacoustique et dynamique du sub (< 100 Hz) |
+| Mix | Dry / Wet | 0 … 100 % | 80 % | Mix parallèle |
+| Espace | Stéréo | 0 … 200 % | 100 % | Largeur Mid/Side (graves gardés mono) |
+| Espace | Space | 0 … 100 % | 30 % | Ambiance / réverbération courte sans pré-délai |
+| Filtres | Coupe-bas | 20 … 500 Hz (log) | 30 Hz | Passe-haut |
+| Filtres | Coupe-haut | 2 … 20 kHz (log) | 20 kHz | Passe-bas |
+| Sortie | Sortie | −24 … +24 dB | 0 dB | Gain de sortie |
+| | Suréchantillonnage | 1×, 2×, 4×, 8×, 16× | 4× | Facteur autour des étages non linéaires |
+| | Caractère | Bande, Lampe triode, Transistor, Wavefolder | Bande | Courbe de saturation |
+| | Topologie filtre | SVF TPT (ZDF), Ladder ZDF 4 pôles, Biquad TDF-II, Linkwitz-Riley 24 | SVF TPT | Structure numérique des filtres |
+| | Gain staging auto | on / off | on | Vise −18 dBFS RMS en entrée, compense en sortie |
+| | Caméra sur les basses | on / off | on | Rotation de la caméra à chaque basse |
+| | Analyser | bouton | | Écoute 2 s, reconnaît la source, applique le preset |
+| | Bypass | bouton | off | Bypass sans clic (crossfade court) |
 
 Interaction des knobs : glisser verticalement (Maj = réglage fin), molette,
 flèches du clavier, Début/Fin, double-clic = valeur par défaut. Les knobs de
@@ -127,5 +157,5 @@ la barre d'état les montre et qu'il faudra les tenir :
 
 1. Garder le nom **Twisted** ?
 2. Dry/Wet : jour = dry et nuit = wet (comme la maquette), ou l'inverse ?
-3. Ajouter un mode « vue libre » (orbite à la souris) en plus du plan fixe ?
+3. Ajouter un mode « vue libre » (orbite manuelle à la souris) en plus de l'orbite sur les basses ?
 4. Liste des classes de reconnaissance et des presets à compléter.
