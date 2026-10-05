@@ -19,17 +19,22 @@ trois dépendances d'en-têtes, toutes sous licence libre :
 
 ## Compiler sous Windows
 
-Prérequis : **Visual Studio 2022**, avec la charge de travail « Développement Desktop
-en C++ ». Elle installe aussi CMake et Git.
+Prérequis : **Visual Studio 2022 ou 2026** (Community suffit), avec la charge de
+travail « Développement Desktop en C++ ». Elle installe aussi CMake.
 
-Dans « Developer PowerShell for VS 2022 » :
+Dans « Developer PowerShell for VS » (menu Démarrer), depuis ton dossier personnel :
 
 ```powershell
+cd $HOME
 git clone https://github.com/mtheo54/Twisted.git
 cd Twisted
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64   # Visual Studio 2026
+# cmake -S . -B build -G "Visual Studio 17 2022" -A x64 # Visual Studio 2022
 cmake --build build --config Release
 ```
+
+Si CMake répond « could not find any instance of Visual Studio », vérifie que le nom du
+générateur correspond à ta version. Supprime le dossier `build` avant de relancer.
 
 Résultat dans `build\plugins\` :
 
