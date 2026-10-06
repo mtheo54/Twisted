@@ -5,13 +5,13 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 ## Préparation
 
 - [x] Document de design (DESIGN.md)
-- [ ] Validation du design par toi
-- [ ] Images du bonhomme d'abrasion dans `game/reference/`
+- [x] Image du bonhomme d'abrasion (`reference/bonhomme_abrasion.png`)
+- [ ] Autres vues du bonhomme (profil, dos), optionnel
 
 ## Étape 1 : la rue test
 
-- [ ] 0. Installer Godot 4, créer le projet
-- [ ] 1. Prototype minimal : personnage, caméra 3e personne, rue, roulade, attaque de base, mannequin
+- [x] 0. Projet Godot créé (à installer chez toi : voir README.md)
+- [~] 1. Prototype minimal : bonhomme chrome pixélisé, caméra 3e personne, rue de 128 m, esquive, coups de poing, enceinte d'entraînement, ville lointaine, montagnes, tour (**à tester par toi**)
 - [ ] 2. Skate : monter/descendre, pousser, tourner, ollie, descente d'attaque, sorts en roulant
 - [ ] 3. Armes musicales : Métronome, Caisson, Vinyle + horloge musicale (BPM) et coups justes
 - [ ] 4. Monstre Grésillon : IA (errer, poursuivre, attaquer, fuir), boule de larsen avalable, buff Saturation
@@ -21,7 +21,6 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [ ] 8. Porte interactive + petit bâtiment
 - [ ] 9. Jour / nuit : ciel, lune, fenêtres allumées, monstre de nuit Ombre sub
 - [ ] 10. Finition visuelle : bloom, brume, tour au loin, oiseaux
-- [ ] Remplacer la silhouette provisoire par le vrai bonhomme d'abrasion
 
 ## Plus tard (ne pas faire maintenant)
 
@@ -49,6 +48,8 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [ ] Autres véhicules légers
 
 ### Technique
+- [ ] Lissage des mouvements sur écrans 120/144 Hz (interpolation physique)
+- [ ] Tests automatiques de la logique (core/)
 - [ ] Manette
 - [ ] Menu, réglages de qualité graphique, sauvegarde
 - [ ] Multijoueur (la Sim tourne sur le serveur, les joueurs envoient des ordres)

@@ -1,0 +1,11 @@
+{
+  "fist": {
+    "name": "Poing",
+    "damage": 12,
+    "range": 1.6,
+    "arc_deg": 110,
+    "windup": 0.12,
+    "cooldown": 0.4,
+    "knockback": 3.0
+  }
+}

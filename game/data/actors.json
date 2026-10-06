@@ -1,0 +1,22 @@
+{
+  "player": {
+    "name": "Bonhomme d'abrasion",
+    "team": 1,
+    "max_health": 100,
+    "radius": 0.4,
+    "walk_speed": 5.0,
+    "sprint_speed": 8.0,
+    "accel": 40.0,
+    "air_accel": 14.0,
+    "jump_velocity": 8.0,
+    "gravity": 22.0,
+    "dodge": { "distance": 4.5, "duration": 0.32, "cooldown": 0.7, "iframes": 0.18 }
+  },
+  "training_dummy": {
+    "name": "Enceinte d'entraînement",
+    "team": 2,
+    "max_health": 60,
+    "radius": 0.55,
+    "respawn_delay": 2.5
+  }
+}

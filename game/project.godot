@@ -1,0 +1,35 @@
+; Fichier de configuration du projet Godot.
+; Les touches sont créées par code dans scenes/game/input_setup.gd.
+
+config_version=5
+
+[application]
+
+config/name="Twisted"
+config/description="Jeu de combat 3D dans l'univers du plugin Twisted (abrasion)."
+run/main_scene="res://scenes/levels/test_street.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+
+[autoload]
+
+InputSetup="*res://scenes/game/input_setup.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/vsync/vsync_mode=1
+
+[layer_names]
+
+3d_render/layer_1="monde"
+3d_render/layer_2="bonhomme_pixel"
+3d_render/layer_3="sprites_pixel"
+3d_physics/layer_1="monde"
+3d_physics/layer_2="joueur"
+3d_physics/layer_3="ennemis"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+anti_aliasing/quality/msaa_3d=2

@@ -24,7 +24,7 @@ carte. Il est maîtrisable parce que la ville est construite en blocs
 modulaires dès le départ (voir § 2.4). Pour une ville stylisée, Unreal
 n'apporterait pas assez pour justifier sa lourdeur.
 
-- Version : la dernière **Godot 4 stable, édition « Standard »** (pas .NET).
+- Version : **Godot 4.6** (ou plus récent), édition « Standard » (pas .NET).
 - Langage : **GDScript** (intégré, rien à installer, rechargé à chaud).
 - Rendu : **Forward+** (PC uniquement, c'est celui qui a le brouillard
   volumétrique et le meilleur bloom).
@@ -40,7 +40,7 @@ game/
 │   ├── fusions.json         sort A + sort B = sort C
 │   ├── statuses.json        buffs / débuffs
 │   ├── weapons.json         armes musicales
-│   └── monsters.json        monstres (vie, vitesse, attaques, jour/nuit)
+│   └── actors.json          joueur, cibles, monstres (vie, vitesse, attaques, jour/nuit)
 ├── core/                    ← LOGIQUE DE JEU PURE (aucun affichage)
 │   ├── sim.gd               la « simulation » : reçoit des ordres, rend des événements
 │   ├── entity_state.gd      vie, énergie, position, statuts d'une entité
@@ -306,7 +306,7 @@ d'animation de pédalage, une planche et une pose suffisent, et la glisse
 | **Ombre sub** (silhouette sombre, cœur violet qui bat sur le tempo) | **nuit seulement** | plus rapide, plus résistante, charge le joueur | **Onde sub** : projectile *avalable* ; coup au corps à corps *non avalable* (il faut esquiver) |
 
 L'IA est une petite machine à états (errer / poursuivre / attaquer / fuir)
-dans la Sim. Les valeurs sont dans `monsters.json`.
+dans la Sim. Les valeurs sont dans `actors.json`.
 
 ## 7. Style visuel : comment on l'obtient
 
@@ -325,10 +325,22 @@ dans la Sim. Les valeurs sont dans `monsters.json`.
 - **Performances** : ombres limitées à la zone proche, distance d'affichage
   par objet, un réglage « qualité » basse/haute dans le menu.
 
-**Le bonhomme d'abrasion** : je le modélise par code en volumes simples
-d'après tes images, sans le dénaturer. Je n'ai **pas trouvé les images dans
-le dépôt** : dépose-les dans `game/reference/` (voir § 9). En attendant, le
-prototype utilise une silhouette provisoire.
+**Le bonhomme d'abrasion** (référence : `reference/bonhomme_abrasion.png`) :
+- volumes simples comme sur l'icône : tête ronde séparée du corps, corps en
+  gélule **sans jambes** (il flotte à 16 cm du sol, avec une ombre ronde
+  dessous), gros bras arrondis, finition **chrome gris foncé** qui reflète le
+  ciel ;
+- **rendu pixélisé** comme l'image : une petite caméra le dessine en basse
+  résolution (88 pixels de haut), puis l'image est posée dans la scène à sa
+  place, avec de gros pixels nets et une silhouette en escalier. Le reste de
+  la ville garde son rendu net, le bonhomme ressort comme sur l'icône ;
+- **Bit crush** utilisera ce même réglage : sa résolution chute (88 → 12
+  pixels) pendant l'esquive, puis remonte. Le sort « sonne » comme l'effet ;
+- animations par code : flottement, penché en avant en course, bras qui
+  balancent, coups de poing alternés, toupie à l'esquive, et il **fait
+  coucou** comme sur l'icône quand on le laisse immobile ;
+- F2 bascule entre le rendu pixélisé et le modèle lisse (comparaison, ou
+  secours en cas de souci d'affichage).
 
 ## 8. Commandes (clavier AZERTY)
 
@@ -341,7 +353,7 @@ ZQSD devient automatiquement WASD.
 | Caméra | souris |
 | Courir | Maj gauche (maintenir) |
 | Sauter | Espace |
-| Esquive (roulade simple) | Ctrl gauche ou double appui sur une direction |
+| Esquive (toupie rapide) | Ctrl gauche |
 | Attaquer | clic gauche |
 | Changer d'arme | 1, 2, 3 ou molette |
 | Sort Bit crush | A |
@@ -350,13 +362,15 @@ ZQSD devient automatiquement WASD.
 | Interagir (porte, skate) | F |
 | Debug : jour ↔ nuit | N |
 | Aide à l'écran | F1 |
+| Bonhomme pixélisé / lisse | F2 |
+| Libérer / reprendre la souris | Échap / clic |
 
 ## 9. Ce que tu dois fournir ou faire toi-même
 
 1. **Installer Godot 4** (je te donnerai le lien et les étapes exactes au
    jalon 0, c'est un simple fichier à décompresser, ~150 Mo).
-2. **Les images du bonhomme d'abrasion** : face, profil, dos si possible,
-   dans `game/reference/`. Tu peux aussi me les envoyer dans la conversation.
+2. ~~Les images du bonhomme d'abrasion~~ : reçue, rangée dans
+   `game/reference/`. D'autres vues (profil, dos) restent bienvenues.
 3. Plus tard, en option : tes propres sons (`.wav`) et musiques, et le logo
    abrasion pour l'écran titre.
 
