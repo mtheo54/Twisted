@@ -465,3 +465,50 @@ bassin. Chaque articulation suit sa cible avec un ressort (léger
 dépassement), la tête compense la torsion du buste et traîne un peu,
 le corps s'écrase et s'étire (sauts, réceptions, coups), il anticipe
 ses coups et respire à l'arrêt.
+
+## 13. Sorts, ondes, buffs / débuffs et fusions (démo web)
+
+Tout est décrit dans les données de la démo (`spells`, `waves`, `statuses`,
+`fusions`). Ajouter une fusion = ajouter une ligne. Les statuts sont
+génériques : joueur et ennemis utilisent les mêmes.
+
+**Caméra** : plus aucun mouvement de caméra pendant les impact frames et
+les combos (plan ciné, ralenti et secousses retirés). La pause d'impact et
+les impact frames restent.
+
+**Touches** : C Bitcrush (esquive de base) · A E R T : 4 sorts au choix ·
+clic droit maintenu : viser, clic : tirer l'onde choisie (1 sinus, 2 carré,
+3 triangle) · F maintenu + deux touches : fusion (sorts entre eux, ondes
+entre elles) · Tab : fenêtre « Mes sorts » (choix des 4 sorts, liste des
+ondes et des fusions, sauvegardée dans le navigateur).
+
+| Sort | Effet | Recharge |
+|---|---|---|
+| Bitcrush | esquive de base | 0,7 s |
+| Gater | contre : parfait ≤ 0,15 s avant le coup (annulé + ennemi étourdi 1,2 s, recharge ramenée à 1 s), bon ≤ 0,35 s (−70 %) | 4 s |
+| Reverb | 10 s : chaque coup pose un écho de 3 dégâts/s pendant 4 s | 14 s |
+| Delay | dans les 2 s après un combo : double fantôme qui rejoue les 3 derniers coups à 60 % ; raté = recharge divisée par 2 | 12 s |
+| Distortion | 8 s : dégâts infligés ×1,5, reçus ×1,5 | 15 s |
+| Chorus | 10 PV/s pendant 6 s, attaquer coupe le soin | 18 s |
+| Saturation | 6 s : vitesse ×1,6, esquive quasi sans recharge, 3 sauts ; puis 5 s d'essoufflement (lent, sans esquive) | 20 s |
+
+| Onde | Effet | Recharge |
+|---|---|---|
+| Sinus | fusil à pompe : 5 ondes, 12 dégâts de près → 3 à 14 m | 1 s |
+| Carré | sniper : rayon instantané 80 m, 34 dégâts | 3,5 s |
+| Triangle | 9 dégâts à toute distance, suit légèrement la cible | 0,45 s |
+
+Fusions (recharge propre + les deux sorts repartent en recharge) :
+Saut glitch 10 s · Peau d'oignon 12 s · Triple glitch 9 s · Distorsion
+glitch 20 s · Déphasage 14 s · Surchauffe glitch 24 s · Écho infini 40 s ·
+Distorsion douce 16 s · Chœur lointain 22 s · Saturation douce 18 s ·
+Crescendo 20 s · Super saut 15 s · Tempo 18 s · Renvoi 22 s · Quitte ou
+double 45 s · ondes : PWM 8 s (rayon large qui traverse), Onde douce 7 s
+(4 orbes à tête chercheuse), Dent de scie 9 s (rafale de 8 tirs).
+Le Gater ne fusionne qu'avec le Bitcrush (sinon trop fort).
+
+**Mode combat** : l'enceinte d'entraînement riposte une fois frappée
+(12 s sans échange pour se calmer) : « onde de larsen » (projectile,
+signalée 0,6 s avant) ou « boom » au corps à corps (anneau rouge au sol,
+0,55 s avant). Ses attaques sont de vrais objets de la Sim : le Gater les
+annule.

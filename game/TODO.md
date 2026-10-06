@@ -22,6 +22,10 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [x] Esquive en onde pixélisée, directionnelle, aussi en l'air, images fantômes
 - [x] Impact frames façon animé + plan ciné au ralenti (DROP et frappe plongeante)
 - [x] Bonhomme articulé et souple (coudes, genoux, mains, ressorts, écrasement / étirement)
+- [x] Démo v4 : 7 sorts, 3 ondes de visée, 18 fusions, buffs / débuffs génériques, fenêtre « Mes sorts » — **à tester par toi**
+- [x] Enceinte qui riposte en mode combat (projectile et boom signalés), parfaite pour le Gater
+- [x] Caméra fixe pendant les impact frames et les combos
+- [ ] Fusions sort + onde (à imaginer ensemble)
 - [ ] Reporter les choix validés dans le projet Godot
 
 ## Étape 1 : la rue test
