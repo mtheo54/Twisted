@@ -1606,18 +1606,22 @@ addEventListener("keydown", (e) => {
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => { keys.clear(); P.aiming = false; });
-let lockAllowed = true, lockTime = 0;
-document.addEventListener("pointerlockerror", () => { lockAllowed = false; updateResume(); });
-document.addEventListener("pointerlockchange", () => { lockTime = performance.now(); updateResume(); });
+// Capture de la souris. Le navigateur peut refuser une capture (juste après
+// l'avoir rendue, par exemple) : on réessaie au clic suivant au lieu
+// d'abandonner. Après 3 refus d'affilée seulement, on bascule en secours
+// (clic droit maintenu pour tourner la caméra), sans arrêter de réessayer.
+let lockFails = 0, lockTime = 0;
+const lockFallback = () => lockFails >= 3;
+document.addEventListener("pointerlockerror", () => { lockFails++; updateResume(); });
+document.addEventListener("pointerlockchange", () => { lockTime = performance.now(); if (locked()) lockFails = 0; updateResume(); });
 function requestLock() {
-  if (!lockAllowed) return;
-  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => { lockAllowed = false; updateResume(); }); } catch (err) { lockAllowed = false; updateResume(); }
+  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => { lockFails++; updateResume(); }); } catch (err) { lockFails++; updateResume(); }
 }
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 renderer.domElement.addEventListener("mousedown", (e) => {
   initAudio();
   if (paused) return;
-  if (!locked() && lockAllowed) { requestLock(); return; }
+  if (!locked()) { requestLock(); if (!lockFallback()) return; }
   if (e.button === 0) attackClicks++;
   if (e.button === 2) P.aiming = true;
 });
@@ -1629,7 +1633,7 @@ addEventListener("mousemove", (e) => {
   cam.yaw -= e.movementX * s; cam.pitch = Math.min(0.6, Math.max(-1.25, cam.pitch - e.movementY * s));
 });
 const overlay = document.getElementById("overlay"), resume = document.getElementById("resume"), playBtn = document.getElementById("play");
-function updateResume() { resume.textContent = lockAllowed ? "Clique dans la scène pour reprendre la souris" : "Maintiens le clic droit pour tourner la caméra"; resume.hidden = !overlay.hidden || paused || (lockAllowed && locked()); }
+function updateResume() { resume.textContent = lockFallback() ? "Clic droit maintenu pour tourner la caméra · clic pour réessayer de capturer la souris" : "Clique dans la scène pour reprendre la souris"; resume.hidden = !overlay.hidden || paused || locked(); }
 playBtn.addEventListener("click", () => { overlay.hidden = true; initAudio(); if (audio && audio.resume) audio.resume(); requestLock(); updateResume(); });
 document.getElementById("openLoadout").addEventListener("click", () => { overlay.hidden = true; initAudio(); toggleLoadout(true); });
 
