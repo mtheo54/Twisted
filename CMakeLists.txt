@@ -116,7 +116,10 @@ if(TWISTED_BUILD_CLAP)
   add_library(twisted_clap MODULE src/clap/ClapPlugin.cpp)
   target_include_directories(twisted_clap PRIVATE ${clap_SOURCE_DIR}/include)
   target_link_libraries(twisted_clap PRIVATE twisted_core)
-  set_target_properties(twisted_clap PROPERTIES OUTPUT_NAME Twisted PREFIX "")
+  # Both plugins are named "Twisted": keep their import libraries (.lib/.exp) apart, otherwise
+  # a parallel MSVC build writes them to the same file (LNK1104).
+  set_target_properties(twisted_clap PROPERTIES OUTPUT_NAME Twisted PREFIX ""
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/implib/clap)
   if(APPLE)
     set_target_properties(twisted_clap PROPERTIES
       BUNDLE TRUE
@@ -144,7 +147,8 @@ if(TWISTED_BUILD_VST3)
     ${vst3_pluginterfaces_SOURCE_DIR}/base/coreiids.cpp)
   target_include_directories(twisted_vst3 PRIVATE ${VST3_INCLUDE_DIR})
   target_link_libraries(twisted_vst3 PRIVATE twisted_core)
-  set_target_properties(twisted_vst3 PROPERTIES OUTPUT_NAME Twisted PREFIX "")
+  set_target_properties(twisted_vst3 PROPERTIES OUTPUT_NAME Twisted PREFIX ""
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/implib/vst3)
   if(WIN32)
     target_link_libraries(twisted_vst3 PRIVATE ole32)
   endif()
