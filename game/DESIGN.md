@@ -1,0 +1,389 @@
+# Twisted : le jeu · document de design
+
+Statut : **proposition à valider** avant d'écrire le code.
+Périmètre de ce document : la structure du projet, le système de sorts et de
+fusions, et le plan de l'étape 1 (« la rue test »). La vision complète est
+rappelée en une ligne par point dans [TODO.md](TODO.md).
+
+---
+
+## 1. Moteur : Godot 4 (confirmé)
+
+Ta préférence est la bonne pour ce projet. Pourquoi :
+
+| Critère | Godot 4 | Unreal 5 | Unity 6 |
+|---|---|---|---|
+| Installation | ~150 Mo, rien d'autre | ~100 Go + Visual Studio | ~15 Go + compte |
+| Style low-poly soigné, brume, bloom | oui (rendu Forward+ : brouillard volumétrique, glow, ombres douces) | oui, mais taillé pour le photoréalisme | oui |
+| Fichiers de scènes en texte | **oui** : je peux tout écrire et relire depuis le code | non (binaire) | partiellement |
+| Coût, licence | gratuit, MIT, aucune redevance | 5 % au-delà d'1 M$ | abonnement selon revenus |
+| Grande carte (5-8 km²) | pas de « World Partition » tout fait : chargement par zones à écrire nous-mêmes | outil intégré | outil partiel |
+
+Le seul vrai point faible de Godot est le chargement progressif d'une grande
+carte. Il est maîtrisable parce que la ville est construite en blocs
+modulaires dès le départ (voir § 2.4). Pour une ville stylisée, Unreal
+n'apporterait pas assez pour justifier sa lourdeur.
+
+- Version : la dernière **Godot 4 stable, édition « Standard »** (pas .NET).
+- Langage : **GDScript** (intégré, rien à installer, rechargé à chaud).
+- Rendu : **Forward+** (PC uniquement, c'est celui qui a le brouillard
+  volumétrique et le meilleur bloom).
+
+## 2. Structure du projet
+
+```
+game/
+├── project.godot            réglages du projet
+├── DESIGN.md / TODO.md
+├── data/                    ← TOUT l'équilibrage, en JSON lisible
+│   ├── spells.json          sorts (coût, recharge, effets)
+│   ├── fusions.json         sort A + sort B = sort C
+│   ├── statuses.json        buffs / débuffs
+│   ├── weapons.json         armes musicales
+│   └── monsters.json        monstres (vie, vitesse, attaques, jour/nuit)
+├── core/                    ← LOGIQUE DE JEU PURE (aucun affichage)
+│   ├── sim.gd               la « simulation » : reçoit des ordres, rend des événements
+│   ├── entity_state.gd      vie, énergie, position, statuts d'une entité
+│   ├── status_system.gd     buffs / débuffs génériques
+│   ├── spell_system.gd      coûts, recharges, lancement
+│   ├── fusion_resolver.gd   lit fusions.json, trouve la fusion de A + B
+│   ├── effects.gd           briques d'effets (dégâts, téléport, dissipation…)
+│   ├── projectile_state.gd  attaques en vol (avalables par le gater)
+│   ├── world_clock.gd       heure du jour, jour/nuit
+│   └── beat_clock.gd        horloge musicale (BPM, temps forts)
+├── scenes/                  ← AFFICHAGE et contrôles (Godot)
+│   ├── game/                la colle : branche la Sim sur les scènes
+│   ├── actors/player/       le bonhomme d'abrasion
+│   ├── actors/monsters/
+│   ├── vehicles/skate/
+│   ├── weapons/
+│   ├── world/blocks/        blocs de ville modulaires
+│   ├── world/sky/           ciel jour/nuit, lune, montagnes, oiseaux
+│   └── levels/test_street.tscn
+├── vfx/                     shaders : glitch, pixels, coupures, halos
+├── audio/                   bus d'effets, sons générés
+├── ui/                      HUD (vie, énergie, sorts, fusion)
+├── reference/               ← images du bonhomme d'abrasion (à fournir)
+└── tests/                   tests automatiques de la logique (core/)
+```
+
+### 2.1 Séparer la logique de l'affichage (pour le multijoueur plus tard)
+
+```
+ Clavier/souris ──► ORDRES ──► Sim (core/) ──► ÉVÉNEMENTS ──► Scènes (affichage, sons, effets)
+                    « lancer gater »          « projectile 12 avalé »
+                    « attaquer »              « statut Désynchro posé sur joueur »
+```
+
+- `core/` ne connaît ni les nœuds Godot, ni les sons, ni les shaders. Les
+  entités y sont désignées par un numéro, pas par un objet affiché.
+- La Sim avance par pas fixes (60 par seconde). Les déplacements et les
+  collisions restent gérés par la physique de Godot ; leur position est
+  recopiée dans la Sim à chaque pas.
+- Plus tard, en multijoueur, le serveur fera tourner la Sim et les joueurs
+  n'enverront que leurs ordres : rien à réécrire dans les règles.
+
+### 2.2 Données plutôt que code
+
+Les nombres (dégâts, coûts, durées, vitesses) sont dans `data/`. Tu peux les
+modifier avec n'importe quel éditeur de texte, relancer le jeu, et sentir la
+différence sans toucher au code.
+
+### 2.3 Audio : effets simulés aujourd'hui, rythme demain
+
+- Chaque famille de sons passe par un **bus audio** (joueur, ennemis, monde,
+  musique). Les sorts appliquent un effet sur le bus visé :
+  - bit crush → effet *Distortion* en mode *Lo-fi* de Godot (réduction de bits) ;
+  - gater → volume haché par le code (porte rythmique), puis coupure nette ;
+  - chorus, reverb → effets *Chorus* et *Reverb* intégrés à Godot.
+- `beat_clock.gd` donne le tempo (100 BPM au départ) et signale chaque temps.
+  Les armes et les effets s'y abonnent. Plus tard, on la calera sur la
+  position réelle de la musique : seul ce fichier changera.
+- Les premiers sons sont générés par code (bips, souffles, basses). Tu pourras
+  les remplacer par les tiens en déposant des fichiers `.wav` / `.ogg`.
+
+### 2.4 Ville modulaire
+
+- Grille de **tuiles de 32 m × 32 m** : rue droite, carrefour, virage,
+  impasse, place, bloc d'immeubles, bloc résidentiel. Chaque tuile est une
+  scène qu'on assemble comme des briques.
+- Les tuiles sont regroupées en **zones de 256 m** (8 × 8 tuiles). Une carte
+  de 2,5 km de côté (~6 km²) ≈ 10 × 10 zones.
+- Vitesses prévues : marche 5 m/s, course 8 m/s, skate 13 m/s, vélo 17 m/s.
+  Le futur chargement progressif calculera son rayon d'après la vitesse
+  (à vélo, on charge plus loin devant soi). Pas codé à l'étape 1.
+- La tour est un repère unique au centre, visible de partout (version
+  simplifiée au loin).
+
+## 3. Sorts, statuts et fusions
+
+### 3.1 Les ressources du joueur
+
+- **Énergie** : 100 max, se recharge de 10/s. Chaque sort en coûte.
+- **Recharge** (cooldown) par sort.
+- Une fusion coûte plus cher qu'un sort seul, **met ses deux sorts en
+  recharge** et impose une **contrepartie** (un débuff sur soi).
+
+### 3.2 Statuts (buffs / débuffs) génériques
+
+Joueur et monstres ont la même liste de statuts. Un statut a : un nom, un
+type (buff ou débuff), une durée, un nombre de cumuls max, des
+**modificateurs** et des **étiquettes**.
+
+```json
+{
+  "saturation": {
+    "name": "Saturation", "kind": "buff", "duration": 8.0, "max_stacks": 1,
+    "dispellable": true,
+    "modifiers": { "damage_dealt_mult": 1.5, "damage_taken_mult": 0.7 },
+    "tags": ["audio"]
+  },
+  "desync": {
+    "name": "Désynchro", "kind": "debuff", "duration": 4.0, "max_stacks": 1,
+    "dispellable": true,
+    "modifiers": { "move_speed_mult": 0.7, "damage_taken_mult": 1.2, "energy_regen_mult": 0.5 },
+    "tags": ["glitch"]
+  },
+  "intangible": {
+    "name": "Intangible", "kind": "buff", "duration": 0.35, "max_stacks": 1,
+    "dispellable": false,
+    "modifiers": { "damage_taken_mult": 0.0 },
+    "tags": ["glitch"]
+  }
+}
+```
+
+Modificateurs connus du code : `move_speed_mult`, `damage_dealt_mult`,
+`damage_taken_mult`, `energy_regen_mult`, `cooldown_mult`, `can_cast`
+(silence). « Annuler les buffs adverses » = retirer tous les statuts
+`kind: buff` et `dispellable: true` de la cible.
+
+### 3.3 Sorts = liste de briques d'effets
+
+Un sort ne contient pas de code : c'est une liste d'**effets** pris dans une
+boîte à outils. Les briques de l'étape 1 :
+
+| Brique | Ce qu'elle fait |
+|---|---|
+| `apply_status` | pose un statut (sur soi ou sur la cible) |
+| `dispel` | retire les buffs (ou débuffs) dissipables de la cible |
+| `damage` | dégâts, sur la cible ou en zone autour d'un point |
+| `dash` | déplacement rapide dans la direction voulue |
+| `teleport_to_target` | apparaît près de la cible (portée max, distance d'arrivée) |
+| `swallow_projectiles` | avale les attaques ennemies avalables dans un cône devant soi |
+| `silence` | empêche la cible de lancer un sort pendant un temps |
+
+Chaque sort indique aussi ses effets **visuels** et **sonores** par un nom
+(`"vfx": "glitch_pixel"`, `"sfx": "bitcrush_dodge"`), branchés côté affichage.
+
+```json
+{
+  "bitcrush": {
+    "name": "Bit crush", "energy": 20, "cooldown": 3.0,
+    "effects": [
+      { "type": "dash", "distance": 4.0, "duration": 0.18 },
+      { "type": "apply_status", "status": "intangible", "on": "self" }
+    ],
+    "vfx": "glitch_pixel", "sfx": "bitcrush_dodge", "audio_fx": "bitcrush"
+  },
+  "gater": {
+    "name": "Gater", "energy": 25, "cooldown": 6.0,
+    "effects": [
+      { "type": "swallow_projectiles", "range": 5.0, "angle": 90, "window": 0.6, "refund_energy": 10 },
+      { "type": "silence", "on": "swallowed_owner", "duration": 1.5 }
+    ],
+    "vfx": "gate_slices", "sfx": "gate_chop", "audio_fx": "gate"
+  }
+}
+```
+
+### 3.4 Les deux premiers sorts
+
+**Bit crush : esquive glitch.** Petit dash de 4 m ; pendant 0,35 s le
+bonhomme est intangible. À l'écran : il se pixélise (moins de résolution sur
+son corps), décalage rouge/bleu, traînée de blocs carrés. Au son : le monde
+entier passe 0,35 s en basse résolution (8 bits → 4 bits), puis revient.
+
+**Gater : avaler le sort adverse.** Pendant 0,6 s, un cône devant le joueur
+« hache » tout projectile ennemi avalable : le projectile clignote en
+tranches, son son est découpé en rythme (la porte s'ouvre et se ferme sur la
+double croche du tempo), puis coupé net. Le projectile disparaît, son lanceur
+est réduit au silence 1,5 s et le joueur récupère 10 d'énergie. À l'écran :
+des lamelles verticales noires balaient le cône.
+
+Le projectile ennemi est un **vrai objet de la Sim** (`projectile_state.gd`) :
+position, vitesse, dégâts, lanceur, étiquette `swallowable`. Le gater
+interroge la Sim, il ne « devine » pas d'après l'image.
+
+### 3.5 Fusions
+
+`fusions.json` liste les paires. L'ordre A + B ou B + A ne compte pas.
+
+```json
+[
+  {
+    "id": "glitch_jump",
+    "name": "Saut glitch",
+    "inputs": ["bitcrush", "gater"],
+    "energy": 40, "cooldown": 12.0,
+    "puts_inputs_on_cooldown": true,
+    "effects": [
+      { "type": "teleport_to_target", "max_range": 12.0, "stop_distance": 1.8 },
+      { "type": "dispel", "on": "target", "kind": "buff" },
+      { "type": "damage", "amount": 8, "radius": 2.5, "at": "self" }
+    ],
+    "drawback": [
+      { "type": "apply_status", "status": "desync", "on": "self" }
+    ],
+    "vfx": "glitch_teleport", "sfx": "glitch_jump"
+  }
+]
+```
+
+**Saut glitch (Bit crush + Gater)** : le bonhomme se décompose en pixels,
+réapparaît à 1,8 m de la cible (12 m max), annule ses buffs, fait 8 dégâts
+autour de lui. Contrepartie : **Désynchro** 4 s (−30 % vitesse, +20 % dégâts
+subis, énergie deux fois plus lente).
+
+Ajouter une fusion = ajouter une entrée dans `fusions.json` avec les
+briques existantes. **Aucun code à écrire.** Seule une brique d'effet
+totalement nouvelle (par exemple « gèle le temps ») demande du code, une fois,
+et devient ensuite réutilisable par tous les sorts.
+
+### 3.6 Comment déclencher une fusion : ma proposition
+
+**Maintenir le clic droit (« mode fusion »), puis appuyer sur les deux sorts.**
+
+- Clic droit maintenu : le temps ralentit légèrement (×0,8, en solo
+  seulement), deux emplacements vides apparaissent au centre du HUD.
+- Appui sur A puis E (ou E puis A) : les deux icônes se remplissent ;
+  si la fusion existe, elle part au second appui. Sinon, rien n'est dépensé
+  et le HUD l'indique (« pas de fusion connue »).
+
+Pourquoi pas « deux sorts en succession rapide » : bit crush est une esquive
+qu'on enchaînera souvent avec gater en panique. La fusion partirait par
+accident, et à l'inverse on la raterait par manque de rapidité. Une touche
+dédiée rend la fusion **voulue**, découvrable (on essaie des paires) et
+lisible pour les futures fusions à 4, 6, 10 sorts. Le clic droit reste
+naturel au milieu d'un combat à la souris.
+
+## 4. Armes musicales (2-3 pour l'étape 1)
+
+Toutes réagissent au tempo de `beat_clock` : elles **pulsent sur chaque
+temps** (lumière, échelle) et un coup donné **dans le temps** (± 80 ms) est un
+« coup juste » : dégâts ×1,5, son plus riche, petit flash.
+
+| Arme | Objet 3D | Jeu |
+|---|---|---|
+| **Métronome** | gros métronome pyramidal tenu comme une masse, balancier lumineux | corps à corps lent et lourd, combo de 3 coups |
+| **Caisson** | enceinte de basse portée à l'épaule, membrane qui pompe | onde de basse en cône court, repousse les ennemis |
+| **Vinyle** | disque lumineux lancé comme un frisbee, revient à la main | attaque à distance, rebondit une fois |
+
+## 5. Le skate (véhicule de l'étape 1)
+
+**Choix : le skate.** Plus simple à rendre agréable que le vélo : pas
+d'animation de pédalage, une planche et une pose suffisent, et la glisse
+(virages larges, petit saut « ollie ») est fun tout de suite.
+
+- **F** près du skate : monter / descendre. **Z** pousser (accélère par
+  impulsions), **S** freiner, **Q/D** tourner (virage plus large à vitesse
+  élevée), **Espace** ollie.
+- Vitesse max 13 m/s (marche 5, course 8).
+
+**Attaquer en véhicule ? Ma proposition :**
+- **Sorts : oui**, tous. Bit crush sur le skate = un écart glitch latéral,
+  pratique pour éviter un projectile.
+- **Armes : non**, sauf une seule action : **descente d'attaque** (clic
+  gauche) : le bonhomme saute du skate et frappe en arrivant au sol, avec un
+  bonus de dégâts lié à la vitesse. Simple à coder, et ça garde le skate
+  comme outil de déplacement plutôt que de combat.
+
+## 6. Monstres de l'étape 1
+
+| Monstre | Quand | IA | Attaques |
+|---|---|---|---|
+| **Grésillon** (boule de parasites statiques, petites antennes) | jour et nuit | erre → repère le joueur à 15 m → approche → tire à 8 m → fuit un peu s'il a peu de vie | **Boule de larsen** : projectile lent, *avalable* par le gater. **Saturation** : se donne un buff (+50 % dégâts, −30 % dégâts subis), annulable par la fusion |
+| **Ombre sub** (silhouette sombre, cœur violet qui bat sur le tempo) | **nuit seulement** | plus rapide, plus résistante, charge le joueur | **Onde sub** : projectile *avalable* ; coup au corps à corps *non avalable* (il faut esquiver) |
+
+L'IA est une petite machine à états (errer / poursuivre / attaquer / fuir)
+dans la Sim. Les valeurs sont dans `monsters.json`.
+
+## 7. Style visuel : comment on l'obtient
+
+- **Bâtiments** générés par code : volumes à toits plats, rebords, antennes,
+  climatiseurs, fenêtres (une texture générée qui s'allume la nuit).
+- **Ciel** : un shader de ciel maison. Jour : dégradé pêche → gris-bleu,
+  horizon lumineux, brume. Nuit : violet sombre, étoiles, grande lune avec
+  halo derrière une montagne, lueur rose à l'horizon.
+- **Montagnes** en triangles à l'horizon, plusieurs plans dans la brume.
+- **La tour** : treillis rouge et blanc, anneaux d'énergie et sphère de
+  lignes fines au sommet (on reprend l'esprit de l'interface du plugin).
+- **Post-traitement** : brouillard volumétrique léger, bloom (glow) doux,
+  occlusion ambiante, étalonnage par moment de la journée.
+- **Effets de sorts** : shaders dédiés (pixélisation, décalage RVB,
+  lamelles de porte), c'est la signature du jeu, on les soigne.
+- **Performances** : ombres limitées à la zone proche, distance d'affichage
+  par objet, un réglage « qualité » basse/haute dans le menu.
+
+**Le bonhomme d'abrasion** : je le modélise par code en volumes simples
+d'après tes images, sans le dénaturer. Je n'ai **pas trouvé les images dans
+le dépôt** : dépose-les dans `game/reference/` (voir § 9). En attendant, le
+prototype utilise une silhouette provisoire.
+
+## 8. Commandes (clavier AZERTY)
+
+Les touches sont lues par **position physique** : sur un clavier QWERTY,
+ZQSD devient automatiquement WASD.
+
+| Action | Touche |
+|---|---|
+| Se déplacer | Z Q S D |
+| Caméra | souris |
+| Courir | Maj gauche (maintenir) |
+| Sauter | Espace |
+| Esquive (roulade simple) | Ctrl gauche ou double appui sur une direction |
+| Attaquer | clic gauche |
+| Changer d'arme | 1, 2, 3 ou molette |
+| Sort Bit crush | A |
+| Sort Gater | E |
+| Mode fusion | clic droit (maintenir) + A et E |
+| Interagir (porte, skate) | F |
+| Debug : jour ↔ nuit | N |
+| Aide à l'écran | F1 |
+
+## 9. Ce que tu dois fournir ou faire toi-même
+
+1. **Installer Godot 4** (je te donnerai le lien et les étapes exactes au
+   jalon 0, c'est un simple fichier à décompresser, ~150 Mo).
+2. **Les images du bonhomme d'abrasion** : face, profil, dos si possible,
+   dans `game/reference/`. Tu peux aussi me les envoyer dans la conversation.
+3. Plus tard, en option : tes propres sons (`.wav`) et musiques, et le logo
+   abrasion pour l'écran titre.
+
+Tout le reste (modèles, textures, sons de départ) est généré par code ou
+sous licence libre (CC0), et je le signalerai dans `game/CREDITS.md`.
+
+## 10. Plan de l'étape 1 : la rue test
+
+Un jalon = une fonctionnalité. Après chacun, je te dis comment le lancer et
+le tester, et j'attends ton retour.
+
+| # | Jalon | Ce que tu pourras tester |
+|---|---|---|
+| 0 | Installer Godot, ouvrir le projet | le projet s'ouvre, une scène vide tourne |
+| 1 | **Prototype minimal** : bonhomme provisoire, caméra 3e personne, rue droite avec immeubles, roulade, une attaque de base sur un mannequin | bouger, sauter, esquiver, frapper le mannequin et voir sa vie baisser |
+| 2 | **Skate** | monter, pousser, tourner, ollie, descendre, descente d'attaque |
+| 3 | **3 armes** + horloge musicale | pulsation sur le tempo, coups justes |
+| 4 | **Grésillon** (IA, boule de larsen, buff Saturation) | se faire attaquer, le tuer |
+| 5 | **Bit crush** | esquiver une boule de larsen en glitch |
+| 6 | **Gater** | avaler une boule de larsen, voir le Grésillon réduit au silence |
+| 7 | **Fusion Saut glitch** | téléport sur un Grésillon saturé, buff annulé, Désynchro sur soi |
+| 8 | **Porte** + petit bâtiment | ouvrir, fermer, entrer |
+| 9 | **Jour / nuit** + ciel, fenêtres, lune, **Ombre sub** | passage de l'un à l'autre, monstre de nuit |
+| 10 | Passe de finition visuelle | bloom, brume, tour au loin, oiseaux |
+
+J'ai placé le monstre (jalon 4) **avant** les sorts : sans attaque ennemie,
+le gater n'aurait rien à avaler et le bit crush rien à esquiver. C'est le
+seul changement par rapport à l'ordre que tu as donné.
+
+Ensuite viendront chorus et reverb (voir [TODO.md](TODO.md)).
