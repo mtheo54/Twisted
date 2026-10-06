@@ -8,6 +8,18 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [x] Image du bonhomme d'abrasion (`reference/bonhomme_abrasion.png`)
 - [ ] Autres vues du bonhomme (profil, dos), optionnel
 
+## Démo web (en cours)
+
+- [x] Démo navigateur v1 : rue, bonhomme chrome pixélisé, coups, esquive, enceinte
+- [x] Démo v2 : carrefour (rue commerçante, rue résidentielle, place et parc) — **à tester par toi**
+- [x] Sols texturés variés, bâtiments typés (konbini, ramen, sushi, izakaya, café, boutique, karaoké, grand magasin, boulangerie, appartements, maisons)
+- [x] Objets de rue (enseignes, menus, barrières, arbres, distributeurs, poteaux électriques et fils, feux, torii, vélos…)
+- [x] Sensation de vitesse (champ de vision, lignes de vitesse, poussière, accélération, secousse, bruits de pas selon le sol)
+- [x] Double saut, wall jump (un seul, enchaînable sur les murs tagués de la ruelle), glissade le long des murs
+- [x] Jambes du bonhomme, pose allongée après 30 s
+- [x] Premier secret : vinyle doré sur le toit de la boulangerie
+- [ ] Reporter les choix validés dans le projet Godot
+
 ## Étape 1 : la rue test
 
 - [x] 0. Projet Godot créé (à installer chez toi : voir README.md)

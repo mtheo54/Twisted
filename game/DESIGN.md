@@ -401,3 +401,41 @@ le gater n'aurait rien à avaler et le bit crush rien à esquiver. C'est le
 seul changement par rapport à l'ordre que tu as donné.
 
 Ensuite viendront chorus et reverb (voir [TODO.md](TODO.md)).
+
+## 11. Démo web et décisions validées (après la première démo)
+
+**Démo sur internet.** On avance d'abord sur une démo jouable dans le
+navigateur (Three.js, partageable par un simple lien), pour itérer vite.
+Son code est dans `web-demo/`. Le projet Godot reste la version PC à long
+terme : les choix validés dans la démo y seront reportés.
+
+**Carte de la démo : un carrefour.**
+- Une **rue commerçante et de restaurants** : konbini, ramen, sushi, izakaya,
+  café, boutique de vêtements. Vitrines, auvents, rideaux noren, lanternes
+  rouges, enseignes verticales en kanji, menus posés sur le trottoir.
+- Une **rue résidentielle** : immeubles d'appartements (balcons, linge,
+  climatiseurs), petites maisons à toit en pente, clôtures, plantes.
+- Une **petite place avec un parc** : herbe, gravier, arbres, bancs.
+- Objets de rue : lampadaires, poteaux électriques avec leurs fils,
+  distributeurs de boissons, barrières, cônes, bancs, poubelles, vélos,
+  arbres (cerisiers, ginkgos), feux de circulation.
+- Aucune vraie marque : enseignes inventées.
+
+**Sols variés et texturés** (style dessiné, pas photo) : asphalte fissuré
+avec plaques d'égout et passages piétons, dalles de trottoir, pavés de la
+rue commerçante, carrelage de la place, herbe, gravier, plaques de métal,
+terrasse en bois.
+
+**Déplacements.**
+- **Sensation de vitesse** : champ de vision qui s'élargit en course,
+  caméra plus basse, lignes de vitesse, poussière, accélération
+  progressive, secousse à l'atterrissage, bruits de pas.
+- **Double saut** (une fois par saut, petit effet pixel).
+- **Wall jump** : **un seul** par saut. Exception : certains murs
+  marqués (tags, grillages) permettent d'enchaîner, pour atteindre des
+  toits et des secrets.
+
+**Le bonhomme.**
+- **Petites jambes chromées et arrondies**, dans le style des bras.
+- Coucou après 5 s d'attente ; **après 30 s il s'allonge** au sol, mains
+  derrière la tête, et se relève d'un bond dès qu'on bouge.
