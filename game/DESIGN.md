@@ -515,3 +515,57 @@ Le Gater ne fusionne qu'avec le Bitcrush (sinon trop fort).
 signalée 0,6 s avant) ou « boom » au corps à corps (anneau rouge au sol,
 0,55 s avant). Ses attaques sont de vrais objets de la Sim : le Gater les
 annule.
+
+## 14. Monde vivant : PNJ, armes, bestiaire, dragon (démo web)
+
+**Taille humaine** : le bonhomme mesure environ 1,85 m (longues jambes,
+taille, buste, bras en deux parties). Le buste suit le bassin avec un temps
+de retard (taille 55 %, buste 45 %), ce qui donne des coups plus « en
+torsion ». En combat (ennemi actif à moins de 12 m), il se met en **garde**
+selon son arme, rebondit sur ses appuis et reste tourné vers l'ennemi
+(on tourne autour, la foulée suit la vraie direction). Quand il est
+touché, il encaisse (le buste part en arrière) ; les gros coups le
+**projettent au sol**, il se relève d'un bond (invincible pendant ce temps).
+
+**Armes** (aucune arme à feu ; X ou molette pour changer ; données dans
+`weapons` et `moves`) :
+
+| Arme | Combo | Particularité | Où la trouver |
+|---|---|---|---|
+| Poings | jab, jab, drop | le drop projette | dès le départ |
+| Baguettes | 3 frappes + roulement de 5 coups | très rapides | Kenji, au carrefour |
+| Pied de micro | balayage, estoc, moulinet (tout autour) | grande allonge | DJ Taro : vaincre 3 monstres |
+| Guitare-hache | 2 grands coups + power chord | lente, onde de choc, fait vaciller | Rin : lui rapporter le vinyle doré |
+| Micro-fléau | 2 coups de câble + crochet | portée 5 m, ramène l'ennemi et l'étourdit | Yuna (la nuit) : vaincre une Gueule-enceinte |
+
+**Bestiaire** (données dans `bestiary`). Chaque attaque est annoncée : une
+étoile **jaune** au-dessus du monstre = on peut l'interrompre en le
+frappant ; **rouge** = il est lancé (« blindé »), il faut esquiver (C) ou
+placer un Gater. Les monstres vaincus lâchent une note verte qui soigne.
+
+| Monstre | Quand | Attaques |
+|---|---|---|
+| Grésillon | jour et nuit | morsure, bond (souvent par deux) |
+| Câblé (humanoïde de câbles, tête de jack) | jour et nuit | fouet de câble, griffe, étincelle à distance |
+| Gueule-enceinte (enceinte sur 4 pattes de câble, membrane-gueule) | nuit | morsure en bond (projette au sol), griffes, cri en cône |
+| Ombre sub (basse qui flotte, traîne ses câbles) | nuit | pulsation autour d'elle, infrabasse à tête chercheuse, fondu (téléportation) |
+
+Apparitions : 3 monstres max le jour, 6 la nuit, hors de vue (22 à 60 m),
+dans les rues. À l'aube, les monstres de nuit se dissolvent.
+
+**PNJ** : 12 passants (moins la nuit) qui marchent sur les trottoirs,
+s'arrêtent sur leur téléphone et fuient les monstres. Six personnages
+importants (losange ◆ quand ils ont du nouveau, **F** pour parler) :
+Kenji (batteur, carrefour), DJ Taro (place du parc), Rin (luthière, rue
+commerçante), Yuna (chanteuse, devant le karaoké, la nuit), Vieux Sato
+(au bout de la rue, il regarde la tour) et Mamie Kiko (ramen : soigne
+une fois toutes les 45 s). La progression (armes, monstres vaincus,
+quêtes) est sauvegardée dans le navigateur.
+
+**Dragon de jade** (boss final, préparé) : long dragon serpentin turquoise
+(écailles dessinées), ventre doré, épines, crinière, cornes et moustaches
+d'or, quatre pattes. La nuit, il monte de derrière la tour et tourne
+autour, à 250 m de haut. Pas encore combattable.
+
+**Réalisme** : voitures garées (kei cars, taxis) aux phares allumés la
+nuit, nuages qui dérivent et changent de teinte avec l'heure.

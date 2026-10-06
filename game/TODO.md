@@ -25,6 +25,14 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [x] Démo v4 : 7 sorts, 3 ondes de visée, 18 fusions, buffs / débuffs génériques, fenêtre « Mes sorts » — **à tester par toi**
 - [x] Enceinte qui riposte en mode combat (projectile et boom signalés), parfaite pour le Gater
 - [x] Caméra fixe pendant les impact frames et les combos
+- [x] Démo v5 : jour / nuit (ciel, étoiles, lune, fenêtres, enseignes, lampadaires), touche N
+- [x] Démo v6 : bonhomme à taille humaine (buste, garde de combat, encaisse, projeté au sol) — **à tester par toi**
+- [x] 5 armes sans arme à feu (poings, baguettes, pied de micro, guitare-hache, micro-fléau), X ou molette
+- [x] Bestiaire : Grésillon, Câblé (jour) ; Gueule-enceinte, Ombre sub (nuit), attaques annoncées, notes qui soignent
+- [x] PNJ : passants qui fuient les monstres, 6 personnages à qui parler (F), quêtes qui donnent les armes
+- [x] Dragon de jade préparé : il tourne autour de la tour la nuit
+- [x] Voitures garées, nuages
+- [ ] Combat contre le dragon (à imaginer ensemble)
 - [ ] Fusions sort + onde (à imaginer ensemble)
 - [ ] Reporter les choix validés dans le projet Godot
 
@@ -60,8 +68,8 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [ ] Fin secrète
 
 ### Ennemis
-- [ ] Bestiaire de nuit (monstres forts)
-- [ ] Boss final : le dragon vert-turquoise serpentin aux détails dorés
+- [~] Bestiaire de nuit (monstres forts) : 2 monstres de nuit dans la démo web
+- [~] Boss final : le dragon vert-turquoise serpentin aux détails dorés (modèle prêt, pas encore de combat)
 
 ### Véhicules
 - [ ] Vélo

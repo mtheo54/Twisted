@@ -17,9 +17,15 @@ class Sim {
       lastHitAt: -1000, diedAt: -1, respawnDelay: def.respawn_delay ?? -1, ai: def.ai || null, aiNext: 0, aiWindup: null,
       busyUntil: 0, chain: null, chainUntil: 0, queued: -1, queuedCount: 0, lastDodgeAt: -10, diving: false,
       statuses: new Map(), gateAt: -10, hitLog: [], combatUntil: -1 };
+    // les combattants sans IA (le joueur) portent des armes
+    if (!def.ai) { e.weapon = "fists"; e.weapons = new Set(this.data.start_weapons); }
+    // les monstres : état de leur IA (voir thinkMonster)
+    if (def.ai === "monster") e.mon = { def: this.data.bestiary[archetype], windup: null, dash: null, busyUntil: 0, staggerUntil: 0, cd: {}, next: this.time + 1,
+      strafe: Math.random() < 0.5 ? 1 : -1, strafeAt: 0, wander: null, wanderAt: 0, intent: new THREE.Vector3(), run: false, state: "idle", aggro: false };
     this.entities.set(e.id, e);
     return e.id;
   }
+  despawn(id) { this.entities.delete(id); }
   setTransform(id, position, facing) { const e = this.entities.get(id); if (!e) return; e.position.copy(position); if (facing) e.facing.set(facing.x, 0, facing.z).normalize(); }
   queue(command) { this.commands.push(command); }
   drain() { const out = this.events; this.events = []; return out; }
@@ -80,7 +86,7 @@ class Sim {
       if (p.at > this.time) { waiting.push(p); continue; }
       const src = this.entities.get(p.source);
       if (!src || !src.alive) continue;
-      if (p.kind === "move") this.resolveMove(src, p.move);
+      if (p.kind === "move") this.resolveMove(src, p.move, p.hit || 0);
       else if (p.kind === "delay_hit") { const t = this.entities.get(p.target); if (t && t.alive) this.dealDamage(src.id, t.id, p.damage, { move: p.move, direction: p.direction, push: 1.5, delay: true, hitstop: 0.04 }); }
       else if (p.kind === "saw_shot") this.spawnProjectile(src, "saw", p.origin, p.dir);
     }
@@ -116,6 +122,14 @@ class Sim {
     else if (c.type === "cast") this.cast(src, c.spell);
     else if (c.type === "wave") this.fireWave(src, c.wave, c.origin, c.dir, true);
     else if (c.type === "fuse") this.fuse(src, c.fusion, c.origin, c.dir);
+    else if (c.type === "weapon") this.switchWeapon(src, c.weapon);
+    else if (c.type === "unlock") { if (src.weapons && !src.weapons.has(c.weapon)) { src.weapons.add(c.weapon); this.emit({ type: "weapon_unlocked", source: src.id, weapon: c.weapon }); } }
+  }
+  // --- Armes -----------------------------------------------------------------------
+  switchWeapon(src, id) {
+    if (!src.weapons || !src.weapons.has(id) || src.weapon === id || src.diving) return;
+    src.weapon = id; src.chain = null; src.queued = -1; src.queuedCount = 0;
+    this.emit({ type: "weapon_changed", source: src.id, weapon: id });
   }
 
   // --- Corps à corps -----------------------------------------------------------
@@ -129,8 +143,9 @@ class Sim {
       return;
     }
     if (this.time < src.busyUntil) { src.queued = this.time; src.queuedCount = Math.min(2, src.queuedCount + 1); return; }
-    let move = "jab1";
-    if (this.time - src.lastDodgeAt < 0.55) move = "counter";
+    const wpn = this.data.weapons[src.weapon || "fists"];
+    let move = wpn.combo;
+    if (this.time - src.lastDodgeAt < 0.55) move = wpn.counter;
     else if (src.chain && this.time <= src.chainUntil) move = src.chain;
     const m = this.data.moves[move];
     src.busyUntil = this.time + m.windup + m.recover;
@@ -154,8 +169,11 @@ class Sim {
     }
     this.emit({ type: "dive_landed", source: src.id, hits: hit });
   }
-  resolveMove(src, moveId) {
+  resolveMove(src, moveId, hitIndex = 0) {
     const m = this.data.moves[moveId], halfArc = THREE.MathUtils.degToRad(m.arc_deg / 2);
+    // coups multiples (roulement, moulinet) : les frappes suivantes sont programmées
+    const count = m.hits || 1, last = hitIndex === count - 1;
+    if (hitIndex === 0) for (let i = 1; i < count; i++) this.pending.push({ at: this.time + i * m.every, kind: "move", source: src.id, move: moveId, hit: i });
     let hit = false;
     for (const e of this.entities.values()) {
       if (e.id === src.id || !e.alive || e.team === src.team) continue;
@@ -165,9 +183,12 @@ class Sim {
       const dir = to.divideScalar(Math.max(dist, 0.001));
       if (dist > 0.05 && src.facing.angleTo(dir) > halfArc) continue;
       hit = true;
-      this.dealDamage(src.id, e.id, m.damage, { move: moveId, direction: dir, launch: m.launch || null, push: m.push || 0, hitstop: m.hitstop, impact: !!m.impact });
+      const pull = m.pull ? Math.max(0, dist - e.radius - 1.0) : 0;
+      this.dealDamage(src.id, e.id, m.damage, { move: moveId, hit: hitIndex, direction: m.pull ? dir.clone().negate() : dir, launch: last ? m.launch || null : null, push: m.pull ? 0 : m.push || 0,
+        pull, hitstop: m.hitstop, impact: last && !!m.impact, stagger: m.stagger });
+      if (m.stun && e.alive) { this.applyStatus(e, "stun", { duration: m.stun }); if (e.mon) { e.mon.windup = null; e.mon.dash = null; } e.aiWindup = null; }
     }
-    if (!hit) this.emit({ type: "attack_missed", source: src.id, move: moveId });
+    if (!hit && hitIndex === 0) this.emit({ type: "attack_missed", source: src.id, move: moveId });
   }
 
   // --- Esquive (Bitcrush) --------------------------------------------------------
@@ -313,6 +334,7 @@ class Sim {
 
   // --- IA de l'enceinte (mode combat) ---------------------------------------------
   think(e) {
+    if (e.ai === "monster") { this.thinkMonster(e); return; }
     const ea = this.data.enemy_attacks, m = this.mods(e);
     if (m.stunned) { e.aiWindup = null; return; }
     let player = null; for (const o of this.entities.values()) if (o.team !== e.team && o.alive) player = o;
@@ -338,6 +360,82 @@ class Sim {
       e.aiWindup = { kind, at: this.time + w };
       this.emit({ type: "enemy_windup", id: e.id, attack: kind, windup: w });
     }
+  }
+
+  // --- IA des monstres ----------------------------------------------------------------
+  // La Sim décide (s'approcher, tourner autour, annoncer puis lancer une attaque) ;
+  // l'affichage déplace le corps en suivant « intent » et gère les collisions.
+  thinkMonster(e) {
+    const M = e.mon, B = M.def, now = this.time, mods = this.mods(e);
+    M.intent.set(0, 0, 0); M.run = false;
+    let target = null, dist = Infinity;
+    for (const o of this.entities.values()) {
+      if (o.team === e.team || !o.alive || o.ai) continue;
+      const d = o.position.distanceTo(e.position); if (d < dist) { dist = d; target = o; }
+    }
+    if (mods.stunned) { this.cancelWindup(e); M.dash = null; M.state = "stunned"; return; }
+    if (now < M.staggerUntil) { M.state = "stagger"; return; }
+    if (target && (dist < B.aggro || (M.aggro && dist < B.aggro * 1.8) || e.combatUntil > now)) M.aggro = true; else M.aggro = false;
+    const to = target ? target.position.clone().sub(e.position).setY(0) : new THREE.Vector3(), flat = to.length();
+    if (flat > 0.01) to.divideScalar(flat);
+    // bond en cours : on fonce, la morsure part au contact
+    if (M.dash) {
+      M.state = "dash"; M.intent.copy(M.dash.dir).multiplyScalar(M.dash.speed); M.run = true;
+      if (!M.dash.hit && target && flat < e.radius + target.radius + 0.55) { M.dash.hit = true; this.monsterHit(e, target, M.dash.atk, to); }
+      if (now >= M.dash.until) { M.busyUntil = now + M.dash.atk.recover; M.dash = null; }
+      return;
+    }
+    if (now < M.busyUntil) { M.state = "recover"; return; }
+    if (M.windup) {
+      M.state = "windup";
+      const w = M.windup, atk = w.atk;
+      // il suit sa cible pendant l'annonce, puis se fige juste avant de frapper
+      if (target && now < w.at - atk.windup * 0.3) e.facing.copy(to);
+      if (now < w.at) return;
+      M.windup = null; M.cd[atk.id] = now + atk.cooldown; M.next = now + B.every * (0.7 + Math.random() * 0.6); M.busyUntil = now + atk.recover;
+      this.emit({ type: "enemy_attack", id: e.id, attack: atk.id, kind: atk.kind, radius: atk.reach, arc: atk.arc });
+      if (!target) return;
+      const ang = e.facing.angleTo(to);
+      if (atk.kind === "melee" || atk.kind === "cone") { if (flat <= atk.reach + target.radius && ang <= THREE.MathUtils.degToRad(atk.arc / 2)) this.monsterHit(e, target, atk, to); }
+      else if (atk.kind === "aoe") { if (flat <= atk.reach + target.radius) this.monsterHit(e, target, atk, to); }
+      else if (atk.kind === "lunge") { M.dash = { dir: e.facing.clone(), speed: atk.speed, until: now + atk.dur, atk, hit: false }; M.busyUntil = 0; }
+      else if (atk.kind === "projectile") {
+        const origin = e.position.clone().add(new THREE.Vector3(0, B.flying ? 1.4 : 1.3, 0)).addScaledVector(e.facing, e.radius + 0.2);
+        this.spawnProjectile(e, atk.projectile, origin, target.position.clone().add(new THREE.Vector3(0, 1.0, 0)).sub(origin), { attack: true });
+      } else if (atk.kind === "blink") {
+        const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 1.5;
+        this.emit({ type: "enemy_blink", id: e.id, to: target.position.clone().add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)) });
+      }
+      return;
+    }
+    if (!M.aggro) {
+      // promenade : quelques pas au hasard, puis une pause
+      M.state = "idle";
+      if (now >= M.wanderAt) { M.wanderAt = now + 2 + Math.random() * 3; const a = Math.random() * Math.PI * 2; M.wander = Math.random() < 0.6 ? new THREE.Vector3(Math.cos(a), 0, Math.sin(a)) : null; }
+      if (M.wander) { M.intent.copy(M.wander).multiplyScalar(B.speed * 0.5); e.facing.copy(M.wander); M.state = "walk"; }
+      return;
+    }
+    e.combatUntil = Math.max(e.combatUntil, now + 6);
+    e.facing.copy(to);
+    // choisir une attaque à portée et prête
+    if (now >= M.next) {
+      const ok = B.attacks.filter((a) => flat >= (a.min || 0) && flat <= a.range && now >= (M.cd[a.id] || 0));
+      if (ok.length) {
+        const atk = ok[Math.floor(Math.random() * ok.length)];
+        M.windup = { atk, at: now + atk.windup }; M.state = "windup";
+        this.emit({ type: "enemy_windup", id: e.id, attack: atk.id, kind: atk.kind, windup: atk.windup, armor: !!atk.armor });
+        return;
+      }
+    }
+    // déplacement : approcher, reculer, ou tourner autour de la cible
+    if (now >= M.strafeAt) { M.strafeAt = now + 1.2 + Math.random() * 2; if (Math.random() < 0.5) M.strafe *= -1; }
+    if (flat > B.keep + 0.8) { M.run = flat > 5; M.intent.copy(to).multiplyScalar(M.run ? B.run : B.speed); M.state = M.run ? "run" : "walk"; }
+    else if (flat < B.keep - 0.7) { M.intent.copy(to).multiplyScalar(-B.speed * 0.7); M.state = "walk"; }
+    else { M.intent.set(-to.z, 0, to.x).multiplyScalar(M.strafe * B.speed * 0.55); M.state = "strafe"; }
+  }
+  cancelWindup(e) { if (e.mon && e.mon.windup) { e.mon.windup = null; this.emit({ type: "enemy_interrupt", id: e.id }); } }
+  monsterHit(e, target, atk, dir) {
+    this.dealDamage(e.id, target.id, atk.damage, { attack: true, enemy_attack: atk.id, direction: dir.clone(), push: atk.push || 2, knockdown: !!atk.knockdown });
   }
 
   // --- Dégâts ------------------------------------------------------------------------
@@ -379,6 +477,17 @@ class Sim {
       return;
     }
     t.health = Math.max(0, t.health - amount); t.lastHitAt = this.time;
+    // monstres : un coup les fait vaciller et annule leur attaque, sauf s'ils sont « blindés »
+    if (t.mon && !extra.dot) {
+      const armored = t.mon.windup && t.mon.windup.atk.armor && !extra.impact;
+      if (!armored) { t.mon.staggerUntil = this.time + (extra.stagger ?? (extra.impact ? 0.75 : 0.32)) * (t.mon.def.heavy ? 0.6 : 1); this.cancelWindup(t); t.mon.dash = null; }
+      t.mon.aggro = true;
+    }
+    // le joueur touché : court étourdissement, ou chute (knockdown) avec invincibilité pour se relever
+    if (!t.ai && extra.attack) {
+      t.busyUntil = Math.max(t.busyUntil, this.time + (extra.knockdown ? 1.0 : 0.18));
+      if (extra.knockdown) { t.invulnerableUntil = this.time + 1.25; t.queued = -1; t.queuedCount = 0; t.chain = null; }
+    }
     if (src && src.team !== t.team) { t.combatUntil = this.time + 12; src.combatUntil = this.time + 12; }
     if (src && !extra.dot && !extra.delay && !extra.reflected) {
       src.hitLog.push({ t: this.time, target: t.id, move: extra.move || extra.wave || "jab1", damage: amount });

@@ -41,14 +41,18 @@ const camera = new THREE.PerspectiveCamera(70, 1, 0.08, 4000);
 const SUN_DIR = new THREE.Vector3(-0.55, 0.5, -0.66).normalize();
 const sky = new THREE.Mesh(new THREE.SphereGeometry(2500, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false,
-  uniforms: { top: { value: new THREE.Color(0x7d92b2) }, horizon: { value: new THREE.Color(0xf2d3bd) }, ground: { value: new THREE.Color(0x8d8794) }, sunDir: { value: SUN_DIR } },
+  uniforms: { top: { value: new THREE.Color(0x7d92b2) }, horizon: { value: new THREE.Color(0xf2d3bd) }, ground: { value: new THREE.Color(0x8d8794) }, sunDir: { value: SUN_DIR }, night: { value: 0 }, sunDisc: { value: 1 }, time: { value: 0 } },
   vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-  fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 ground; uniform vec3 sunDir; varying vec3 vDir;
+  fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 ground; uniform vec3 sunDir; uniform float night; uniform float sunDisc; uniform float time; varying vec3 vDir;
+    float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
     void main(){ vec3 d = normalize(vDir); float h = d.y;
       vec3 c = h > 0.0 ? mix(horizon, top, pow(min(h * 1.6, 1.0), 0.7)) : mix(horizon, ground, min(-h * 6.0, 1.0));
-      c += vec3(1.0, 0.85, 0.7) * exp(-abs(h) * 22.0) * 0.18;
+      c += mix(vec3(1.0, 0.85, 0.7), vec3(1.0, 0.45, 0.7), night) * exp(-abs(h) * 22.0) * (0.18 + 0.12 * night);
       float s = max(dot(d, normalize(sunDir)), 0.0);
-      c += vec3(1.0, 0.86, 0.7) * (pow(s, 600.0) * 2.5 + pow(s, 12.0) * 0.18);
+      c += vec3(1.0, 0.86, 0.7) * (pow(s, 600.0) * 2.5 + pow(s, 12.0) * 0.18) * sunDisc;
+      // étoiles, qui scintillent un peu
+      vec3 cell = floor(d * 380.0); float st = hash(cell);
+      c += vec3(0.9, 0.92, 1.0) * step(0.9968, st) * night * smoothstep(0.02, 0.2, h) * (0.6 + 0.4 * sin(time * 3.0 + st * 80.0));
       gl_FragColor = vec4(c, 1.0); }`,
 }));
 scene.add(sky);
@@ -129,13 +133,29 @@ function buildTextures() {
       g.strokeStyle = "rgba(60,40,25,0.35)"; for (let k = 0; k < 4; k++) { g.beginPath(); const y = r * rh + range(4, rh - 6); g.moveTo(0, y); g.bezierCurveTo(w / 3, y + range(-3, 3), (2 * w) / 3, y + range(-3, 3), w, y); g.stroke(); } }
     g.fillStyle = "#3d2b1f"; for (let r = 0; r < rows; r++) g.fillRect(0, r * rh + rh - 3, w, 3);
   });
-  TEX.window = canvasTex(64, 64, (g) => {
-    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 64, 64);
-    g.fillStyle = "#cfcfd3"; g.fillRect(0, 61, 64, 3);
-    const grad = g.createLinearGradient(0, 14, 0, 44); grad.addColorStop(0, "#7d889c"); grad.addColorStop(1, "#4b5468");
-    g.fillStyle = grad; g.fillRect(16, 12, 32, 30);
-    g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(16, 12, 32, 3);
-    g.fillStyle = "#b9b9bf"; g.fillRect(14, 42, 36, 3);
+  // Fenêtres par blocs de 4 × 4 : la nuit, seules certaines s'allument (texture d'émission jumelle)
+  const lit = [];
+  for (let k = 0; k < 16; k++) lit.push(rand() < 0.42 ? pick(["#ffd28a", "#ffe2b0", "#ffc070", "#d8e6ff"]) : null);
+  TEX.window = canvasTex(256, 256, (g) => {
+    g.fillStyle = "#ffffff"; g.fillRect(0, 0, 256, 256);
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) {
+      const x = q * 64, y = r * 64;
+      g.fillStyle = "#cfcfd3"; g.fillRect(x, y + 61, 64, 3);
+      const grad = g.createLinearGradient(0, y + 14, 0, y + 44); grad.addColorStop(0, "#7d889c"); grad.addColorStop(1, "#4b5468");
+      g.fillStyle = grad; g.fillRect(x + 16, y + 12, 32, 30);
+      g.fillStyle = "rgba(255,255,255,0.18)"; g.fillRect(x + 16, y + 12, 32, 3);
+      g.fillStyle = "#b9b9bf"; g.fillRect(x + 14, y + 42, 36, 3);
+    }
+  });
+  TEX.windowLit = canvasTex(256, 256, (g) => {
+    g.fillStyle = "#000000"; g.fillRect(0, 0, 256, 256);
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 4; q++) {
+      const col = lit[r * 4 + q]; if (!col) continue;
+      const x = q * 64, y = r * 64, grad = g.createLinearGradient(0, y + 12, 0, y + 42);
+      grad.addColorStop(0, col); grad.addColorStop(1, "#7a4a20");
+      g.fillStyle = grad; g.fillRect(x + 16, y + 12, 32, 30);
+      if (rand() < 0.5) { g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(x + 16 + rand() * 20, y + 12, 6 + rand() * 8, 30); } // rideau
+    }
   });
   TEX.houseWindow = canvasTex(64, 64, (g) => {
     g.fillStyle = "#f2efe8"; g.fillRect(0, 0, 64, 64);
@@ -248,8 +268,12 @@ function lambert(hex, extra = {}) {
   if (!MATS[key]) MATS[key] = new THREE.MeshLambertMaterial(Object.assign({ color: hex }, extra));
   return MATS[key];
 }
+// Matériaux qui s'allument la nuit (fenêtres, enseignes, vitrines, lampes) :
+// world.js fait varier leur émission selon l'heure.
+const NIGHT_MATS = [];
+function nightMat(m, day, night) { NIGHT_MATS.push({ m, day, night }); m.emissiveIntensity = day; return m; }
 function texMat(tex, extra = {}) { return new THREE.MeshLambertMaterial(Object.assign({ map: tex }, extra)); }
-function litMat(tex) { return new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.45 }); }
+function litMat(tex) { return nightMat(new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex }), 0.45, 1.15); }
 
 function addGeo(geo, mat, matrix, cast = true) {
   let g = geo.index ? geo.toNonIndexed() : geo;
@@ -312,7 +336,7 @@ function fcollider(F, u, v, w, su, sv, sw, opts) {
 }
 // Panneau à deux faces perpendiculaire à une façade (enseigne « drapeau »)
 function bladeSign(F, u, v, w, width, height, tex) {
-  const center = F.p(u, v, w), mat = texMat(tex, { emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 });
+  const center = F.p(u, v, w), mat = nightMat(texMat(tex, { emissive: 0xffffff, emissiveMap: tex }), 0.25, 1.3);
   for (const s of [1, -1]) { const S = frame(center, F.t.clone().multiplyScalar(s)); fplane(S, 0, 0, 0.07, width, height, mat); }
   addGeo(new THREE.BoxGeometry(0.12, height + 0.1, width + 0.1), lambert(0x2a2830), F.m(u, v, w, 0, Math.PI / 2), true);
 }

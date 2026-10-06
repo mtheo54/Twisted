@@ -8,6 +8,11 @@ const DATA = {
       jump_velocity: 8.2, double_jump_velocity: 7.6, super_jump_velocity: 17, gravity: 22, wall_jump: { up: 8.6, push: 7.2 }, wall_slide_speed: 3.2,
       dodge: { distance: 5.2, duration: 0.26, cooldown: 0.7, iframes: 0.22 } },
     training_dummy: { team: 2, max_health: 160, radius: 0.55, respawn_delay: 3, ai: "speaker" },
+    // Bestiaire : voir « bestiary » plus bas pour leurs attaques
+    gresillon:  { team: 2, max_health: 40,  radius: 0.4,  ai: "monster" },
+    cable:      { team: 2, max_health: 95,  radius: 0.45, ai: "monster" },
+    gueule:     { team: 2, max_health: 200, radius: 0.75, ai: "monster" },
+    ombre_sub:  { team: 2, max_health: 120, radius: 0.6,  ai: "monster" },
   },
   // Coups et enchaînements : « next » = coup suivant si l'on reclique à temps.
   moves: {
@@ -16,7 +21,34 @@ const DATA = {
     drop:    { damage: 24, range: 2.2, arc_deg: 150, windup: 0.2,  recover: 0.5,  lunge: 5.5, launch: [17, 7], hitstop: 0.14, impact: true, label: "DROP!" },
     counter: { damage: 14, range: 2.4, arc_deg: 170, windup: 0.04, recover: 0.3,  window: 0.45, next: "jab2", lunge: 10, push: 5, hitstop: 0.08, ghost: true, label: "CONTRE-GLITCH" },
     dive:    { damage: 18, radius: 3.2, launch: [9, 6.5], hitstop: 0.12, impact: true, dive_speed: 26, label: "PLONGÉE" },
+    // Baguettes : rapides, quatre coups, le dernier est un roulement de 5 frappes
+    st1: { damage: 6, range: 2.0, arc_deg: 120, windup: 0.05, recover: 0.13, window: 0.4, next: "st2", lunge: 3, push: 0.8, hitstop: 0.035 },
+    st2: { damage: 6, range: 2.0, arc_deg: 120, windup: 0.05, recover: 0.13, window: 0.4, next: "st3", lunge: 3, push: 0.8, hitstop: 0.035 },
+    st3: { damage: 7, range: 2.0, arc_deg: 140, windup: 0.06, recover: 0.16, window: 0.4, next: "st4", lunge: 3.4, push: 1, hitstop: 0.04 },
+    st4: { damage: 4, hits: 5, every: 0.06, range: 2.2, arc_deg: 150, windup: 0.08, recover: 0.4, lunge: 4, push: 0.5, launch: [9, 6], hitstop: 0.03, impact: true, label: "ROULEMENT!" },
+    // Pied de micro : bâton, grande allonge, balayage puis moulinet tout autour
+    ms1: { damage: 11, range: 2.9, arc_deg: 200, windup: 0.12, recover: 0.24, window: 0.45, next: "ms2", lunge: 2.5, push: 2.4, hitstop: 0.06 },
+    ms2: { damage: 13, range: 3.4, arc_deg: 50, windup: 0.1, recover: 0.26, window: 0.45, next: "ms3", lunge: 5, push: 3.5, hitstop: 0.07 },
+    ms3: { damage: 9, hits: 3, every: 0.12, range: 3.2, arc_deg: 360, windup: 0.14, recover: 0.42, lunge: 1.5, push: 1.5, launch: [8, 7], hitstop: 0.05, impact: true, label: "MOULINET!" },
+    // Guitare-hache : lente et lourde, le 3e coup est un accord qui fait trembler le sol
+    gt1: { damage: 17, range: 2.7, arc_deg: 150, windup: 0.2, recover: 0.32, window: 0.5, next: "gt2", lunge: 3, push: 3, hitstop: 0.09, stagger: 0.55 },
+    gt2: { damage: 19, range: 2.7, arc_deg: 150, windup: 0.2, recover: 0.34, window: 0.5, next: "gt3", lunge: 3, push: 3.2, hitstop: 0.09, stagger: 0.55 },
+    gt3: { damage: 34, range: 3.8, arc_deg: 360, windup: 0.36, recover: 0.6, lunge: 2, launch: [12, 9], hitstop: 0.16, impact: true, label: "POWER CHORD!" },
+    // Micro-fléau : micro au bout de son câble, très longue portée, le 3e coup ramène l'ennemi
+    fl1: { damage: 9, range: 4.8, arc_deg: 60, windup: 0.12, recover: 0.22, window: 0.45, next: "fl2", lunge: 1, push: 1.5, hitstop: 0.05 },
+    fl2: { damage: 10, range: 4.8, arc_deg: 60, windup: 0.12, recover: 0.22, window: 0.45, next: "fl3", lunge: 1, push: 1.5, hitstop: 0.05 },
+    fl3: { damage: 14, range: 5.6, arc_deg: 70, windup: 0.2, recover: 0.4, lunge: 0, pull: 7, stun: 1, hitstop: 0.1, impact: true, label: "LARSEN-CROCHET!" },
   },
+  // Armes (pas d'armes à feu). « combo » = premier coup ; les suivants viennent de « next ».
+  // On en change avec X ou la molette. Au départ : les poings ; les autres armes sont données par les PNJ.
+  weapons: {
+    fists:     { name: "Poings", short: "✊", color: "#f3ece6", combo: "jab1", counter: "counter", desc: "Jab, jab, puis un drop qui projette." },
+    sticks:    { name: "Baguettes", short: "BAG", color: "#e8c08a", combo: "st1", counter: "counter", hint: "Kenji, le batteur du carrefour, en a toujours une paire de rechange.", desc: "Très rapides : trois frappes puis un roulement de 5 coups qui projette." },
+    mic_stand: { name: "Pied de micro", short: "PIED", color: "#c9d2e6", combo: "ms1", counter: "counter", hint: "DJ Taro, sur la place du parc, t'en confiera une… si tu l'aides.", desc: "Bâton à grande allonge : balayage, estoc, puis moulinet tout autour." },
+    guitar:    { name: "Guitare-hache", short: "GTR", color: "#ff7a5c", combo: "gt1", counter: "counter", hint: "Rin, la luthière de la rue commerçante, cherche quelque chose de précieux.", desc: "Lente et lourde : deux grands coups, puis un power chord qui fait trembler le sol." },
+    flail:     { name: "Micro-fléau", short: "FLÉAU", color: "#b9a6ff", combo: "fl1", counter: "counter", hint: "Yuna chante devant le karaoké, la nuit tombée.", desc: "Le micro au bout de son câble : frappe de loin, le 3e coup ramène l'ennemi et l'étourdit." },
+  },
+  start_weapons: ["fists"],
   // Sorts (effets audio). Le Bitcrush est l'esquive de base, toujours sur C.
   spells: {
     bitcrush:   { name: "Bitcrush", short: "BIT", color: "#9fe6ff", cooldown: 0.7, desc: "Esquive de base : onde de pixels qui te propulse." },
@@ -92,6 +124,41 @@ const DATA = {
     larsen: { windup: 0.6, speed: 11, damage: 12, homing: 0.6, range: 30 },
     boom:   { windup: 0.55, radius: 3.4, damage: 10, push: 4 },
     every: 2.6, aggro: 12,
+    // projectiles des monstres
+    spark: { speed: 15, damage: 9, homing: 0.35, range: 22 },
+    sub:   { speed: 6.5, damage: 12, homing: 1.3, range: 24 },
+  },
+  // Bestiaire. Chaque attaque est annoncée (windup) : on peut l'esquiver ou la contrer au Gater.
+  //  kind : melee (coup devant soi), lunge (bond sur la cible), projectile, aoe (onde autour), cone (cri devant), blink (téléportation)
+  //  armor : le monstre n'est pas interrompu par tes coups pendant l'annonce.
+  bestiary: {
+    gresillon: { name: "Grésillon", night: false, desc: "Petit parasite de larsen, pattes en fil de cuivre. Bondit sur toi.",
+      speed: 2.4, run: 5.2, keep: 1.2, aggro: 14, every: 1.4,
+      attacks: [
+        { id: "morsure", kind: "melee", range: 1.4, reach: 1.5, arc: 100, windup: 0.32, recover: 0.5, damage: 6, push: 2, cooldown: 1.2 },
+        { id: "bond", kind: "lunge", min: 2.4, range: 6.5, windup: 0.5, recover: 0.7, damage: 9, speed: 13, dur: 0.38, push: 3, cooldown: 3.5 },
+      ] },
+    cable: { name: "Câblé", night: false, desc: "Un corps de câbles emmêlés et une tête de jack. Fouette de loin, envoie des étincelles.",
+      speed: 1.8, run: 4.4, keep: 2.6, aggro: 16, every: 1.9,
+      attacks: [
+        { id: "fouet", kind: "melee", range: 3.4, reach: 3.6, arc: 70, windup: 0.55, recover: 0.6, damage: 11, push: 3.5, cooldown: 2.4 },
+        { id: "griffe", kind: "melee", range: 1.8, reach: 2.0, arc: 120, windup: 0.32, recover: 0.45, damage: 8, push: 2, cooldown: 1.4 },
+        { id: "etincelle", kind: "projectile", min: 5, range: 15, windup: 0.75, recover: 0.6, projectile: "spark", cooldown: 4 },
+      ] },
+    gueule: { name: "Gueule-enceinte", night: true, desc: "Une enceinte affamée sur de longues pattes de câble. Sa membrane est une gueule.",
+      speed: 1.6, run: 5.6, keep: 2.2, aggro: 20, every: 1.7, heavy: true,
+      attacks: [
+        { id: "morsure", kind: "lunge", min: 2.2, range: 6, windup: 0.6, recover: 0.9, damage: 17, speed: 14, dur: 0.36, push: 6, knockdown: true, armor: true, cooldown: 3.2 },
+        { id: "griffes", kind: "melee", range: 2.4, reach: 2.7, arc: 130, windup: 0.42, recover: 0.55, damage: 11, push: 3, cooldown: 1.5 },
+        { id: "cri", kind: "cone", min: 2, range: 8, reach: 8.5, arc: 60, windup: 0.95, recover: 0.8, damage: 14, push: 7, armor: true, cooldown: 6 },
+      ] },
+    ombre_sub: { name: "Ombre sub", night: true, flying: true, desc: "Basse fréquence qui flotte, traînant ses câbles. Pulse, disparaît, réapparaît.",
+      speed: 2.2, run: 3.6, keep: 4.5, aggro: 18, every: 2.0,
+      attacks: [
+        { id: "pulsation", kind: "aoe", range: 3.4, reach: 3.8, windup: 0.85, recover: 0.7, damage: 13, push: 6, armor: true, cooldown: 3.5 },
+        { id: "infrabasse", kind: "projectile", min: 3, range: 16, windup: 0.7, recover: 0.6, projectile: "sub", cooldown: 3 },
+        { id: "fondu", kind: "blink", min: 7, range: 30, windup: 0.5, recover: 0.4, cooldown: 7 },
+      ] },
   },
 };
 const STATS = DATA.actors.player;

@@ -10,6 +10,7 @@ const P = {
   lungeLeft: 0, lungeTotal: 1, lungeSpeed: 0, ghost: 0, attackSlow: 0, diving: false, aiming: false, wave: "sine",
   sprint: 0, idle: 0, lying: false, waved: 0, t: 0, phase: 0, speedRatio: 0, flatSpeed: 0, wall: null, secrets: 0, dead: false,
   mods: null, healAcc: 0, healTimer: 0, trailTimer: 0, ringTimer: 0,
+  weapon: "fists", knock: 0, combat: 0, flailAt: -1, talking: null,
 };
 const R = 0.35, H = 1.8, STEP_UP = 0.42;
 P.id = sim.spawn("player", P.pos);
@@ -41,12 +42,13 @@ let paused = false;
 addEventListener("keydown", (e) => {
   if (e.code === "Tab") { e.preventDefault(); toggleLoadout(); return; }
   if (paused) { if (e.code === "Escape") toggleLoadout(false); return; }
-  if (["Space", "ShiftLeft", "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyR", "KeyT"].includes(e.code)) e.preventDefault();
+  if (["Space", "ShiftLeft", "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyR", "KeyT", "KeyF", "KeyX"].includes(e.code)) e.preventDefault();
   if (!keys.has(e.code)) pressed.add(e.code);
   keys.add(e.code);
   if (e.code === "KeyP") setPixelMode(!PIX.on);
   if (e.code === "KeyH") { const h = document.getElementById("help"); h.hidden = !h.hidden; }
   if (e.code === "KeyM") { muted = !muted; showBanner(muted ? "Son coupé" : "Son activé", 0.8); }
+  if (e.code === "KeyN") { skipTime(); showBanner(isNight() ? "Le jour se lève…" : "La nuit tombe…", 1.4); }
 });
 addEventListener("keyup", (e) => keys.delete(e.code));
 addEventListener("blur", () => { keys.clear(); P.aiming = false; });
@@ -70,6 +72,8 @@ renderer.domElement.addEventListener("mousedown", (e) => {
   if (e.button === 2) P.aiming = true;
 });
 addEventListener("mouseup", (e) => { if (e.button === 2) P.aiming = false; });
+// molette : arme suivante / précédente
+addEventListener("wheel", (e) => { if (paused || !overlay.hidden || P.talking) return; cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
 addEventListener("mousemove", (e) => {
   if (paused || (!locked() && !(e.buttons & 2))) return;
   if (performance.now() - lockTime < 150 || Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
@@ -110,6 +114,11 @@ function renderLoadout() {
     grid.innerHTML = DATA.fusions.map((f) =>
       `<button type="button" class="lo-spell${keyOf(f.id) ? " on" : ""}" data-pick="${f.id}"><span class="lo-top"><b style="color:${FUSION_COLOR}">${f.name}</b><em>${keyOf(f.id)}</em></span><span class="lo-mix">${nameOf(f.a)} + ${nameOf(f.b)}</span><span class="lo-desc">${f.desc}</span><span class="lo-cd">Recharge ${f.cooldown} s${f.combat_only ? " · en combat" : ""}</span></button>`).join("");
   }
+  const wpEl = document.getElementById("loWeapons"), pe = sim.entities.get(P.id);
+  wpEl.innerHTML = Object.entries(DATA.weapons).map(([id, w]) => pe.weapons.has(id)
+    ? `<button type="button" class="lo-spell${P.weapon === id ? " on" : ""}" data-weapon="${id}"><span class="lo-top"><b style="color:${w.color}">${w.name}</b><em>${P.weapon === id ? "en main" : "prendre"}</em></span><span class="lo-desc">${w.desc}</span></button>`
+    : `<div class="lo-spell locked"><span class="lo-top"><b>???</b><em>à trouver</em></span><span class="lo-desc">${w.hint || ""}</span></div>`).join("");
+  wpEl.querySelectorAll("[data-weapon]").forEach((b) => b.addEventListener("click", () => { sim.queue({ type: "weapon", source: P.id, weapon: b.dataset.weapon }); sim.step(0); for (const ev of sim.drain()) onEvent(ev); renderLoadout(); }));
   waves.innerHTML = ["sine", "square", "triangle"].map((id) => { const w = DATA.waves[id]; return `<div class="lo-spell on"><span class="lo-top"><b style="color:${w.color}">${w.short} ${w.name}</b><em>touche ${w.key}</em></span><span class="lo-desc">${w.desc}</span><span class="lo-cd">Recharge ${w.cooldown} s</span></div>`; }).join("");
   slots.querySelectorAll("[data-slot]").forEach((b) => b.addEventListener("click", () => { selectedSlot = +b.dataset.slot; renderLoadout(); }));
   grid.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
@@ -125,12 +134,14 @@ const spellbar = document.getElementById("spellbar");
 let slotEls = [];
 function buildSpellBar() {
   const sb = DATA.spells.bitcrush;
-  const items = [{ key: "C", id: "bitcrush", short: sb.short, color: sb.color }, ...SLOTS.map((s, i) => { const inf = slotInfo(i); return { key: s.label, id: inf.key, short: inf.short, color: inf.color, fusion: !!inf.fusion }; }),
+  const wp = DATA.weapons[P.weapon];
+  const items = [{ key: "X", id: "weapon", short: wp.short, color: wp.color, weapon: true }, { sep: true }, { key: "C", id: "bitcrush", short: sb.short, color: sb.color }, ...SLOTS.map((s, i) => { const inf = slotInfo(i); return { key: s.label, id: inf.key, short: inf.short, color: inf.color, fusion: !!inf.fusion }; }),
     { sep: true }, ...["sine", "square", "triangle"].map((id) => ({ key: DATA.waves[id].key, id, wave: true, short: DATA.waves[id].short, color: DATA.waves[id].color }))];
-  spellbar.innerHTML = items.map((it) => it.sep ? `<i class="sep"></i>` : `<div class="slot${it.wave ? " wave" : ""}${it.fusion ? " fusion" : ""}" data-id="${it.id}"><span class="cd"></span><kbd>${it.key}</kbd><b style="color:${it.color}">${it.short}</b><small></small></div>`).join("");
+  spellbar.innerHTML = items.map((it) => it.sep ? `<i class="sep"></i>` : `<div class="slot${it.wave ? " wave" : ""}${it.fusion ? " fusion" : ""}${it.weapon ? " weapon" : ""}" data-id="${it.id}"><span class="cd"></span><kbd>${it.key}</kbd><b style="color:${it.color}">${it.short}</b><small></small></div>`).join("");
   slotEls = [...spellbar.querySelectorAll(".slot")].map((el) => ({ el, id: el.dataset.id, cd: el.querySelector(".cd"), txt: el.querySelector("small") }));
 }
 buildSpellBar();
+function updateWeaponSlot() { const s = slotEls.find((x) => x.id === "weapon"); if (!s) return; const w = DATA.weapons[P.weapon], b = s.el.querySelector("b"); b.textContent = w.short; b.style.color = w.color; s.el.title = w.name; }
 function flashSlot(id) { const s = slotEls.find((x) => x.id === id); if (s) { s.el.classList.remove("deny"); void s.el.offsetWidth; s.el.classList.add("deny"); } }
 
 const facing = () => new THREE.Vector3(-Math.sin(P.facingYaw), 0, -Math.cos(P.facingYaw));
@@ -138,35 +149,112 @@ const lerpAngle = (a, b, t) => { const d = ((((b - a + Math.PI) % (Math.PI * 2))
 const wrapAngle = (a) => ((((a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
 
 // ============================================================================
-// Animation : poses clés + ressorts (pour le bonhomme et son double fantôme)
+// Animation : poses clés + ressorts (pour le bonhomme, son double fantôme,
+// les PNJ et les monstres humanoïdes).
+// Repères : épaule x+ = bras vers l'avant/le haut, épaule z+ = bras droit vers
+// l'extérieur (z- pour le gauche), coude x+ = plier, taille y+ = buste vers la
+// gauche, taille x+ = se pencher en avant, hanche x+ = jambe en avant, genou x- = plier.
 // ============================================================================
-const GUARD = { waist: { x: 0.05, y: 0 }, shoulderL: { x: 0.55, z: -0.2 }, elbowL: { x: 1.8 }, shoulderR: { x: 0.55, z: 0.2 }, elbowR: { x: 1.8 } };
+const GUARD = { waist: { x: 0.08, y: 0.25 }, shoulderL: { x: 0.6, z: -0.25 }, elbowL: { x: 1.9 }, shoulderR: { x: 0.5, z: 0.25 }, elbowR: { x: 1.9 }, neck: { x: 0.08 },
+  hipR: { x: -0.15, z: 0.08 }, hipL: { x: 0.3, z: -0.08 }, kneeR: { x: -0.35 }, kneeL: { x: -0.4 } };
 function punchKeys(side, w) {
   const o = side === "R" ? "L" : "R", s = side === "R" ? 1 : -1;
-  const strike = { waist: { x: 0.15, y: 0.5 * s }, ["shoulder" + side]: { x: 1.55, z: 0.05 * s }, ["elbow" + side]: { x: 0.05 }, ["shoulder" + o]: { x: 0.45, z: -0.25 * s }, ["elbow" + o]: { x: 1.8 } };
+  const strike = { waist: { x: 0.18, y: 0.65 * s }, chest: { y: 0.25 * s }, ["shoulder" + side]: { x: 1.5, z: 0.05 * s }, ["elbow" + side]: { x: 0.05 }, ["shoulder" + o]: { x: 0.5, z: -0.3 * s }, ["elbow" + o]: { x: 1.9 },
+    ["hip" + o]: { x: 0.45 }, ["knee" + o]: { x: -0.5 }, ["hip" + side]: { x: -0.35 }, ["knee" + side]: { x: -0.15 } };
   return [
-    { t: 0, k: 1.6, p: { waist: { x: 0.05, y: -0.4 * s }, ["shoulder" + side]: { x: -0.4, z: 0.25 * s }, ["elbow" + side]: { x: 2.0 }, ["shoulder" + o]: { x: 0.55, z: -0.2 * s }, ["elbow" + o]: { x: 1.7 } } },
+    { t: 0, k: 1.6, p: { waist: { x: 0.05, y: -0.45 * s }, chest: { y: -0.2 * s }, ["shoulder" + side]: { x: -0.3, z: 0.3 * s }, ["elbow" + side]: { x: 2.1 }, ["shoulder" + o]: { x: 0.6, z: -0.25 * s }, ["elbow" + o]: { x: 1.8 } } },
     { t: w, k: 4.5, p: strike }, { t: w + 0.12, p: strike }, { t: w + 0.32, p: GUARD },
   ];
+}
+// frappe de baguette : bras levé, poignet cassé, puis le coup part vers l'avant-bas
+function stickKeys(side, w, hold = 0.08) {
+  const o = side === "R" ? "L" : "R", s = side === "R" ? 1 : -1;
+  const up = { waist: { x: -0.05, y: -0.3 * s }, ["shoulder" + side]: { x: 2.5, z: 0.25 * s }, ["elbow" + side]: { x: 1.5 }, ["shoulder" + o]: { x: 0.8, z: -0.2 * s }, ["elbow" + o]: { x: 1.3 } };
+  const hit = { waist: { x: 0.2, y: 0.4 * s }, ["shoulder" + side]: { x: 0.95, z: 0.05 * s }, ["elbow" + side]: { x: 0.15 }, ["shoulder" + o]: { x: 1.1, z: -0.2 * s }, ["elbow" + o]: { x: 1.5 },
+    ["hip" + o]: { x: 0.35 }, ["knee" + o]: { x: -0.45 }, ["hip" + side]: { x: -0.25 } };
+  return [{ t: 0, k: 2, p: up }, { t: w, k: 6, p: hit }, { t: w + hold, p: hit }];
 }
 const ANIMS = {
   jab1: (w) => punchKeys("L", w),
   jab2: (w) => punchKeys("R", w),
   drop: (w) => {
-    const a = { waist: { x: -0.15, y: -0.95 }, shoulderR: { x: -1.2, z: 0.6 }, elbowR: { x: 1.4 }, shoulderL: { x: 0.9, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.45 }, kneeL: { x: -0.7 }, hipR: { x: -0.35 }, kneeR: { x: -0.9 } };
-    const s = { waist: { x: 0.4, y: 1.0 }, shoulderR: { x: 1.75, z: 0.1 }, elbowR: { x: 0 }, shoulderL: { x: -0.7, z: -0.6 }, elbowL: { x: 0.9 }, hipL: { x: 0.8 }, kneeL: { x: -0.3 }, hipR: { x: -0.7 }, kneeR: { x: -0.25 } };
+    const a = { waist: { x: -0.15, y: -1.0 }, chest: { y: -0.4 }, shoulderR: { x: -1.2, z: 0.6 }, elbowR: { x: 1.4 }, shoulderL: { x: 0.9, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.5 }, kneeL: { x: -0.8 }, hipR: { x: -0.3 }, kneeR: { x: -1.0 } };
+    const s = { waist: { x: 0.45, y: 1.05 }, chest: { y: 0.45 }, shoulderR: { x: 1.75, z: 0.1 }, elbowR: { x: 0 }, shoulderL: { x: -0.7, z: -0.6 }, elbowL: { x: 0.9 }, hipL: { x: 0.85 }, kneeL: { x: -0.4 }, hipR: { x: -0.7 }, kneeR: { x: -0.25 } };
     return [{ t: 0, k: 1.4, p: a }, { t: w * 0.85, p: a }, { t: w, k: 6, p: s }, { t: w + 0.3, p: s }, { t: w + 0.6, p: GUARD }];
   },
   counter: (w) => {
-    const legs = { hipR: { x: 0.5 }, kneeR: { x: -1.0 }, hipL: { x: -0.4 }, kneeL: { x: -0.5 } };
+    const legs = { hipR: { x: 0.55 }, kneeR: { x: -1.0 }, hipL: { x: -0.45 }, kneeL: { x: -0.5 } };
     const a = Object.assign({ waist: { x: 0.25, y: -1.3 }, shoulderR: { x: 0.4, z: 1.3 }, elbowR: { x: 0.9 }, shoulderL: { x: -0.4, z: -0.5 }, elbowL: { x: 1.2 } }, legs);
     const s = Object.assign({ waist: { x: 0.2, y: 1.1 }, shoulderR: { x: 1.2, z: 1.0 }, elbowR: { x: 0.05 }, shoulderL: { x: -0.8, z: -0.7 }, elbowL: { x: 0.6 } }, legs);
     return [{ t: 0, k: 2, p: a }, { t: w + 0.05, k: 6, p: s }, { t: w + 0.2, p: s }, { t: w + 0.38, p: GUARD }];
+  },
+  // --- Baguettes ---
+  st1: (w) => stickKeys("R", w), st2: (w) => stickKeys("L", w),
+  // les deux baguettes ensemble
+  st3: (w) => { const r = stickKeys("R", w), l = stickKeys("L", w); return r.map((k, i) => ({ t: k.t, k: k.k, p: Object.assign({}, l[i].p, k.p, { shoulderL: l[i].p.shoulderL, elbowL: l[i].p.elbowL, waist: { x: k.p.waist.x, y: 0 } }) })); },
+  st4: (w) => {
+    const keys = [{ t: 0, k: 2, p: { waist: { x: -0.1 }, shoulderR: { x: 2.4, z: 0.3 }, elbowR: { x: 1.4 }, shoulderL: { x: 2.4, z: -0.3 }, elbowL: { x: 1.4 }, hipR: { x: 0.3 }, kneeR: { x: -0.6 }, hipL: { x: 0.3 }, kneeL: { x: -0.6 } } }];
+    for (let i = 0; i < 6; i++) { const r = i % 2 === 0; keys.push({ t: w + i * 0.06, k: 7, p: { waist: { x: 0.25, y: r ? 0.25 : -0.25 }, shoulderR: { x: r ? 0.9 : 2.0, z: 0.2 }, elbowR: { x: r ? 0.15 : 1.2 }, shoulderL: { x: r ? 2.0 : 0.9, z: -0.2 }, elbowL: { x: r ? 1.2 : 0.15 }, hipR: { x: 0.4 }, kneeR: { x: -0.7 }, hipL: { x: -0.2 }, kneeL: { x: -0.3 } } }); }
+    keys.push({ t: w + 0.32, k: 8, p: { waist: { x: -0.2 }, shoulderR: { x: 2.9, z: 0.5 }, elbowR: { x: 0.2 }, shoulderL: { x: 2.9, z: -0.5 }, elbowL: { x: 0.2 }, neck: { x: -0.3 } } });
+    keys.push({ t: w + 0.5, p: { waist: { x: -0.2 }, shoulderR: { x: 2.9, z: 0.5 }, elbowR: { x: 0.2 }, shoulderL: { x: 2.9, z: -0.5 }, elbowL: { x: 0.2 } } });
+    return keys;
+  },
+  // --- Pied de micro ---
+  ms1: (w) => {
+    const a = { waist: { x: 0.05, y: -1.0 }, chest: { y: -0.4 }, shoulderR: { x: 0.9, z: 1.35 }, elbowR: { x: 0.2 }, shoulderL: { x: 0.8, z: -0.4 }, elbowL: { x: 1.6 }, hipL: { x: 0.35 }, kneeL: { x: -0.5 } };
+    const s = { waist: { x: 0.15, y: 1.1 }, chest: { y: 0.45 }, shoulderR: { x: 0.95, z: -0.45 }, elbowR: { x: 0.15 }, shoulderL: { x: 0.3, z: -0.7 }, elbowL: { x: 0.9 }, hipL: { x: 0.45 }, kneeL: { x: -0.6 }, hipR: { x: -0.35 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 5, p: s }, { t: w + 0.15, p: s }];
+  },
+  ms2: (w) => {
+    const a = { waist: { x: -0.05, y: -0.6 }, shoulderR: { x: 0.5, z: 0.3 }, elbowR: { x: 2.0 }, shoulderL: { x: 1.0, z: -0.1 }, elbowL: { x: 1.4 }, hipR: { x: -0.3 }, kneeR: { x: -0.5 }, hipL: { x: 0.3 }, kneeL: { x: -0.4 } };
+    const s = { waist: { x: 0.35, y: 0.35 }, shoulderR: { x: 1.05, z: 0.05 }, elbowR: { x: 0 }, shoulderL: { x: 1.2, z: 0.1 }, elbowL: { x: 0.6 }, hipL: { x: 0.8 }, kneeL: { x: -0.6 }, hipR: { x: -0.6 }, kneeR: { x: -0.1 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 7, p: s }, { t: w + 0.16, p: s }];
+  },
+  // moulinet : bras tendu sur le côté, tout le corps fait un tour (voir spinBody)
+  ms3: (w) => { const p = { waist: { x: 0.15 }, shoulderR: { x: 0.95, z: 1.45 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.5, z: -1.2 }, elbowL: { x: 0.4 }, hipR: { x: 0.35, z: 0.2 }, kneeR: { x: -0.7 }, hipL: { x: 0.35, z: -0.2 }, kneeL: { x: -0.7 } }; return [{ t: 0, k: 3, p }, { t: w + 0.42, p }]; },
+  // --- Guitare-hache ---
+  gt1: (w) => {
+    const a = { waist: { x: -0.15, y: -0.75 }, chest: { y: -0.35 }, shoulderR: { x: 2.7, z: 0.6 }, elbowR: { x: 0.9 }, shoulderL: { x: 1.6, z: 0.3 }, elbowL: { x: 1.4 }, hipR: { x: -0.2 }, kneeR: { x: -0.5 } };
+    const s = { waist: { x: 0.4, y: 0.75 }, chest: { y: 0.3 }, shoulderR: { x: 0.95, z: -0.3 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.6, z: -0.5 }, elbowL: { x: 1.0 }, hipL: { x: 0.6 }, kneeL: { x: -0.7 }, hipR: { x: -0.45 }, kneeR: { x: -0.2 } };
+    return [{ t: 0, k: 1.4, p: a }, { t: w * 0.9, p: a }, { t: w, k: 6, p: s }, { t: w + 0.22, p: s }];
+  },
+  gt2: (w) => {
+    const a = { waist: { x: 0.05, y: 0.9 }, chest: { y: 0.35 }, shoulderR: { x: 1.7, z: -0.7 }, elbowR: { x: 1.5 }, shoulderL: { x: 0.4, z: -0.5 }, elbowL: { x: 1.2 } };
+    const s = { waist: { x: 0.35, y: -0.8 }, chest: { y: -0.35 }, shoulderR: { x: 1.2, z: 1.1 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.3, z: -0.4 }, elbowL: { x: 1.4 }, hipR: { x: 0.55 }, kneeR: { x: -0.7 }, hipL: { x: -0.4 } };
+    return [{ t: 0, k: 1.4, p: a }, { t: w * 0.9, p: a }, { t: w, k: 6, p: s }, { t: w + 0.22, p: s }];
+  },
+  gt3: (w) => {
+    const a = { waist: { x: -0.35 }, chest: { x: -0.15 }, shoulderR: { x: 3.1, z: 0.2 }, elbowR: { x: 0.6 }, shoulderL: { x: 3.0, z: -0.2 }, elbowL: { x: 0.8 }, hipR: { x: 0.6 }, kneeR: { x: -1.2 }, hipL: { x: 0.2 }, kneeL: { x: -0.6 }, neck: { x: -0.25 } };
+    const s = { waist: { x: 0.75 }, chest: { x: 0.2 }, shoulderR: { x: 0.85, z: 0.05 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.9, z: -0.05 }, elbowL: { x: 0.2 }, hipR: { x: 1.0 }, kneeR: { x: -1.6 }, hipL: { x: -0.4 }, kneeL: { x: -0.9 }, neck: { x: 0.3 } };
+    return [{ t: 0, k: 1.3, p: a }, { t: w * 0.85, p: a }, { t: w, k: 8, p: s }, { t: w + 0.4, p: s }];
+  },
+  // --- Micro-fléau ---
+  fl1: (w) => {
+    const a = { waist: { x: 0.05, y: -0.8 }, shoulderR: { x: 1.3, z: 1.3 }, elbowR: { x: 0.4 }, shoulderL: { x: 0.6, z: -0.3 }, elbowL: { x: 1.7 } };
+    const s = { waist: { x: 0.2, y: 0.95 }, shoulderR: { x: 1.35, z: -0.35 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.4, z: -0.6 }, elbowL: { x: 1.4 }, hipL: { x: 0.4 }, kneeL: { x: -0.5 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 6, p: s }, { t: w + 0.15, p: s }];
+  },
+  fl2: (w) => {
+    const a = { waist: { x: 0.05, y: 0.8 }, shoulderR: { x: 1.4, z: -0.6 }, elbowR: { x: 1.4 }, shoulderL: { x: 0.6, z: -0.3 }, elbowL: { x: 1.7 } };
+    const s = { waist: { x: 0.2, y: -0.85 }, shoulderR: { x: 1.3, z: 1.3 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.4, z: -0.4 }, elbowL: { x: 1.6 }, hipR: { x: 0.4 }, kneeR: { x: -0.5 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 6, p: s }, { t: w + 0.15, p: s }];
+  },
+  fl3: (w) => {
+    const a = { waist: { x: -0.25, y: -0.3 }, shoulderR: { x: 3.0, z: 0.4 }, elbowR: { x: 0.5 }, shoulderL: { x: 1.0, z: -0.3 }, elbowL: { x: 1.2 }, hipR: { x: -0.3 }, kneeR: { x: -0.4 } };
+    const s = { waist: { x: 0.35, y: 0.2 }, shoulderR: { x: 1.3, z: 0.05 }, elbowR: { x: 0 }, shoulderL: { x: 0.8, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.5 }, kneeL: { x: -0.6 } };
+    const yank = { waist: { x: -0.2, y: -0.5 }, shoulderR: { x: 0.3, z: 0.4 }, elbowR: { x: 2.0 }, shoulderL: { x: 0.9, z: -0.2 }, elbowL: { x: 1.5 }, hipR: { x: -0.4 }, kneeR: { x: -0.6 }, hipL: { x: 0.3 }, kneeL: { x: -0.4 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 6, p: s }, { t: w + 0.1, p: s }, { t: w + 0.25, k: 5, p: yank }, { t: w + 0.45, p: yank }];
   },
   dive: () => { const p = { waist: { x: 0.75 }, shoulderR: { x: 2.3, z: 0.15 }, shoulderL: { x: 2.3, z: -0.15 }, elbowR: { x: 0.1 }, elbowL: { x: 0.1 }, hipR: { x: 0.9 }, kneeR: { x: -1.6 }, hipL: { x: 0.9 }, kneeL: { x: -1.6 } }; return [{ t: 0, k: 2, p }, { t: 99, p }]; },
   slam: () => { const p = { waist: { x: 0.95 }, shoulderR: { x: 1.5, z: 0.2 }, elbowR: { x: 0 }, shoulderL: { x: 1.3, z: -0.4 }, elbowL: { x: 0.3 }, hipR: { x: 1.3 }, kneeR: { x: -1.9 }, hipL: { x: 0.6 }, kneeL: { x: -1.6 } }; return [{ t: 0, k: 6, p }, { t: 0.35, p }, { t: 0.65, p: GUARD }]; },
   dodge: (d) => { const p = { waist: { x: 0.6 }, shoulderR: { x: -1.1, z: 0.45 }, shoulderL: { x: -1.1, z: -0.45 }, elbowR: { x: 0.5 }, elbowL: { x: 0.5 }, hipR: { x: 1.0 }, kneeR: { x: -1.7 }, hipL: { x: -0.5 }, kneeL: { x: -0.9 } }; return [{ t: 0, k: 3, p }, { t: d, p }]; },
   land: () => { const p = { hipR: { x: 0.8 }, kneeR: { x: -1.3 }, hipL: { x: 0.8 }, kneeL: { x: -1.3 }, waist: { x: 0.35 }, shoulderR: { x: 0.3, z: 0.6 }, shoulderL: { x: 0.3, z: -0.6 } }; return [{ t: 0, k: 5, p }, { t: 0.12, p }]; },
+  // touché : le buste encaisse vers l'arrière, la tête suit
+  hurt: () => { const p = { waist: { x: -0.35, y: 0.25 }, chest: { x: -0.2 }, neck: { x: -0.45 }, shoulderR: { x: 0.2, z: 0.7 }, shoulderL: { x: 0.4, z: -0.6 }, elbowR: { x: 0.9 }, elbowL: { x: 1.2 }, kneeR: { x: -0.4 }, kneeL: { x: -0.25 } }; return [{ t: 0, k: 7, p }, { t: 0.12, p }, { t: 0.32, k: 1.5, p: GUARD }]; },
+  // projeté au sol : bras et jambes en l'air pendant la chute
+  knocked: () => { const p = { waist: { x: -0.3 }, neck: { x: 0.5 }, shoulderR: { x: 1.8, z: 0.9 }, shoulderL: { x: 1.8, z: -0.9 }, elbowR: { x: 0.5 }, elbowL: { x: 0.5 }, hipR: { x: 0.9 }, kneeR: { x: -0.9 }, hipL: { x: 0.6 }, kneeL: { x: -0.5 } }; return [{ t: 0, k: 4, p }, { t: 0.5, p }, { t: 0.8, k: 1, p: { waist: { x: 0.2 }, neck: { x: 0.2 }, shoulderR: { x: 0.3, z: 0.4 }, shoulderL: { x: 0.3, z: -0.4 }, hipR: { x: 0.3 }, kneeR: { x: -0.6 }, hipL: { x: 0.1 }, kneeL: { x: -0.2 } } }, { t: 1.2, p: {} }]; },
+  // dégainer une arme
+  draw: () => { const p = { waist: { y: -0.4 }, shoulderR: { x: 1.2, z: 0.9 }, elbowR: { x: 1.2 }, neck: { y: 0.3 } }; return [{ t: 0, k: 4, p }, { t: 0.15, p }, { t: 0.35, k: 2, p: {} }]; },
   // sort lancé : paumes en avant
   cast: () => { const p = { waist: { x: 0.1 }, shoulderR: { x: 1.4, z: 0.25 }, shoulderL: { x: 1.4, z: -0.25 }, elbowR: { x: 0.2 }, elbowL: { x: 0.2 } }; return [{ t: 0, k: 4, p }, { t: 0.25, p }, { t: 0.45, p: {} }]; },
   // Gater : bras croisés devant, garde fermée
@@ -181,24 +269,52 @@ const ANIMS = {
   },
   lie: () => { const p = { shoulderR: { x: 0.3, z: 2.9 }, elbowR: { x: 2.3 }, shoulderL: { x: 0.3, z: -2.9 }, elbowL: { x: 2.3 }, hipR: { x: 0.2 }, kneeR: { x: -0.35 }, hipL: { x: 0.05, z: -0.08 }, kneeL: { x: -0.05 }, neck: { x: -0.2 }, waist: { x: 0 } }; return [{ t: 0, k: 0.6, p }, { t: 999, p }]; },
 };
+// le corps fait un tour complet (moulinet)
+function spinBody(rig, dur, turns = 1) { rig.spin.rotation.y = 0; play(rig.spin.rotation, [{ to: { y: Math.PI * 2 * turns }, dur, ease: easeInOut }], () => { rig.spin.rotation.y = 0; }); }
 function startAction(rig, name, arg) { rig.action = { name, keys: (ANIMS[name] || ANIMS.jab2)(arg ?? 0.08), t: 0 }; }
+
+// Garde de combat, selon l'arme tenue
+const WEAPON_GUARD = {
+  fists: GUARD,
+  sticks: Object.assign({}, GUARD, { shoulderR: { x: 0.75, z: 0.3 }, elbowR: { x: 1.3 }, shoulderL: { x: 0.8, z: -0.3 }, elbowL: { x: 1.35 } }),
+  mic_stand: Object.assign({}, GUARD, { waist: { x: 0.1, y: 0.45 }, shoulderR: { x: 0.65, z: 0.15 }, elbowR: { x: 0.9 }, shoulderL: { x: 1.0, z: 0.25 }, elbowL: { x: 1.2 } }),
+  guitar: Object.assign({}, GUARD, { shoulderR: { x: 1.1, z: 0.35 }, elbowR: { x: 2.3 }, shoulderL: { x: 0.7, z: -0.25 }, elbowL: { x: 1.8 } }),
+  flail: Object.assign({}, GUARD, { shoulderR: { x: 0.55, z: 0.35 }, elbowR: { x: 1.0 }, shoulderL: { x: 0.65, z: -0.25 }, elbowL: { x: 1.9 } }),
+};
+// cible proche (monstre ou enceinte) : pour la garde, l'orientation et l'aide à la visée
+function nearestFoe(maxDist, needFront = false) {
+  const fwd = new THREE.Vector3(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
+  let best = null, bd = maxDist;
+  for (const e of sim.entities.values()) {
+    if (e.team === 1 || !e.alive) continue;
+    const to = e.position.clone().sub(P.pos); to.y = 0; const d = to.length();
+    if (d >= bd || d < 0.01) continue;
+    if (needFront && fwd.angleTo(to.divideScalar(d)) > 1.2) continue;
+    bd = d; best = e;
+  }
+  return best;
+}
 function basePose() {
   const b = {}, set = (j, x = 0, y = 0, z = 0) => { b[j] = { x, y, z }; };
   const M = P.mods, run = Math.min(1, P.flatSpeed / 5), spr = P.sprint, bank = Math.max(-0.35, Math.min(0.35, -P.yawRate * 0.07));
+  const guard = P.combat > 0.5 && P.onFloor && P.sprint < 0.3 && !P.aiming;
   if (P.onFloor && P.flatSpeed > 0.3) {
-    const s = Math.sin(P.phase), c = Math.cos(P.phase), amp = 0.3 + 0.45 * run, kb = 0.12 + 1.0 * run;
-    set("hipR", s * amp); set("hipL", -s * amp);
-    set("kneeR", -kb * Math.max(0, c) - 0.05); set("kneeL", -kb * Math.max(0, -c) - 0.05);
-    set("shoulderR", -s * amp * 0.9, 0, 0.12); set("shoulderL", s * amp * 0.9, 0, -0.12);
-    set("elbowR", 0.25 + run); set("elbowL", 0.25 + run);
-    set("waist", 0.1 * run + 0.18 * spr, s * 0.22 * run, bank);
-    set("neck", -0.08 * run);
+    // foulée : la jambe suit la direction de la marche (en arrière si l'on recule en garde)
+    const f = facing(), dirDot = (P.vel.x * f.x + P.vel.z * f.z) / Math.max(0.01, P.flatSpeed), side = (P.vel.x * -f.z + P.vel.z * f.x) / Math.max(0.01, P.flatSpeed);
+    const s = Math.sin(P.phase), c = Math.cos(P.phase), amp = (0.3 + 0.5 * run) * (dirDot < -0.3 ? -1 : 1) * Math.max(0.35, Math.abs(dirDot)), kb = 0.15 + 1.1 * run;
+    set("hipR", s * amp, 0, 0.04 + Math.max(0, side * s) * 0.3); set("hipL", -s * amp, 0, -0.04 + Math.min(0, side * s) * 0.3);
+    set("kneeR", -kb * Math.max(0, c) - 0.08); set("kneeL", -kb * Math.max(0, -c) - 0.08);
+    // bras : balancier opposé aux jambes, coudes de plus en plus pliés en courant
+    set("shoulderR", -s * amp * (0.8 + 0.5 * spr), 0, 0.1); set("shoulderL", s * amp * (0.8 + 0.5 * spr), 0, -0.1);
+    set("elbowR", 0.3 + 0.9 * run + 0.4 * spr); set("elbowL", 0.3 + 0.9 * run + 0.4 * spr);
+    set("waist", 0.08 * run + 0.22 * spr, s * 0.18 * run, bank); set("chest", 0.04 * spr, -s * 0.22 * run, 0);
+    set("neck", -0.08 * run - 0.1 * spr);
   } else if (P.onFloor) {
     const br = Math.sin(P.t * 1.9);
-    set("hipR", 0, 0, 0.03); set("hipL", 0, 0, -0.03); set("kneeR", -0.06); set("kneeL", -0.06);
-    set("shoulderR", 0.05, 0, 0.14 + 0.03 * br); set("shoulderL", 0.05, 0, -0.14 - 0.03 * br);
-    set("elbowR", 0.22); set("elbowL", 0.22);
-    set("waist", 0.03 * br, Math.sin(P.t * 0.5) * 0.05, 0); set("neck", -0.03 * br, Math.sin(P.t * 0.37) * 0.15);
+    set("hipR", 0, 0, 0.04); set("hipL", 0, 0, -0.04); set("kneeR", -0.06); set("kneeL", -0.06);
+    set("shoulderR", 0.05, 0, 0.1 + 0.03 * br); set("shoulderL", 0.05, 0, -0.1 - 0.03 * br);
+    set("elbowR", 0.2); set("elbowL", 0.2);
+    set("waist", 0.03 * br, Math.sin(P.t * 0.5) * 0.05, 0); set("chest", -0.02 * br); set("neck", -0.03 * br, Math.sin(P.t * 0.37) * 0.15);
     // Chorus : bras ouverts, tête levée, il « chante »
     if (hasStatus("chorus")) { set("shoulderR", 0.5, 0, 0.7); set("shoulderL", 0.5, 0, -0.7); set("elbowR", 1.0); set("elbowL", 1.0); set("neck", -0.35); }
     // essoufflé : mains sur les genoux
@@ -210,11 +326,21 @@ function basePose() {
     set("elbowR", 0.7); set("elbowL", 0.7); set("waist", 0.15, 0, bank); set("neck", 0.1 * fall);
   }
   if (M && M.tired && P.onFloor && P.flatSpeed > 0.3) { b.waist.x += 0.35 + Math.sin(P.t * 7) * 0.07; b.neck.x += 0.2; }
+  // garde de combat : le haut du corps se met en garde, les genoux rebondissent
+  if (guard && !(M && M.tired)) {
+    const g = WEAPON_GUARD[P.weapon] || GUARD, bounce = Math.sin(P.t * 7) * 0.05, moving = P.flatSpeed > 0.3;
+    for (const [j, v] of Object.entries(g)) {
+      if (moving && (j.startsWith("hip") || j.startsWith("knee"))) continue;
+      const cur = b[j] || { x: 0, y: 0, z: 0 }; b[j] = { x: v.x ?? cur.x, y: (v.y ?? 0) + (j === "waist" ? cur.y * 0.4 : 0), z: v.z ?? cur.z };
+    }
+    if (!moving) { b.kneeR.x += -bounce - 0.05; b.kneeL.x += -bounce - 0.05; b.hipR.x += bounce * 0.5; b.hipL.x += bounce * 0.5; }
+  } else if (P.weapon === "guitar" && P.onFloor) { set("shoulderR", 1.1, 0, 0.35); set("elbowR", 2.3); } // guitare posée sur l'épaule
+  else if (P.weapon === "mic_stand" && P.onFloor && P.flatSpeed > 3) { set("shoulderR", 0.5, 0, 0.15); set("elbowR", 0.9); } // bâton tenu en courant
   // visée : bras droit tendu vers le viseur
   if (P.aiming) { set("shoulderR", 1.57 + cam.pitch, 0, 0.1); set("elbowR", 0.05); b.waist = b.waist || { x: 0, y: 0, z: 0 }; b.waist.y = 0.35; set("shoulderL", 0.6, 0, -0.25); set("elbowL", 1.6); }
   return b;
 }
-function guardBase() { return { waist: { x: 0.1, y: 0, z: 0 }, hipR: { x: 0.2, y: 0, z: 0 }, hipL: { x: 0.2, y: 0, z: 0 }, kneeR: { x: -0.35, y: 0, z: 0 }, kneeL: { x: -0.35, y: 0, z: 0 }, shoulderR: { x: 0.55, y: 0, z: 0.2 }, shoulderL: { x: 0.55, y: 0, z: -0.2 }, elbowR: { x: 1.8, y: 0, z: 0 }, elbowL: { x: 1.8, y: 0, z: 0 }, neck: { x: 0, y: 0, z: 0 } }; }
+function guardBase() { const o = {}; for (const [j, v] of Object.entries(GUARD)) o[j] = { x: v.x || 0, y: v.y || 0, z: v.z || 0 }; return o; }
 function actionPose(a) {
   const keys = a.keys, last = keys[keys.length - 1];
   let i = 0; while (i < keys.length - 1 && a.t >= keys[i + 1].t) i++;
@@ -228,20 +354,32 @@ function actionPose(a) {
   const weight = a.t <= last.t ? 1 : Math.max(0, 1 - (a.t - last.t) / 0.15);
   return { out, k: (B !== A ? B.k : A.k) || 1, weight, done: a.t > last.t + 0.15 };
 }
+// Ressorts : chaque articulation rejoint sa cible avec un léger retard et un
+// petit dépassement. Si la pose ne précise pas le buste, la rotation de la
+// taille est partagée entre taille (55 %) et buste (45 %) : le haut du corps
+// « suit » le bassin avec un temps de retard, comme un vrai corps.
 function animateRig(rig, base, dt) {
   let act = null;
   if (rig.action) { rig.action.t += dt; act = actionPose(rig.action); if (act.done) rig.action = null; }
-  const w = rig.J.waist.g.rotation;
-  base.neck = base.neck || { x: 0, y: 0, z: 0 };
-  base.neck.y += -w.y * 0.55; base.neck.z += -w.z * 0.6; base.neck.x += -rig.J.waist.v.x * 0.025;
+  const targets = {}, kMuls = {};
+  for (const name of JOINTS) {
+    const tgt = base[name] || { x: 0, y: 0, z: 0 }, target = { x: tgt.x || 0, y: tgt.y || 0, z: tgt.z || 0 };
+    const o = act && act.out[name];
+    if (o) { for (const ax of ["x", "y", "z"]) if (o[ax] !== undefined) target[ax] = target[ax] + (o[ax] - target[ax]) * act.weight; kMuls[name] = act.k; }
+    targets[name] = target;
+  }
+  const chestSet = base.chest || (act && act.out.chest);
+  const w = targets.waist, c = targets.chest;
+  if (chestSet) { c.x += w.x * 0.4; c.y += w.y * 0.4; c.z += w.z * 0.4; w.x *= 0.6; w.y *= 0.6; w.z *= 0.6; }
+  else { c.x = w.x * 0.45; c.y = w.y * 0.45; c.z = w.z * 0.45; w.x *= 0.55; w.y *= 0.55; w.z *= 0.55; kMuls.chest = kMuls.waist; }
+  // la tête compense la rotation du buste (le regard reste vers l'avant)
+  const wr = rig.J.waist.g.rotation, cr = rig.J.chest.g.rotation, n = targets.neck;
+  n.y += -(wr.y + cr.y) * 0.5; n.z += -(wr.z + cr.z) * 0.6; n.x += -rig.J.waist.v.x * 0.02;
   const steps = dt > 1 / 50 ? 2 : 1, h = dt / steps;
   for (const name of JOINTS) {
-    const jt = rig.J[name], tgt = base[name] || { x: 0, y: 0, z: 0 };
-    let kMul = 1;
-    const o = act && act.out[name], target = { x: tgt.x, y: tgt.y, z: tgt.z };
-    if (o) { for (const ax of ["x", "y", "z"]) if (o[ax] !== undefined) target[ax] = tgt[ax] + (o[ax] - tgt[ax]) * act.weight; kMul = act.k; }
-    const k = jt.k * kMul, c = jt.c * Math.sqrt(kMul);
-    for (let s = 0; s < steps; s++) for (const ax of ["x", "y", "z"]) { const r = jt.g.rotation; jt.v[ax] += (k * (target[ax] - r[ax]) - c * jt.v[ax]) * h; r[ax] += jt.v[ax] * h; }
+    const jt = rig.J[name], target = targets[name], kMul = kMuls[name] || 1;
+    const k = jt.k * kMul, cc = jt.c * Math.sqrt(kMul);
+    for (let s = 0; s < steps; s++) for (const ax of ["x", "y", "z"]) { const r = jt.g.rotation; jt.v[ax] += (k * (target[ax] - r[ax]) - cc * jt.v[ax]) * h; r[ax] += jt.v[ax] * h; }
   }
   rig.sqV += ((1 - rig.sq) * 260 - rig.sqV * 14) * dt; rig.sq += rig.sqV * dt;
   const sq = Math.max(0.6, Math.min(1.4, rig.sq)); rig.body.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
@@ -249,18 +387,27 @@ function animateRig(rig, base, dt) {
 function squash(amount) { model.sqV += amount; }
 function hasStatus(id) { const e = sim.entities.get(P.id); return !!(e && e.statuses.has(id)); }
 
+// Allongé sur le dos (repos, K.O., projeté) : le corps pivote autour des pieds,
+// on le relève de l'épaisseur du dos et on le recentre.
+const LIE = { y: 0.19, z: -0.95 };
 function lieDown() {
   P.lying = true; startAction(model, "lie");
   play(model.pose.rotation, [{ to: { x: 0 }, dur: 0.2 }, { to: { x: Math.PI / 2 }, dur: 0.9, ease: easeInOut }]);
-  play(model.pose.position, [{ to: { y: 0.15 }, dur: 0.2 }, { to: { y: 0.34, z: -0.95 }, dur: 0.9, ease: easeInOut }]);
+  play(model.pose.position, [{ to: { y: 0.12 }, dur: 0.2 }, { to: { y: LIE.y, z: LIE.z }, dur: 0.9, ease: easeInOut }]);
 }
 function wakeUp() {
-  if (!P.lying || P.dead) return;
+  if (!P.lying || P.dead || P.knock > 0) return;
   P.lying = false; P.idle = 0; P.waved = 0; model.action = null; squash(4);
   play(model.pose.rotation, [{ to: { x: 0 }, dur: 0.28, ease: easeBack }]);
   play(model.pose.position, [{ to: { y: 0.25, z: 0 }, dur: 0.18 }, { to: { y: 0 }, dur: 0.15 }]);
 }
-
+// Projeté au sol par un gros coup : chute sur le dos, puis il se relève d'un bond
+function knockDown(dir) {
+  P.knock = 1.0; P.lying = false; P.dodgeLeft = 0; P.lungeLeft = 0; P.diving = false; startAction(model, "knocked");
+  if (dir) P.facingYaw = Math.atan2(dir.x, dir.z); // face à l'attaquant, il tombe en arrière
+  play(model.pose.rotation, [{ to: { x: Math.PI / 2 }, dur: 0.32, ease: easeOut }, { to: { x: Math.PI / 2 }, dur: 0.45 }, { to: { x: 0 }, dur: 0.3, ease: easeBack }]);
+  play(model.pose.position, [{ to: { y: 0.45, z: LIE.z * 0.5 }, dur: 0.16 }, { to: { y: LIE.y, z: LIE.z }, dur: 0.16 }, { to: { y: LIE.y, z: LIE.z }, dur: 0.45 }, { to: { y: 0, z: 0 }, dur: 0.3, ease: easeBack }]);
+}
 // ============================================================================
 // Effets visuels
 // ============================================================================
@@ -320,6 +467,8 @@ function makeProjMesh(kind) {
   else if (kind === "triangle") { const c = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 3), glowMat(0xff9fc8)); c.rotation.x = -Math.PI / 2; g.add(c); }
   else if (kind === "soft") { g.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 8), glowMat(0xa8ffd0, 0.85))); g.add(new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 8), glowMat(0xa8ffd0, 0.25))); }
   else if (kind === "saw") { const b = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.6), glowMat(0xffb35c)); b.rotation.z = 0.5; g.add(b); }
+  else if (kind === "spark") { const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), glowMat(0xfff27a)); g.add(c); g.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), glowMat(0x7ae8ff, 0.35))); g.userData.spin = c; }
+  else if (kind === "sub") { g.add(new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), new THREE.MeshBasicMaterial({ color: 0x140a22 }))); const t = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.05, 6, 24), glowMat(0xb36bff, 0.9)); g.add(t); g.userData.ring = t; g.add(new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), glowMat(0x7a3dff, 0.18))); }
   else if (kind === "larsen") { g.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 10), glowMat(0xff5a3a))); const t = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.04, 6, 24), glowMat(0xffb08a, 0.8)); g.add(t); g.userData.ring = t; }
   scene.add(g); return g;
 }
@@ -331,6 +480,8 @@ function updateProjMeshes(dt) {
     if (p.kind === "sine") mesh.children.forEach((s, i) => s.position.set(Math.sin(time * 18 + p.phase - i * 0.7) * 0.22, 0, -i * 0.16 + 0.3));
     if (p.kind === "larsen") { mesh.userData.ring.rotation.x += dt * 6; const s = 1 + Math.sin(time * 20) * 0.12; mesh.scale.setScalar(s); }
     if (p.kind === "triangle") mesh.rotation.z += dt * 8;
+    if (p.kind === "spark") { mesh.userData.spin.rotation.x += dt * 20; mesh.visible = Math.random() > 0.15; }
+    if (p.kind === "sub") { mesh.userData.ring.rotation.y += dt * 4; mesh.scale.setScalar(1 + Math.sin(time * 9) * 0.15); }
   }
 }
 // Rayons des ondes carrées / PWM : tracé en créneaux
@@ -356,15 +507,66 @@ function updateBeams(dt) {
 }
 const FX = { freeze: 0, impact: 0, impactDur: 0.13, impactWorld: new THREE.Vector3() };
 function hitFeedback(ev) {
-  const contact = dummy.pos.clone().add(new THREE.Vector3(0, 1.0, 0)).addScaledVector(ev.direction || new THREE.Vector3(), -0.35);
+  const te = sim.entities.get(ev.target), tpos = te ? te.position : dummy.pos;
+  const contact = tpos.clone().add(new THREE.Vector3(0, 1.0, 0)).addScaledVector(ev.direction || new THREE.Vector3(), -0.35);
   FX.freeze = Math.max(FX.freeze, ev.hitstop || 0.04);
   burst(contact, ev.impact ? [0xffffff, 0xffe28a, 0xff9fc8, 0x9fe6ff] : ev.delay ? [0x8fe6ff, 0xffffff] : [0xffffff, 0xffe28a], ev.impact ? 5 : 3, ev.impact ? 24 : 10);
   if (ev.impact) {
     FX.impact = FX.impactDur; FX.impactWorld.copy(contact);
-    pixelRing(dummy.pos, 3.2, 0.5, 0xffe28a);
+    pixelRing(tpos, 3.2, 0.5, 0xffe28a);
     tone(80, 30, 0.5, 0.45, "sine"); noiseHit(160, 0.7, 0.4, 0.4, "lowpass"); noiseHit(4200, 0.5, 0.2, 0.15, "highpass");
   } else { tone(150, 60, 0.15, 0.22, "sine"); noiseHit(380, 1, 0.1, 0.18); }
 }
+
+// ============================================================================
+// Armes : changement (X ou molette), effets propres à certains coups, sons
+// ============================================================================
+function cycleWeapon(dir) {
+  const pe = sim.entities.get(P.id), list = Object.keys(DATA.weapons).filter((w) => pe.weapons.has(w));
+  if (list.length < 2 || P.dead) return;
+  const i = list.indexOf(P.weapon);
+  sim.queue({ type: "weapon", source: P.id, weapon: list[(i + dir + list.length) % list.length] });
+}
+function weaponMoveFx(ev) {
+  const w = ev.windup;
+  if (ev.move === "ms3") spinBody(model, w + 0.36, 1);
+  if (ev.move === "st4") for (let i = 0; i < 5; i++) setTimeout(() => { noiseHit(2600 + i * 250, 4, 0.04, 0.13); tone(1900, 1500, 0.03, 0.03); }, (w + i * 0.06) * 1000);
+  if (ev.move === "gt3") {
+    // petit bond, puis la guitare frappe le sol : onde de choc
+    play(model.pose.position, [{ to: { y: 0.4 }, dur: w * 0.6, ease: easeOut }, { to: { y: 0 }, dur: w * 0.4, ease: (t) => t * t }]);
+    setTimeout(() => { if (P.dead) return; pixelRing(P.pos, 4.2, 0.55, 0xff7a5c); pixelRing(P.pos, 2.6, 0.4, 0xffe28a); puff(P.pos, 14, 3); powerChord(); }, w * 1000);
+  }
+  if (P.weapon === "flail") { P.flailAt = sim.time + w * 0.55; P.flailMove = ev.move; }
+}
+// le micro du fléau part vers l'ennemi visé (ou droit devant)
+function flailThrow() {
+  const m = DATA.moves[P.flailMove] || DATA.moves.fl1, foe = nearestFoe(m.range + 0.6, false);
+  const f = facing(), to = foe && foe.position.clone().sub(P.pos).setY(0).normalize().dot(f) > 0.5 ? foe.position.clone().add(new THREE.Vector3(0, 1.0, 0)) : P.pos.clone().addScaledVector(f, m.range * 0.9).add(new THREE.Vector3(0, 1.1, 0));
+  throwFlail(to, P.flailMove === "fl3" ? 0.16 : 0.12);
+}
+const SWING = {
+  fists: () => noiseHit(2400, 0.6, 0.09, 0.08, "highpass"),
+  sticks: () => { noiseHit(3600, 3, 0.05, 0.1); tone(1800, 1500, 0.03, 0.03); },
+  mic_stand: () => { noiseHit(900, 0.8, 0.2, 0.13); tone(300, 200, 0.15, 0.02, "sine"); },
+  guitar: () => { noiseHit(500, 0.6, 0.26, 0.16); tone(110, 82, 0.3, 0.06, "sawtooth"); },
+  flail: () => { noiseHit(1400, 0.5, 0.22, 0.1); tone(700, 1500, 0.14, 0.03, "sine"); },
+};
+function swingSound(w) { (SWING[w] || SWING.fists)(); }
+function powerChord() { for (const f of [82.4, 123.5, 164.8, 207.7]) tone(f, f * 0.98, 0.7, 0.06, "sawtooth"); noiseHit(150, 0.7, 0.5, 0.35, "lowpass"); }
+
+// --- Progression sauvegardée (armes reçues, monstres vaincus, quêtes) ----------------
+const PROGRESS_KEY = "twisted.progress1";
+const PROGRESS = { weapons: [], kills: {}, quests: {}, vinyl: false };
+function loadProgress() {
+  try { Object.assign(PROGRESS, JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}")); } catch (e) { /* pas de sauvegarde */ }
+  const pe = sim.entities.get(P.id); for (const w of PROGRESS.weapons || []) if (DATA.weapons[w]) pe.weapons.add(w);
+}
+function saveProgress() {
+  PROGRESS.weapons = [...sim.entities.get(P.id).weapons];
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(PROGRESS)); } catch (e) { /* pas de stockage */ }
+}
+loadProgress();
+const killCount = (kind) => (kind ? PROGRESS.kills[kind] || 0 : Object.values(PROGRESS.kills).reduce((a, b) => a + b, 0));
 
 // ============================================================================
 // Événements de la Sim -> affichage
@@ -372,11 +574,11 @@ function hitFeedback(ev) {
 const floats = [];
 function floatText(text, at, cls = "float") { const el = document.createElement("div"); el.className = cls; el.textContent = text; document.body.appendChild(el); floats.push({ el, pos: at.clone().add(new THREE.Vector3(range(-0.3, 0.3), 0, range(-0.3, 0.3))), age: 0, life: cls === "float" ? 0.8 : 1.4 }); }
 let hitFlash = 0;
+// aide à la visée : le coup part vers l'ennemi devant soi (portée de l'arme + un peu)
 function softAim() {
-  const to = dummy.pos.clone().sub(P.pos); to.y = 0;
-  const d = to.length(), fwd = new THREE.Vector3(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
-  if (d < 4.5 && d > 0.01 && fwd.angleTo(to.clone().divideScalar(d)) < 1.2) return Math.atan2(-to.x, -to.z);
-  return cam.yaw;
+  const wpn = DATA.weapons[P.weapon], reach = Math.max(4.5, DATA.moves[wpn.combo].range + 1.5);
+  const t = nearestFoe(reach, true); if (!t) return cam.yaw;
+  const to = t.position.clone().sub(P.pos); return Math.atan2(-to.x, -to.z);
 }
 function startDodge(distance, duration) {
   wakeUp();
@@ -404,14 +606,21 @@ function onEvent(ev) {
       if (!me) break;
       wakeUp(); P.idle = 0;
       if (ev.move === "dive") { P.diving = true; startAction(model, "dive"); const f = facing(); P.vel.set(f.x * 3, -ev.dive_speed, f.z * 3); tone(900, 200, 0.25, 0.07, "sawtooth"); break; }
-      P.facingYaw = softAim(); startAction(model, ev.move, ev.windup);
+      P.facingYaw = softAim(); startAction(model, ev.move, ev.windup); weaponMoveFx(ev);
       P.lungeLeft = P.lungeTotal = ev.ghost ? 0.34 : ev.windup + 0.12; P.lungeSpeed = ev.lunge; P.attackSlow = ev.windup + ev.recover * 0.6;
       if (ev.ghost) P.ghost = ev.windup + 0.3;
       if (ev.move === "drop") { squash(-2.5); noiseHit(900, 0.6, 0.3, 0.12, "lowpass"); setTimeout(() => noiseHit(2200, 0.5, 0.12, 0.14, "highpass"), ev.windup * 1000); }
-      else noiseHit(2400, 0.6, 0.09, 0.08, "highpass");
+      else if (!DATA.moves[ev.move].hits) swingSound(P.weapon);
       break;
     case "damage":
-      if (ev.target === dummy.id) {
+      if (MONSTERS.has(ev.target)) {
+        const top = monsterTop(ev.target);
+        floatText(String(ev.amount), top, ev.dot ? "float dot" : ev.delay ? "float delay" : "float");
+        if (ev.dot) { pixelRing(sim.entities.get(ev.target).position, 1.6, 0.5, 0xb9a6ff, 1.0); break; }
+        const label = (DATA.moves[ev.move] && DATA.moves[ev.move].label) || (ev.wave === "square" ? "SNIPE!" : null);
+        if (label && !ev.delay && (ev.hit || 0) === 0) floatText(label, top.clone().add(new THREE.Vector3(0, 0.5, 0)), "float big");
+        monsterOnDamage(ev); hitFeedback(ev);
+      } else if (ev.target === dummy.id) {
         setDummyHealth(ev.health, ev.max_health);
         const top = dummy.pos.clone().add(new THREE.Vector3(0, 1.9, 0));
         floatText(String(ev.amount), top, ev.dot ? "float dot" : ev.delay ? "float delay" : "float");
@@ -424,12 +633,17 @@ function onEvent(ev) {
         floatText("-" + ev.amount, P.pos.clone().add(new THREE.Vector3(0, 2.0, 0)), "float hurt");
         tone(220, 90, 0.2, 0.18, "square"); squash(-2);
         if (ev.direction && ev.push) { P.vel.x += ev.direction.x * ev.push; P.vel.z += ev.direction.z * ev.push; }
+        // réaction : il encaisse, ou il est projeté au sol par les gros coups
+        if (ev.knockdown && !P.dead) { knockDown(ev.direction); P.vel.y = 4; P.onFloor = false; noiseHit(180, 0.8, 0.3, 0.3, "lowpass"); FX.freeze = Math.max(FX.freeze, 0.08); }
+        else if (!P.dead && P.knock <= 0 && P.dodgeLeft <= 0) { startAction(model, "hurt"); if (ev.direction) P.facingYaw = lerpAngle(P.facingYaw, Math.atan2(ev.direction.x, ev.direction.z), 0.6); }
+        if (ev.attack) FX.freeze = Math.max(FX.freeze, 0.05);
       }
       break;
     case "heal": if (ev.id === P.id) { setLife(ev.health, ev.max_health); P.healAcc += ev.amount; } break;
     case "dive_landed": break;
     case "died":
       if (ev.id === dummy.id) { dummy.target = -1.45; showBanner("K.O."); }
+      if (MONSTERS.has(ev.id)) monsterDied(ev);
       if (ev.id === P.id) playerDied();
       break;
     case "revived": case "healed":
@@ -497,11 +711,27 @@ function onEvent(ev) {
       break;
     case "beam": spawnBeam(ev.from, ev.to, ev.wave); burst(ev.to, [0xffffff, 0x8fe6ff], 2, 8); break;
     case "projectile_spawned": projMeshes.set(ev.id, makeProjMesh(ev.kind)); break;
-    case "projectile_end": burst(ev.pos, ev.kind === "larsen" ? [0xff5a3a, 0xffb08a] : [0xffffff, 0x8fe6ff, 0xff9fc8], 2, 6); break;
+    case "projectile_end": burst(ev.pos, ev.kind === "larsen" ? [0xff5a3a, 0xffb08a] : ev.kind === "spark" ? [0xfff27a, 0x7ae8ff] : ev.kind === "sub" ? [0x7a3dff, 0x140a22] : [0xffffff, 0x8fe6ff, 0xff9fc8], 2, 6); break;
+    case "weapon_changed":
+      if (!me) break;
+      P.weapon = ev.weapon; setRigWeapon(model, ev.weapon); setFlailVisible(ev.weapon === "flail"); startAction(model, "draw");
+      showBanner(DATA.weapons[ev.weapon].name, 0.9); updateWeaponSlot();
+      burst(model.handR.getWorldPosition(new THREE.Vector3()), [0xffffff, new THREE.Color(DATA.weapons[ev.weapon].color).getHex()], 1.5, 8);
+      tone(500, 900, 0.08, 0.05, "triangle"); noiseHit(3000, 1, 0.06, 0.06, "highpass");
+      break;
+    case "weapon_unlocked":
+      if (!me) break;
+      saveProgress(); showBanner(`Nouvelle arme : ${DATA.weapons[ev.weapon].name} · X ou molette pour changer`, 3);
+      [392, 523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, f, 0.14, 0.06, "triangle"), i * 80));
+      sim.queue({ type: "weapon", source: P.id, weapon: ev.weapon });
+      break;
+    case "enemy_interrupt": case "enemy_blink": if (MONSTERS.has(ev.id)) monsterEvent(ev); break;
     case "enemy_windup":
+      if (MONSTERS.has(ev.id)) { monsterEvent(ev); break; }
       if (ev.id === dummy.id) { WARN.kind = ev.attack; WARN.t = 0; WARN.dur = ev.windup; tone(ev.attack === "boom" ? 120 : 500, ev.attack === "boom" ? 180 : 900, ev.windup, 0.05, "sine"); }
       break;
     case "enemy_attack":
+      if (MONSTERS.has(ev.id)) { monsterEvent(ev); break; }
       if (ev.id === dummy.id) {
         WARN.kind = null; dummy.sqV -= 4;
         if (ev.attack === "boom") { pixelRing(dummy.pos, ev.radius, 0.35, 0xff4a3a); tone(90, 40, 0.3, 0.3, "sine"); }
@@ -516,10 +746,10 @@ let bannerTimer = 0;
 function showBanner(text, dur = 1.6) { const b = document.getElementById("banner"); b.textContent = text; b.style.opacity = 1; bannerTimer = dur; }
 function playerDied() {
   P.dead = true; P.lying = true; startAction(model, "lie");
-  play(model.pose.rotation, [{ to: { x: Math.PI / 2 }, dur: 0.4, ease: easeOut }]); play(model.pose.position, [{ to: { y: 0.34, z: -0.95 }, dur: 0.4 }]);
+  play(model.pose.rotation, [{ to: { x: Math.PI / 2 }, dur: 0.4, ease: easeOut }]); play(model.pose.position, [{ to: { y: LIE.y, z: LIE.z }, dur: 0.4 }]);
   showBanner("K.O. — retour dans 2 s", 2);
   setTimeout(() => {
-    P.dead = false; P.lying = false; model.action = null; model.pose.rotation.x = 0; model.pose.position.set(0, 0, 0);
+    P.dead = false; P.lying = false; P.knock = 0; model.action = null; model.pose.rotation.x = 0; model.pose.position.set(0, 0, 0);
     P.pos.copy(SPAWN); P.vel.set(0, 0, 0); sim.queue({ type: "respawn", source: P.id });
   }, 2000);
 }
@@ -628,7 +858,12 @@ function physicsStep(dt) {
   const c = Math.cos(cam.yaw), s = Math.sin(cam.yaw), iz = -fwd;
   P.wish.set(right * c + iz * s, 0, -right * s + iz * c);
   if (P.wish.length() > 1) P.wish.normalize();
-  if (P.dead) { P.wish.set(0, 0, 0); pressed.clear(); attackClicks = 0; }
+  if (P.dead || P.knock > 0 || P.talking) { P.wish.set(0, 0, 0); if (!P.talking) pressed.delete("KeyF"); for (const k of [...pressed]) if (k !== "KeyF") pressed.delete(k); attackClicks = 0; }
+  P.knock = Math.max(0, P.knock - dt);
+  if (pressed.has("KeyF")) interact();
+  if (pressed.has("KeyX")) cycleWeapon(1);
+  // mode combat : un ennemi proche et actif
+  P.combat += ((sim.inCombat(pe) && nearestFoe(12) ? 1 : 0) - P.combat) * Math.min(1, dt * 4);
   const moving = P.wish.lengthSq() > 0.01;
   if (moving || pressed.has("Space") || pressed.has("KeyC")) wakeUp();
 
@@ -652,7 +887,7 @@ function physicsStep(dt) {
     if (P.dodgeLeft <= 0 && P.extraDodges > 0) { P.extraDodges--; P.airDash = 1; startDodge(P.dodgeDist, P.dodgeDur); }
   } else if (P.lungeLeft > 0) {
     P.lungeLeft -= dt; const f = facing(), k = Math.max(0, P.lungeLeft / P.lungeTotal);
-    const toDummy = Math.hypot(dummy.pos.x - P.pos.x, dummy.pos.z - P.pos.z), brake = P.ghost > 0 ? 1 : Math.min(1, Math.max(0, (toDummy - 0.9) / 0.6));
+    const foe = nearestFoe(6), toFoe = foe ? Math.hypot(foe.position.x - P.pos.x, foe.position.z - P.pos.z) - foe.radius + 0.5 : 99, brake = P.ghost > 0 ? 1 : Math.min(1, Math.max(0, (toFoe - 0.9) / 0.6));
     P.vel.x = f.x * P.lungeSpeed * k * brake; P.vel.z = f.z * P.lungeSpeed * k * brake;
   } else if (!P.diving) {
     const accel = (P.onFloor ? STATS.accel * Math.max(1, M.speed) : STATS.air_accel * (P.airLock > 0 ? 0.12 : 1)) * dt;
@@ -661,7 +896,7 @@ function physicsStep(dt) {
   }
   if (P.wall && !P.diving && P.vel.y < -STATS.wall_slide_speed && P.wish.dot(P.wall.normal) < -0.3) P.vel.y = -STATS.wall_slide_speed;
 
-  if (P.jumpBuffer > 0 && P.dodgeLeft <= 0 && !P.diving && !P.dead) {
+  if (P.jumpBuffer > 0 && P.dodgeLeft <= 0 && !P.diving && !P.dead && P.knock <= 0) {
     if (P.onFloor || P.coyote > 0) {
       P.vel.y = STATS.jump_velocity; P.onFloor = false; P.coyote = 0; P.jumpBuffer = 0; P.airJumps = 1 + M.jumps; P.wallJumps = 0; P.superUsed = false;
       squash(4); tone(320, 620, 0.09, 0.05); puff(P.pos, 4, 0.8);
@@ -709,7 +944,10 @@ function physicsStep(dt) {
   } else P.onFloor = false;
 
   P.flatSpeed = Math.hypot(P.vel.x, P.vel.z);
+  // en combat (sans courir), le bonhomme reste tourné vers l'ennemi le plus proche : on tourne autour en garde
+  const foe = P.combat > 0.5 && P.sprint < 0.3 ? nearestFoe(9) : null;
   if (P.aiming && !P.dead) P.facingYaw = lerpAngle(P.facingYaw, cam.yaw, 1 - Math.exp(-20 * dt));
+  else if (foe && !P.dead && P.knock <= 0 && P.dodgeLeft <= 0 && P.lungeLeft <= 0 && P.airLock <= 0 && P.attackSlow <= 0) P.facingYaw = lerpAngle(P.facingYaw, Math.atan2(-(foe.position.x - P.pos.x), -(foe.position.z - P.pos.z)), 1 - Math.exp(-8 * dt));
   else if (P.flatSpeed > 0.5 && P.dodgeLeft <= 0 && P.airLock <= 0 && P.lungeLeft <= 0 && P.attackSlow <= 0) P.facingYaw = lerpAngle(P.facingYaw, Math.atan2(-P.vel.x, -P.vel.z), 1 - Math.exp(-12 * dt));
   P.yawRate = P.yawRate * 0.8 + (wrapAngle(P.facingYaw - P.prevYaw) / dt) * 0.2; P.prevYaw = P.facingYaw;
   P.speedRatio = Math.min(1.3, P.flatSpeed / STATS.walk_speed);
@@ -731,11 +969,12 @@ function physicsStep(dt) {
   pressed.clear();
 
   if (P.pos.y < -20) P.pos.copy(SPAWN);
-  if (vinyl.visible && P.pos.distanceTo(SECRET_POS) < 1.6) { vinyl.visible = false; P.secrets++; document.getElementById("secrets").textContent = `Secrets ${P.secrets} / 1`; showBanner("Secret trouvé : le vinyle doré", 2.6); [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f * 1.01, 0.18, 0.06, "triangle"), i * 90)); }
+  if (vinyl.visible && P.pos.distanceTo(SECRET_POS) < 1.6) { vinyl.visible = false; P.secrets++; PROGRESS.vinyl = true; saveProgress(); document.getElementById("secrets").textContent = `Secrets ${P.secrets} / 1`; showBanner("Secret trouvé : le vinyle doré", 2.6); [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f * 1.01, 0.18, 0.06, "triangle"), i * 90)); }
   if (!P.alleyHint && P.pos.x > ALLEY.x0 && P.pos.x < ALLEY.x1 && P.pos.z > ALLEY.z0 && P.pos.z < ALLEY.z1) { P.alleyHint = true; showBanner("Murs tagués : wall jumps à l'infini", 2.4); }
   if (P.hintSingle === 3) { P.hintSingle = 4; showBanner("Un seul wall jump par saut… sauf sur les murs tagués", 2.6); }
 
-  stepDummy(dt);
+  if (P.flailAt > 0 && sim.time >= P.flailAt) { P.flailAt = -1; flailThrow(); }
+  stepDummy(dt); stepMonsters(dt);
   sim.setTransform(P.id, P.pos, facing());
   sim.step(dt);
   for (const ev of sim.drain()) onEvent(ev);
@@ -748,7 +987,7 @@ function animatePlayer(dt) {
   const run = Math.min(1, P.speedRatio);
   model.body.position.y = P.onFloor && !P.lying ? Math.abs(Math.cos(P.phase)) * 0.05 * run : 0;
   if (!P.lying) {
-    if (P.flatSpeed < 0.3 && P.onFloor && P.dodgeLeft <= 0 && !model.action && !P.aiming && !(P.mods && P.mods.tired) && !hasStatus("chorus")) {
+    if (P.flatSpeed < 0.3 && P.onFloor && P.dodgeLeft <= 0 && !model.action && !P.aiming && P.combat < 0.5 && P.knock <= 0 && !P.talking && !(P.mods && P.mods.tired) && !hasStatus("chorus")) {
       P.idle += dt;
       if (P.idle > 5 && P.waved === 0) { P.waved = 1; startAction(model, "wave"); }
       if (P.idle > 30) lieDown();
@@ -817,6 +1056,7 @@ function chromeTint() {
   else if (pe.statuses.has("reflect")) c.setRGB(1.05, 0.8, 1.25);
   else if (pe.statuses.has("phase")) c.setRGB(0.8, 1.1, 1.3);
   else if (P.mods && P.mods.tired) c.setRGB(0.85, 0.88, 1.0);
+  c.multiplyScalar(1 - 0.45 * DN.n); c.b += 0.06 * DN.n; // la nuit, le chrome s'assombrit et bleuit
   c.lerp(new THREE.Color(1.3, 0.35, 0.4), hitFlash * 0.8);
   return c;
 }
@@ -888,6 +1128,7 @@ function updateHud(realDt) {
   hudTimer -= realDt; if (hudTimer > 0) return; hudTimer = 0.08;
   const pe = sim.entities.get(P.id);
   for (const s of slotEls) {
+    if (s.id === "weapon") continue;
     const def = DATA.spells[s.id] || DATA.waves[s.id] || FUSION_BY_ID[s.id.replace("fusion:", "")], left = sim.cooldownLeft(pe, s.id), max = s.id === "bitcrush" ? def.cooldown * P.mods.dodge_cd : def.cooldown;
     const pct = max > 0 ? Math.min(100, (left / max) * 100) : 0;
     s.cd.style.background = pct > 0 ? `conic-gradient(rgba(10,8,14,0.78) ${pct}%, transparent 0)` : "transparent";
@@ -920,7 +1161,7 @@ function renderPixelPass(dt) {
   pixCam.fov = camera.fov; pixCam.aspect = camera.aspect; pixCam.near = 0.05; pixCam.far = d + PIX.size * 2;
   pixCam.position.copy(camera.position); pixCam.quaternion.copy(camera.quaternion);
   pixCam.setViewOffset(fullW, fullH, sx - s / 2, sy - s / 2, s, s); pixCam.updateMatrixWorld();
-  chrome.color.copy(chromeTint());
+  const tint = chromeTint(); chrome.color.copy(tint); tintWeapons(tint);
   const fog = scene.fog; scene.fog = null;
   renderer.setClearColor(0x000000, 0);
   renderer.setRenderTarget(pixTarget); renderer.clear(); renderer.render(scene, pixCam);
@@ -967,7 +1208,8 @@ function frame_(now) {
   FX.impact = Math.max(0, FX.impact - realDt);
   time += dt; acc += dt;
   while (acc >= STEP) { physicsStep(STEP); acc -= STEP; }
-  updateTimelines(dt); animatePlayer(dt); updateCamera(realDt); updateRings(dt); updateProjMeshes(dt); updateBeams(dt); statusEffects(dt);
+  updateTimelines(dt); animatePlayer(dt); updateFlail(dt); updateMonsters(dt); updateNpcs(dt); updateDragon(dt); updateClouds(dt);
+  updateCamera(realDt); updateRings(dt); updateProjMeshes(dt); updateBeams(dt); statusEffects(dt);
   if (!WARN.kind) coneMat.emissiveIntensity = Math.max(0, coneMat.emissiveIntensity - dt * 9);
   for (const r of rings) r.rotation.z += dt * 0.12;
   vinyl.rotation.y += dt * 2; vinyl.position.y = SECRET_POS.y + Math.sin(time * 2) * 0.12;
@@ -977,11 +1219,12 @@ function frame_(now) {
   for (const p of dust) if (p.life > 0) { p.life -= dt; p.s.position.addScaledVector(p.vel, dt); p.s.scale.setScalar(0.3 + (0.55 - p.life) * 1.6); p.s.material.opacity = Math.max(0, p.life / 0.55) * 0.55; if (p.life <= 0) p.s.visible = false; }
   for (const s of shards) if (s.life > 0) { s.life -= dt; s.vel.y -= 9 * dt; s.m.position.addScaledVector(s.vel, dt); s.m.material.opacity = Math.max(0, s.life / 0.45); if (s.life <= 0) s.m.visible = false; }
   sky.position.copy(camera.position);
-  sun.position.copy(P.pos).addScaledVector(SUN_DIR, 140); sun.target.position.copy(P.pos);
+  updateDayNight(dt, P.pos);
+  sun.position.copy(P.pos).addScaledVector(DN.lightDir, 140); sun.target.position.copy(P.pos);
   renderPixelPass(dt);
   renderer.shadowMap.needsUpdate = true;
   renderer.render(scene, camera);
-  applyImpactFilter(); drawOverlay(); updateHud(realDt);
+  applyImpactFilter(); drawOverlay(); updateHud(realDt); updateMonsterBars(); updateNpcTags();
   const bp = project(dummy.pos.clone().add(new THREE.Vector3(0, 2.2, 0)));
   dummyBar.style.transform = `translate(${bp.x - 35}px, ${bp.y}px)`; dummyBar.hidden = bp.behind || P.pos.distanceTo(dummy.pos) > 30;
   for (let i = floats.length - 1; i >= 0; i--) {
@@ -994,13 +1237,3 @@ function frame_(now) {
   if (bannerTimer > 0) { bannerTimer -= realDt; if (bannerTimer <= 0) document.getElementById("banner").style.opacity = 0; }
   requestAnimationFrame(frame_);
 }
-
-// Les enseignes en japonais attendent la police (2,5 s maximum).
-async function start() {
-  try { await Promise.race([document.fonts.load(`900 64px "Zen Kaku Gothic New"`, "ラーメン寿司居酒屋カラオケ百貨店"), new Promise((r) => setTimeout(r, 2500))]); } catch (e) { /* police de secours */ }
-  buildTextures(); buildCity(); buildBackdrop();
-  resize();
-  playBtn.disabled = false; playBtn.textContent = "Jouer";
-  requestAnimationFrame((t) => { last = t; frame_(t); });
-}
-start();

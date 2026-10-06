@@ -5,13 +5,13 @@
 const WALL_COLORS = [0xa3a0aa, 0x8e8e9a, 0xb5a8a3, 0x7c7e8a, 0xadacb2, 0x9d9298, 0xb9b1a6, 0x98a0ab];
 function wallMats(color) {
   const key = "W" + color;
-  if (!MATS[key]) MATS[key] = [texMat(TEX.window, { color }), lambert(new THREE.Color(color).multiplyScalar(0.7).getHex())];
+  if (!MATS[key]) MATS[key] = [nightMat(texMat(TEX.window, { color, emissive: 0xffffff, emissiveMap: TEX.windowLit }), 0, 1.0), lambert(new THREE.Color(color).multiplyScalar(0.7).getHex())];
   return MATS[key];
 }
 function bodyBox(x0, x1, z0, z1, h, color) {
   const sx = x1 - x0, sz = z1 - z0, geo = new THREE.BoxGeometry(sx, h, sz), uv = geo.attributes.uv;
   const faceW = [sz, sz, 0, 0, sx, sx], rows = Math.max(1, Math.round(h / 3.2));
-  for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; if (faceW[f]) uv.setXY(i, uv.getX(i) * Math.max(1, Math.round(faceW[f] / 2.8)), uv.getY(i) * rows); }
+  for (let f = 0; f < 6; f++) for (let v = 0; v < 4; v++) { const i = f * 4 + v; if (faceW[f]) uv.setXY(i, (uv.getX(i) * Math.max(1, Math.round(faceW[f] / 2.8))) / 4, (uv.getY(i) * rows) / 4); }
   geo.clearGroups(); geo.addGroup(0, 12, 0); geo.addGroup(12, 12, 1); geo.addGroup(24, 12, 0);
   const [wall, roof] = wallMats(color);
   addGrouped(geo, [wall, roof], new THREE.Matrix4().makeTranslation((x0 + x1) / 2, h / 2, (z0 + z1) / 2));
@@ -55,6 +55,7 @@ function shopFront(F, W, kind) {
   fbox(F, -W / 2 + 0.22, 1.8, 0.15, 0.44, 3.6, 0.3, frameMat); fbox(F, W / 2 - 0.22, 1.8, 0.15, 0.44, 3.6, 0.3, frameMat);
   fbox(F, 0, 3.45, 0.15, W, 0.32, 0.3, frameMat);
 }
+const signMat = (tex) => nightMat(texMat(tex, { emissive: 0xffffff, emissiveMap: tex }), 0, 0.95);
 function decorateShop(F, W, h, kind) {
   const s = SHOPS[kind];
   shopFront(F, W, kind);
@@ -62,11 +63,12 @@ function decorateShop(F, W, h, kind) {
   if (s.awning) { const t = stripeTex(s.awning[0], s.awning[1]); t.repeat.set(W / 2, 1); fbox(F, 0, 3.95, 0.85, W - 0.4, 0.08, 1.7, texMat(t), true, 0.28); }
   if (s.stripes) { fbox(F, 0, 3.75, 0.08, W, 0.22, 0.06, lambert(new THREE.Color(s.stripes[0]).getHex())); fbox(F, 0, 3.97, 0.08, W, 0.22, 0.06, lambert(new THREE.Color(s.stripes[1]).getHex())); }
   const signY = s.awning ? 4.75 : 4.15, signH = kind === "konbini" ? 1.0 : 0.85;
-  if (s.sign && h > 4.4) fplane(F, 0, signY, 0.1, Math.min(W * 0.75, 9), signH, MATS["sign_" + kind] || (MATS["sign_" + kind] = texMat(signTex(s.sign[0], { bg: s.sign[1], fg: s.sign[2], border: s.sign[2], w: 512, h: kind === "konbini" ? 140 : 110 }))));
-  else if (s.sign) fplane(F, 0, 3.9, 0.32, Math.min(W * 0.75, 9), 0.7, texMat(signTex(s.sign[0], { bg: s.sign[1], fg: s.sign[2], border: s.sign[2], w: 512, h: 110 })));
+  if (s.sign && h > 4.4) fplane(F, 0, signY, 0.1, Math.min(W * 0.75, 9), signH, MATS["sign_" + kind] || (MATS["sign_" + kind] = signMat(signTex(s.sign[0], { bg: s.sign[1], fg: s.sign[2], border: s.sign[2], w: 512, h: kind === "konbini" ? 140 : 110 }))));
+  else if (s.sign) fplane(F, 0, 3.9, 0.32, Math.min(W * 0.75, 9), 0.7, signMat(signTex(s.sign[0], { bg: s.sign[1], fg: s.sign[2], border: s.sign[2], w: 512, h: 110 })));
   const door = -W / 4;
   if (s.noren) fplane(F, door, 2.85, 0.34, 2.1, 1.05, new THREE.MeshLambertMaterial({ map: norenTex(s.noren[0], s.noren[1]), alphaTest: 0.5, side: THREE.DoubleSide }));
-  const red = lambert(0xd8402f, { emissive: 0x8a1c10 });
+  const red = lambert(0xd8402f, { emissive: 0xff3a20 });
+  if (!red.userData.night) { red.userData.night = true; nightMat(red, 0.3, 1.1); }
   if (s.lanterns === 2) for (const du of [-1.4, 1.4]) { fcyl(F, door + du, 2.3, 0.5, 0.2, 0.2, 0.6, red); fbox(F, door + du, 2.95, 0.5, 0.3, 0.06, 0.3, lambert(0x1c1a22), false); }
   if (s.lanterns === 6) for (let i = 0; i < 6; i++) fcyl(F, -W / 2 + 0.9 + (i * (W - 1.8)) / 5, 2.75, 0.45, 0.17, 0.17, 0.5, red);
   if (s.blade && h > 6) bladeSign(F, W / 2 - 0.5, Math.min(h - 2.2, 6.6), 0.75, 0.9, 3.4, signTex(s.blade[0], { bg: s.blade[1], fg: s.blade[2], border: s.blade[2], vertical: true, w: 128, h: 480 }));
@@ -141,12 +143,36 @@ function fillBlock(x0, x1, z0, z1) {
 // ============================================================================
 // Objets de rue
 // ============================================================================
+const LAMP_POS = []; // têtes de lampadaires : lumières et halos de nuit
 function streetLamp(x, z, armDir) {
   const pole = lambert(0x383640), F = frame(new THREE.Vector3(x, 0.12, z), armDir);
   fcyl(F, 0, 0, 0, 0.07, 0.09, 5.2, pole);
   fbox(F, 0, 5.15, 0.55, 0.1, 0.1, 1.2, pole);
-  fbox(F, 0, 5.05, 1.1, 0.26, 0.14, 0.5, lambert(0xf2e8d6, { emissive: 0x403a30 }), false);
+  const headMat = lambert(0xf2e8d6, { emissive: 0xffe2b0 });
+  if (!headMat.userData.night) { headMat.userData.night = true; nightMat(headMat, 0.12, 3.0); }
+  fbox(F, 0, 5.05, 1.1, 0.26, 0.14, 0.5, headMat, false);
+  LAMP_POS.push(F.p(0, 4.9, 1.1));
   collider(x - 0.12, 0, z - 0.12, x + 0.12, 5.2, z + 0.12, { noCam: true });
+}
+// Petite voiture japonaise garée (kei car carrée, ou taxi noir). Phares allumés la nuit.
+let CAR_MATS = null;
+function parkedCar(x, z, ang, color, taxi = false) {
+  if (!CAR_MATS) {
+    CAR_MATS = { glass: new THREE.MeshStandardMaterial({ color: 0x1d2633, roughness: 0.15, metalness: 0.6 }), tire: lambert(0x18171c), trim: lambert(0x2a2830), chrome: new THREE.MeshStandardMaterial({ color: 0xc9ced8, roughness: 0.25, metalness: 0.9 }),
+      head: nightMat(new THREE.MeshLambertMaterial({ color: 0xfff4dc, emissive: 0xfff0c8 }), 0.05, 1.6), tail: nightMat(new THREE.MeshLambertMaterial({ color: 0xc8322a, emissive: 0xff2a1a }), 0.1, 1.4), sign: nightMat(new THREE.MeshLambertMaterial({ color: 0xf2b631, emissive: 0xffd27a }), 0.1, 1.3) };
+  }
+  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.45 }), M = CAR_MATS;
+  const F = frame(new THREE.Vector3(x, 0, z), dirVec(ang));
+  fbox(F, 0, 0.58, 0, 1.58, 0.62, 3.5, paint);
+  fbox(F, 0, 1.2, -0.15, 1.5, 0.66, 2.3, M.glass);
+  fbox(F, 0, 1.56, -0.15, 1.52, 0.07, 2.32, paint);
+  for (const u of [-0.74, 0.74]) for (const w of [0.85, -0.25, -1.25]) fbox(F, u, 1.2, w, 0.06, 0.66, 0.08, paint);
+  fbox(F, 0, 0.36, 1.78, 1.6, 0.2, 0.1, M.trim); fbox(F, 0, 0.36, -1.78, 1.6, 0.2, 0.1, M.trim);
+  for (const u of [-0.55, 0.55]) { fbox(F, u, 0.72, 1.76, 0.32, 0.14, 0.04, M.head, false); fbox(F, u, 0.72, -1.76, 0.28, 0.12, 0.04, M.tail, false); }
+  fbox(F, 0, 0.62, 1.76, 0.5, 0.18, 0.03, M.chrome, false);
+  for (const u of [-0.74, 0.74]) for (const w of [1.1, -1.1]) addGeo(new THREE.CylinderGeometry(0.31, 0.31, 0.22, 16), M.tire, F.m(u, 0.31, w).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2)));
+  if (taxi) { fbox(F, 0, 1.68, 0.1, 0.5, 0.18, 0.22, M.sign, false); fbox(F, 0, 0.62, 0, 1.6, 0.06, 3.52, M.sign, false); }
+  fcollider(F, 0, 0.85, 0, 1.6, 1.7, 3.55, { noCam: true });
 }
 const wirePoints = [];
 function powerPole(x, z) {
@@ -368,6 +394,10 @@ function buildCity() {
   for (const z of [-21, -45]) bin(new THREE.Vector3(-5.6, SW, z));
   vendingMachine(frame(new THREE.Vector3(30, SW, 6.1), new THREE.Vector3(0, 0, -1)), 0, -0.45);
   trafficLight(-6.2, -5.4, new THREE.Vector3(1, 0, 0)); trafficLight(6.2, 5.4, new THREE.Vector3(-1, 0, 0));
+  // voitures garées le long des trottoirs
+  for (const [x, z, a, c, taxi] of [[-62, -2.9, -Math.PI / 2, 0xe8e4dc], [-38, -2.9, -Math.PI / 2, 0x2f5f6e], [28, -2.9, -Math.PI / 2, 0x1d1c22, true], [50, -2.9, -Math.PI / 2, 0xc8402f],
+    [-52, 2.9, Math.PI / 2, 0x7a8a9a], [40, 2.9, Math.PI / 2, 0xf2e6c8], [64, 2.9, Math.PI / 2, 0x4f6b4a], [3.5, 30, 0, 0xd9cfc0], [-3.5, 50, Math.PI, 0x8a3b3b], [3.5, -50, 0, 0x1d1c22, true], [-3.5, -22, Math.PI, 0xb5b8c0]])
+    parkedCar(x, z, a, c, taxi);
   trafficLight(6.2, -5.4, new THREE.Vector3(0, 0, 1)); trafficLight(-6.2, 5.4, new THREE.Vector3(0, 0, -1));
 
   flushBatches();
@@ -383,10 +413,11 @@ function buildCity() {
 // ============================================================================
 const TOWER_POS = new THREE.Vector3(70, 0, -720);
 const rings = [], birds = [];
+let TOWER_BEACON = null;
 function buildBackdrop() {
   const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
-  const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) if (i < 8 || i >= 16) uv.setXY(i, uv.getX(i) * 5, uv.getY(i) * 8);
-  const COUNT = 500, mesh = new THREE.InstancedMesh(geo, texMat(TEX.window), COUNT);
+  const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) if (i < 8 || i >= 16) uv.setXY(i, uv.getX(i) * 1.25, uv.getY(i) * 2);
+  const COUNT = 500, mesh = new THREE.InstancedMesh(geo, nightMat(texMat(TEX.window, { emissive: 0xffffff, emissiveMap: TEX.windowLit }), 0, 1.1), COUNT);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
   let n = 0, tries = 0;
   while (n < COUNT && tries++ < 8000) {
@@ -421,7 +452,7 @@ function buildBackdrop() {
   group.add(lattice);
   for (const [y, s, h] of [[125, 22, 9], [223, 10, 4]]) { const d = new THREE.Mesh(new THREE.BoxGeometry(s, h, s), lambert(0xeeeae6)); d.position.y = y; group.add(d); }
   const glow = (c, o = 1) => new THREE.MeshBasicMaterial({ color: c, fog: false, transparent: o < 1, opacity: o });
-  const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.8, 12, 8), glow(0xfff4ec)); beacon.position.y = TOP; group.add(beacon);
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.8, 12, 8), glow(0xfff4ec)); beacon.position.y = TOP; group.add(beacon); TOWER_BEACON = beacon;
   for (const [r, h] of [[22, 318], [36, 305], [52, 292]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 6, 120), glow(0xf2f7ff, 0.95)); ring.rotation.x = Math.PI / 2; ring.position.y = h; group.add(ring); rings.push(ring); }
   const sphere = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(78, 2)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, fog: false }));
   sphere.position.y = 300; group.add(sphere); rings.push(sphere);

@@ -20,40 +20,66 @@ function chromeMatcap() {
 }
 const MATCAP = chromeMatcap();
 const chrome = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0xffffff });
-function capsule(r, h) {
+function capsule(r, h, radial = 24, steps = 10) {
   const pts = [], straight = Math.max(0, h - 2 * r);
-  for (let i = 0; i <= 10; i++) { const a = -Math.PI / 2 + (Math.PI / 2) * (i / 10); pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r - straight / 2)); }
-  for (let i = 0; i <= 10; i++) { const a = (Math.PI / 2) * (i / 10); pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r + straight / 2)); }
-  return new THREE.LatheGeometry(pts, 24);
+  for (let i = 0; i <= steps; i++) { const a = -Math.PI / 2 + (Math.PI / 2) * (i / steps); pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r - straight / 2)); }
+  for (let i = 0; i <= steps; i++) { const a = (Math.PI / 2) * (i / steps); pts.push(new THREE.Vector2(Math.cos(a) * r, Math.sin(a) * r + straight / 2)); }
+  return new THREE.LatheGeometry(pts, radial);
 }
-const JOINTS = ["waist", "neck", "shoulderR", "shoulderL", "elbowR", "elbowL", "hipR", "hipL", "kneeR", "kneeL"];
-// root (position, cap) > spin > flip (salto, pivot au centre) > pose (allongé) > body (écrasement / étirement)
-function buildRig(material, layer) {
+const JOINTS = ["waist", "chest", "neck", "shoulderR", "shoulderL", "elbowR", "elbowL", "hipR", "hipL", "kneeR", "kneeL"];
+// Proportions d'adulte (environ 1,85 m) : longues jambes, vrai buste, bras en
+// deux parties. On garde l'icône : tête ronde séparée du corps, formes
+// arrondies, chrome. Les mains ont un point d'accroche pour les armes.
+// root (position, cap) > spin > flip (salto, pivot au centre) > pose (chute, allongé) > body (écrasement / étirement)
+const RIG_GEO = new Map(); // géométries partagées des squelettes allégés
+// lowPoly : version allégée (passants, monstres) — moins de facettes, même silhouette.
+function buildRig(material, layer, lowPoly = false) {
+  const cached = (key, make) => RIG_GEO.get(key) || RIG_GEO.set(key, make()).get(key);
+  const cap = (r, h) => (lowPoly ? cached(`c${r},${h}`, () => capsule(r, h, 10, 4)) : capsule(r, h)), sph = (r, a = 16, b = 10) => (lowPoly ? cached(`s${r}`, () => new THREE.SphereGeometry(r, 10, 7)) : new THREE.SphereGeometry(r, a, b));
   const rig = { root: new THREE.Group(), spin: new THREE.Group(), flip: new THREE.Group(), flipInner: new THREE.Group(), pose: new THREE.Group(), body: new THREE.Group(),
-    meshes: [], J: {}, action: null, sq: 1, sqV: 0 };
+    meshes: [], J: {}, action: null, sq: 1, sqV: 0, material, layer };
   rig.root.add(rig.spin); rig.spin.add(rig.flip); rig.flip.position.y = 0.95; rig.flip.add(rig.flipInner); rig.flipInner.position.y = -0.95;
   rig.flipInner.add(rig.pose); rig.pose.add(rig.body); scene.add(rig.root);
   const part = (parent, geo, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.layers.set(layer); parent.add(m); rig.meshes.push(m); return m; };
   const joint = (name, parent, x, y, z, k = 280, c = 24) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); rig.J[name] = { g, k, c, v: new THREE.Vector3() }; return g; };
-  rig.pelvis = new THREE.Group(); rig.pelvis.position.y = 0.55; rig.body.add(rig.pelvis);
-  part(rig.pelvis, capsule(0.27, 0.5), 0, 0, 0);
-  const waistJ = joint("waist", rig.pelvis, 0, 0, 0, 220, 19);
-  part(waistJ, capsule(0.33, 0.84), 0, 0.33, 0);
-  const neckJ = joint("neck", waistJ, 0, 0.78, 0, 110, 11);
-  rig.head = part(neckJ, new THREE.SphereGeometry(0.27, 28, 18), 0, 0.3, 0);
+  rig.part = part;
+  rig.pelvis = new THREE.Group(); rig.pelvis.position.y = 0.9; rig.body.add(rig.pelvis);
+  part(rig.pelvis, cap(0.15, 0.34), 0, -0.02, 0, 1.25, 1, 0.85);
+  const waistJ = joint("waist", rig.pelvis, 0, 0.05, 0, 220, 19);
+  part(waistJ, cap(0.15, 0.3), 0, 0.12, 0, 1.15, 1, 0.82);
+  const chestJ = joint("chest", waistJ, 0, 0.2, 0, 200, 18);
+  part(chestJ, cap(0.2, 0.44), 0, 0.17, 0, 1.25, 1, 0.84);
+  const neckJ = joint("neck", chestJ, 0, 0.42, 0, 110, 11);
+  rig.head = part(neckJ, sph(0.155, 28, 18), 0, 0.17, 0);
   for (const [side, s] of [["R", 1], ["L", -1]]) {
-    const sh = joint("shoulder" + side, waistJ, 0.33 * s, 0.53, 0, 300, 23);
-    part(sh, capsule(0.11, 0.34), 0.02 * s, -0.13, 0);
-    const el = joint("elbow" + side, sh, 0.02 * s, -0.28, 0, 320, 23);
-    part(el, capsule(0.1, 0.3), 0, -0.12, 0);
-    rig["hand" + side] = part(el, new THREE.SphereGeometry(0.125, 18, 12), 0, -0.29, 0);
-    const hip = joint("hip" + side, rig.pelvis, 0.14 * s, -0.05, 0, 300, 25);
-    part(hip, capsule(0.115, 0.3), 0, -0.11, 0);
-    const kn = joint("knee" + side, hip, 0, -0.23, 0, 320, 25);
-    part(kn, capsule(0.105, 0.28), 0, -0.1, 0);
-    part(kn, new THREE.SphereGeometry(0.12, 16, 10), 0, -0.2, -0.045, 1, 0.6, 1.45);
+    const sh = joint("shoulder" + side, chestJ, 0.25 * s, 0.33, 0, 300, 23);
+    part(sh, sph(0.085, 14, 10), 0, 0, 0);
+    part(sh, cap(0.07, 0.32), 0.0, -0.14, 0);
+    const el = joint("elbow" + side, sh, 0, -0.29, 0, 320, 23);
+    part(el, cap(0.062, 0.3), 0, -0.13, 0);
+    const hand = new THREE.Group(); hand.position.set(0, -0.29, 0); el.add(hand);
+    part(hand, sph(0.08, 16, 10), 0, 0, 0, 1, 1.1, 0.9);
+    rig["hand" + side] = hand;
+    const hip = joint("hip" + side, rig.pelvis, 0.11 * s, -0.06, 0, 300, 25);
+    part(hip, cap(0.09, 0.46), 0, -0.2, 0);
+    const kn = joint("knee" + side, hip, 0, -0.42, 0, 320, 25);
+    part(kn, cap(0.075, 0.42), 0, -0.18, 0);
+    part(kn, sph(0.09, 16, 10), 0, -0.38, -0.05, 1, 0.55, 1.65);
   }
   return rig;
+}
+// Change l'arme tenue : les maillages vont dans les points d'accroche des mains.
+function setRigWeapon(rig, weaponId) {
+  for (const k of ["weaponR", "weaponL"]) if (rig[k]) { rig[k].parent.remove(rig[k]); rig.meshes = rig.meshes.filter((m) => !rig[k].userData.meshes.includes(m)); rig[k] = null; }
+  const make = WEAPON_MODELS[weaponId];
+  if (!make) return;
+  for (const [side, build] of Object.entries(make)) {
+    const g = new THREE.Group(), meshes = [];
+    build((geo, mat, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
+      const m = new THREE.Mesh(geo, mat || rig.material); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.scale.set(sx, sy, sz); m.layers.set(rig.layer); g.add(m); meshes.push(m); return m;
+    }, g);
+    g.userData.meshes = meshes; rig["hand" + side].add(g); rig["weapon" + side] = g; rig.meshes.push(...meshes);
+  }
 }
 const model = buildRig(chrome, MODEL_LAYER);
 // Double fantôme du Delay : même bonhomme, translucide et cyan, rendu normalement
@@ -67,7 +93,7 @@ blob.rotation.x = -Math.PI / 2; scene.add(blob);
 
 // --- Rendu pixélisé (même principe que pixel_impostor.gd) -------------------
 // La résolution chute pendant l'esquive : le bonhomme se « bit-crushe ».
-const PIX = { res: 88, cur: 88, size: 2.6, on: true, crush: 0 };
+const PIX = { res: 136, cur: 136, size: 3.4, on: true, crush: 0 };
 const pixTarget = new THREE.WebGLRenderTarget(PIX.res, PIX.res, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
 const pixCam = new THREE.PerspectiveCamera(); pixCam.layers.set(MODEL_LAYER);
 const pixQuad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: pixTarget.texture, alphaTest: 0.5, toneMapped: false }));

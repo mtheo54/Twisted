@@ -26,6 +26,7 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 #title { top: calc(16px + env(safe-area-inset-top, 0px)); left: 20px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 #title b { font-family: var(--display); font-size: 22px; letter-spacing: 0.06em; font-weight: 600; }
 #title span { font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+#clock { top: calc(70px + env(safe-area-inset-top, 0px)); left: 20px; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
 #secrets { top: calc(48px + env(safe-area-inset-top, 0px)); left: 20px; font-size: 13px; color: var(--gold); }
 #life { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 20px; width: clamp(140px, calc(50vw - 240px), 260px); display: grid; gap: 6px; font-size: 13px; }
 .bar { height: 10px; border-radius: 6px; background: rgba(10, 8, 14, 0.7); border: 1px solid var(--line); overflow: hidden; }
@@ -98,8 +99,22 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 .lo-table th, .lo-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .lo-table th { color: var(--muted); font-weight: 400; } .lo-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .lo-table tr.off { opacity: 0.4; }
+.lo-spell.locked { opacity: 0.55; border-style: dashed; }
+.slot.weapon { width: 64px; border-color: rgba(243,236,230,0.35); }
 .lo-slot:focus-visible, .lo-spell:focus-visible, .lo-head button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media (max-width: 700px) { #spellbar { transform: translateX(-50%) scale(0.8); } }
+/* Monstres : nom et barre de vie au-dessus de la tête */
+.mbar { left: 0; top: 0; width: 90px; display: grid; gap: 2px; font-size: 11px; letter-spacing: 0.04em; will-change: transform; }
+.mbar .bar { height: 6px; } .mbar i { background: #f2b631; transition: width 0.1s; }
+.mbar.night span { color: #ff9a8a; } .mbar.night i { background: #ff5a4a; }
+/* PNJ : nom flottant, losange quand ils ont du nouveau */
+.npctag { left: 0; top: 0; display: grid; justify-items: center; gap: 2px; font-size: 13px; white-space: nowrap; will-change: transform; }
+.npctag b { font-weight: 700; } .npctag b.new { color: var(--gold); }
+.npctag em { font-style: normal; font-size: 11px; color: var(--night); background: var(--peach); border-radius: 4px; padding: 1px 6px; }
+#dialog { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); width: min(620px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px 12px; display: grid; gap: 6px; }
+#dialog .dl-name { display: flex; gap: 10px; align-items: baseline; } #dialog .dl-name b { font-family: var(--display); font-size: 19px; color: var(--gold); letter-spacing: 0.04em; font-weight: 600; } #dialog .dl-name small { color: var(--muted); font-size: 12px; }
+#dialog p { margin: 0; line-height: 1.6; font-size: 15px; }
+#dialog .dl-next { justify-self: end; font-size: 11px; color: var(--muted); }
 
 </style>
 
@@ -108,11 +123,14 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 
 <div class="hud" id="title"><b>TWISTED</b><span>le carrefour · démo navigateur</span></div>
 <div class="hud" id="secrets">Secrets 0 / 1</div>
+<div class="hud" id="clock">15:30 ☀</div>
 <div class="hud" id="life"><span id="lifeText">Vie 100 / 100</span><div class="bar"><i id="lifeFill"></i></div></div>
 <div class="hud" id="help">
   <kbd>Z Q S D</kbd><span>se déplacer · Maj courir</span>
   <kbd>Espace</kbd><span>sauts, wall jump au mur</span>
-  <kbd>Clic ×3</kbd><span>combo, le 3e projette</span>
+  <kbd>Clic</kbd><span>combo (le dernier coup est le gros)</span>
+  <kbd>X · molette</kbd><span>changer d'arme</span>
+  <kbd>F</kbd><span>parler aux personnages (◆)</span>
   <kbd>Saut + clic</kbd><span>frappe plongeante</span>
   <kbd>C</kbd><span>Bitcrush (esquive) · C + clic : contre</span>
   <kbd>A E</kbd><span>tes 2 sorts</span>
@@ -120,6 +138,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
   <kbd>Clic droit</kbd><span>viser · clic : tirer l'onde</span>
   <kbd>1 2 3</kbd><span>onde sinus, carré, triangle</span>
   <kbd>Tab</kbd><span>mes sorts et fusions</span>
+  <kbd>N</kbd><span>avancer jusqu'à la nuit / au jour</span>
   <kbd>M · P · H</kbd><span>son · pixels · cette aide</span>
 </div>
 <div class="hud" id="dummyBar"><div class="bar"><i id="dummyFill"></i></div></div>
@@ -129,6 +148,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <div class="hud" id="spellbar"></div>
 <div class="hud" id="crosshair" hidden></div>
 <div class="hud" id="combat" hidden>MODE COMBAT</div>
+<div id="dialog" hidden></div>
 
 <div id="loadout" hidden>
   <div class="lo-card" role="dialog" aria-label="Mes sorts">
@@ -137,6 +157,8 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
     <div class="lo-slots" id="loSlots"></div>
     <h3 id="loGridTitle"></h3>
     <div class="lo-grid" id="loSpells"></div>
+    <h3>Armes <small>X ou molette pour changer en jeu</small></h3>
+    <div class="lo-grid" id="loWeapons"></div>
     <h3>Ondes de visée <small>clic droit pour viser, clic pour tirer</small></h3>
     <div class="lo-grid" id="loWaves"></div>
   </div>
@@ -145,7 +167,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <div id="overlay">
   <div class="card">
     <h1>Le carrefour</h1>
-    <p>Une rue commerçante et ses restaurants, une rue résidentielle et un petit parc. Cours, saute deux fois, rebondis sur les murs. Un seul wall jump par saut, sauf sur les murs tagués : là, on peut enchaîner jusqu'aux toits. Un secret t'attend là-haut. Sur la place du parc, l'enceinte d'entraînement riposte dès que tu la frappes : parfait pour tester tes sorts.</p>
+    <p>Une rue commerçante, une rue résidentielle et un petit parc. Des habitants s'y promènent ; certains ont des choses à te dire et des armes à te confier (approche-toi des ◆ et appuie sur F). Des parasites sonores rôdent dans les rues… et la nuit, les vrais monstres sortent. Sur la place du parc, l'enceinte d'entraînement riposte dès que tu la frappes.</p>
     <div class="btns"><button id="play" type="button" disabled>Chargement…</button><button id="openLoadout" type="button" class="ghost">Mes sorts</button></div>
     <p class="note">Clavier et souris, avec le son. Les touches suivent leur position : ZQSD en AZERTY, WASD en QWERTY. L'esquive est sur C, car Ctrl + Z fermerait l'onglet.</p>
   </div>
@@ -156,6 +178,12 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <script src="js/sim.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/city.js"></script>
+<script src="js/world.js"></script>
 <script src="js/actors.js"></script>
+<script src="js/weapons.js"></script>
 <script src="js/game.js"></script>
+<script src="js/enemies.js"></script>
+<script src="js/npcs.js"></script>
+<script src="js/dragon.js"></script>
+<script src="js/main.js"></script>
 
