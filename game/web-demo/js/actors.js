@@ -38,8 +38,9 @@ const RIG_GEO = new Map(); // géométries partagées des squelettes allégés
 const RIG_SHAPES = {
   human: { pelvisY: 0.9, pelvis: [0.15, 0.34, 1.25, 0.85], waist: [0.15, 0.3, 0.12, 1.15, 0.82], chestY: 0.2, chest: [0.2, 0.44, 0.17, 1.25, 0.84], neckY: 0.42, head: [0.155, 0.17],
     shoulder: [0.25, 0.33, 0.085], upper: [0.07, 0.32, -0.14], elbowY: -0.29, fore: [0.062, 0.3, -0.13], handY: -0.29, hand: 0.08, hip: [0.11, -0.06], thigh: [0.09, 0.46, -0.2], kneeY: -0.42, shin: [0.075, 0.42, -0.18], foot: [0.09, -0.38, -0.05, 1.65] },
-  abrasion: { pelvisY: 0.88, pelvis: [0.06, 0.2, 1, 1], waist: [0.062, 0.34, 0.15, 1, 1], chestY: 0.25, chest: [0.07, 0.46, 0.2, 1, 1], neckY: 0.38, head: [0.2, 0.23],
-    shoulder: [0.09, 0.36, 0.04], upper: [0.036, 0.34, -0.15], elbowY: -0.31, fore: [0.033, 0.32, -0.14], handY: -0.3, hand: 0.042, hip: [0.052, -0.05], thigh: [0.048, 0.46, -0.2], kneeY: -0.42, shin: [0.043, 0.44, -0.19], foot: [0.05, -0.41, -0.07, 2.4] },
+  // bonhomme d'abrasion : grosse tête ronde, corps plein et arrondi, membres épais (image de référence)
+  abrasion: { pelvisY: 0.88, pelvis: [0.13, 0.3, 1.2, 0.9], waist: [0.14, 0.34, 0.14, 1.15, 0.88], chestY: 0.24, chest: [0.18, 0.46, 0.18, 1.18, 0.9], neckY: 0.4, head: [0.21, 0.24],
+    shoulder: [0.2, 0.34, 0.085], upper: [0.075, 0.34, -0.15], elbowY: -0.31, fore: [0.07, 0.32, -0.14], handY: -0.3, hand: 0.08, hip: [0.095, -0.05], thigh: [0.09, 0.46, -0.2], kneeY: -0.42, shin: [0.08, 0.44, -0.19], foot: [0.09, -0.41, -0.06, 1.7] },
 };
 // lowPoly : version allégée (passants, monstres) — moins de facettes, même silhouette.
 function buildRig(material, layer, lowPoly = false, shape = "human") {

@@ -200,7 +200,9 @@ function updateAltars(dt) {
     o.w.visible = !owned; o.halo.visible = !owned;
     o.w.rotation.y += dt * 1.4; o.w.position.y = 1.9 + Math.sin(o.t * 2) * 0.1;
     o.flames.forEach((f, i) => f.scale.setScalar(0.22 + Math.sin(o.t * 17 + i * 3) * 0.04 + Math.random() * 0.03));
-    if (!owned && Math.hypot(P.pos.x - o.a.x, P.pos.z - o.a.z) < 1.4 && Math.abs(P.pos.y - (o.y + 1.1)) < 2) {
+    // une seule fois (sinon l'effet d'impact se relance à chaque image et fige le jeu)
+    if (!owned && !o.taken && Math.hypot(P.pos.x - o.a.x, P.pos.z - o.a.z) < 1.4 && Math.abs(P.pos.y - (o.y + 1.1)) < 2) {
+      o.taken = true;
       sim.queue({ type: "unlock", source: P.id, weapon: o.a.weapon });
       pixelRing(o.g.position, 3, 0.6, new THREE.Color(DATA.weapons[o.a.weapon].color).getHex()); groundImpact(o.g.position, 1, 0xc86bff);
     }

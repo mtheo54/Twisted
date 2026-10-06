@@ -1331,7 +1331,9 @@ let last = performance.now(), acc = 0, time = 0;
 function frame_(now) {
   const realDt = Math.min(0.1, (now - last) / 1000); last = now;
   let dt = paused ? 0 : realDt;
-  if (FX.freeze > 0) { FX.freeze -= realDt; dt = 0; }
+  // pause d'impact, jamais plus d'un quart de seconde d'affilée (sécurité anti-blocage)
+  if (FX.freeze > 0 && (FX.frozen || 0) < 0.25) { FX.freeze -= realDt; FX.frozen = (FX.frozen || 0) + realDt; dt = 0; }
+  else { FX.freeze = 0; FX.frozen = 0; }
   FX.impact = Math.max(0, FX.impact - realDt);
   time += dt; acc += dt;
   while (acc >= STEP) { physicsStep(STEP); acc -= STEP; }

@@ -572,8 +572,8 @@ nuit, nuages qui dérivent et changent de teinte avec l'heure.
 
 ## 15. Virage dark fantasy, façon Ultrakill (démo web v7)
 
-**Le bonhomme** (image de référence : grosse tête ronde de chrome clair sur
-un corps-tige de métal sombre). Il est **semi-liquide** : ses membres
+**Le bonhomme** (images de référence : grosse tête ronde de chrome clair,
+corps plein et arrondi aux membres épais, façon icône chromée). Il est **semi-liquide** : ses membres
 s'allongent quand il frappe (le bras qui cogne s'étire jusqu'à ×1,9), ses
 jambes s'étirent à chaque foulée quand il fonce, ses bras traînent
 derrière lui, il s'étale dans le sens de la vitesse et s'étire en chute.
