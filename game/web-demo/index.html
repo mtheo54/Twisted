@@ -4,13 +4,13 @@
 <style>
 /* Mise en page : un écran de jeu plein cadre, HUD discret dans les coins, comme l'interface du plugin. */
 :root {
-  --night: #17131f;
-  --panel: rgba(23, 19, 31, 0.78);
-  --ink: #f3ece6;
-  --muted: #b9afbb;
-  --peach: #eaa47f;
-  --life: #84d79d;
-  --gold: #f3cf6d;
+  --night: #0c090e;
+  --panel: rgba(14, 10, 16, 0.82);
+  --ink: #ece4dc;
+  --muted: #a89aa0;
+  --peach: #d4553f;
+  --life: #b8323a;
+  --gold: #c9a24a;
   --line: rgba(243, 236, 230, 0.14);
   --display: "Shippori Mincho", "Hiragino Mincho ProN", Georgia, serif;
   --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Segoe UI", system-ui, sans-serif;
@@ -21,6 +21,11 @@ html, body { height: 100%; }
 body { margin: 0; background: var(--night); color: var(--ink); font-family: var(--body); overflow: hidden; }
 #game { position: fixed; inset: 0; }
 #game canvas { display: block; width: 100%; height: 100%; }
+/* vignette sombre et grain de film (dark fantasy) */
+#vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(8,2,6,0.55) 80%, rgba(4,0,2,0.85) 100%); }
+#vignette::after { content: ""; position: absolute; inset: -50%; opacity: 0.07; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); animation: grain 0.5s steps(4) infinite; }
+@keyframes grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-5%, 3%); } 50% { transform: translate(4%, -4%); } 75% { transform: translate(-3%, -2%); } 100% { transform: translate(2%, 5%); } }
+@media (prefers-reduced-motion: reduce) { #vignette::after { animation: none; } }
 #speed { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .hud { position: fixed; pointer-events: none; text-shadow: 0 1px 3px rgba(10, 8, 14, 0.9); }
 #title { top: calc(16px + env(safe-area-inset-top, 0px)); left: 20px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
@@ -30,6 +35,7 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 #secrets { top: calc(48px + env(safe-area-inset-top, 0px)); left: 20px; font-size: 13px; color: var(--gold); }
 #life { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 20px; width: clamp(140px, calc(50vw - 240px), 260px); display: grid; gap: 6px; font-size: 13px; }
 .bar { height: 10px; border-radius: 6px; background: rgba(10, 8, 14, 0.7); border: 1px solid var(--line); overflow: hidden; }
+#stamina { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; } #stamina i { height: 5px; border-radius: 3px; background: rgba(143,230,255,0.15); overflow: hidden; position: relative; } #stamina i b { position: absolute; inset: 0; background: #8fe6ff; transform-origin: left; }
 .bar i { display: block; height: 100%; width: 100%; background: var(--life); transition: width 0.15s; }
 #help { top: calc(16px + env(safe-area-inset-top, 0px)); right: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 12px; line-height: 1.65; display: grid; grid-template-columns: auto auto; column-gap: 14px; }
 #help kbd { font-family: var(--body); font-weight: 700; color: var(--peach); justify-self: end; }
@@ -103,6 +109,12 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 .slot.weapon { width: 64px; border-color: rgba(243,236,230,0.35); }
 .lo-slot:focus-visible, .lo-spell:focus-visible, .lo-head button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media (max-width: 700px) { #spellbar { transform: translateX(-50%) scale(0.8); } }
+/* Jauge de style */
+#style { right: 20px; top: 34%; width: 190px; display: grid; gap: 3px; text-align: right; justify-items: end; }
+#style b { font-family: var(--display); font-size: 44px; line-height: 1; letter-spacing: 0.04em; font-weight: 600; }
+#style span { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+#style .bar { width: 100%; height: 5px; } #style .bar i { transition: none; }
+#style em { font-style: normal; font-size: 12px; color: var(--ink); letter-spacing: 0.06em; }
 /* Monstres : nom et barre de vie au-dessus de la tête */
 .mbar { left: 0; top: 0; width: 90px; display: grid; gap: 2px; font-size: 11px; letter-spacing: 0.04em; will-change: transform; }
 .mbar .bar { height: 6px; } .mbar i { background: #f2b631; transition: width 0.1s; }
@@ -120,19 +132,21 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 
 <div id="game"></div>
 <canvas id="speed"></canvas>
+<div id="vignette"></div>
 
 <div class="hud" id="title"><b>TWISTED</b><span>le carrefour · démo navigateur</span></div>
 <div class="hud" id="secrets">Secrets 0 / 1</div>
 <div class="hud" id="clock">15:30 ☀</div>
-<div class="hud" id="life"><span id="lifeText">Vie 100 / 100</span><div class="bar"><i id="lifeFill"></i></div></div>
+<div class="hud" id="life"><span id="lifeText">Vie 100 / 100</span><div class="bar"><i id="lifeFill"></i></div><div id="stamina"><i></i><i></i><i></i></div></div>
 <div class="hud" id="help">
-  <kbd>Z Q S D</kbd><span>se déplacer · Maj courir</span>
-  <kbd>Espace</kbd><span>sauts, wall jump au mur</span>
+  <kbd>Z Q S D</kbd><span>courir (toujours vite)</span>
+  <kbd>Maj</kbd><span>dash (3 charges) · Maj + Espace : dash-saut</span>
+  <kbd>C</kbd><span>glissade au sol · écrasement en l'air</span>
+  <kbd>Espace</kbd><span>sauts, 3 wall jumps · après un écrasement : rebond</span>
   <kbd>Clic</kbd><span>combo (le dernier coup est le gros)</span>
   <kbd>X · molette</kbd><span>changer d'arme</span>
   <kbd>F</kbd><span>parler aux personnages (◆)</span>
-  <kbd>Saut + clic</kbd><span>frappe plongeante</span>
-  <kbd>C</kbd><span>Bitcrush (esquive) · C + clic : contre</span>
+  <kbd>Maj + clic</kbd><span>contre-glitch</span>
   <kbd>A E</kbd><span>tes 2 sorts</span>
   <kbd>R T</kbd><span>tes 2 sorts fusionnés</span>
   <kbd>Clic droit</kbd><span>viser · clic : tirer l'onde</span>
@@ -149,6 +163,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <div class="hud" id="crosshair" hidden></div>
 <div class="hud" id="combat" hidden>MODE COMBAT</div>
 <div id="dialog" hidden></div>
+<div class="hud" id="style" hidden></div>
 
 <div id="loadout" hidden>
   <div class="lo-card" role="dialog" aria-label="Mes sorts">
@@ -167,7 +182,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <div id="overlay">
   <div class="card">
     <h1>Le carrefour</h1>
-    <p>Une rue commerçante, une rue résidentielle et un petit parc. Des habitants s'y promènent ; certains ont des choses à te dire et des armes à te confier (approche-toi des ◆ et appuie sur F). Des parasites sonores rôdent dans les rues… et la nuit, les vrais monstres sortent. Sur la place du parc, l'enceinte d'entraînement riposte dès que tu la frappes.</p>
+    <p>Le jour, la ville est calme et brumeuse : parle aux habitants (◆, touche F) et cherche les autels où reposent des armes. La nuit (N pour l'avancer), les monstres sortent. Ne t'arrête jamais : cours, glisse, dashe, écrase-les. Frapper de près te soigne.</p>
     <div class="btns"><button id="play" type="button" disabled>Chargement…</button><button id="openLoadout" type="button" class="ghost">Mes sorts</button></div>
     <p class="note">Clavier et souris, avec le son. Les touches suivent leur position : ZQSD en AZERTY, WASD en QWERTY. L'esquive est sur C, car Ctrl + Z fermerait l'onglet.</p>
   </div>
@@ -181,6 +196,7 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <script src="js/world.js"></script>
 <script src="js/actors.js"></script>
 <script src="js/weapons.js"></script>
+<script src="js/fx.js"></script>
 <script src="js/game.js"></script>
 <script src="js/enemies.js"></script>
 <script src="js/npcs.js"></script>

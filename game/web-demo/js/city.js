@@ -2,7 +2,8 @@
 // ============================================================================
 // Bâtiments
 // ============================================================================
-const WALL_COLORS = [0xa3a0aa, 0x8e8e9a, 0xb5a8a3, 0x7c7e8a, 0xadacb2, 0x9d9298, 0xb9b1a6, 0x98a0ab];
+// pierre sombre, ardoise, brique noircie (dark fantasy)
+const WALL_COLORS = [0x6a6470, 0x5a5662, 0x7a6e68, 0x4e4a56, 0x746a66, 0x625a68, 0x5e5254, 0x6c6674];
 function wallMats(color) {
   const key = "W" + color;
   if (!MATS[key]) MATS[key] = [nightMat(texMat(TEX.window, { color, emissive: 0xffffff, emissiveMap: TEX.windowLit }), 0, 1.0), lambert(new THREE.Color(color).multiplyScalar(0.7).getHex())];
@@ -27,6 +28,8 @@ function roofDetails(x0, x1, z0, z1, h) {
   const n = 1 + Math.floor(rand() * 4);
   for (let i = 0; i < n; i++) boxW(cx + range(-ix, ix), h + 0.35, cz + range(-iz, iz), 1, 0.7, 0.8, equip);
   if (rand() < 0.3) { const ax = cx + range(-ix, ix), az = cz + range(-iz, iz); boxW(ax, h + 0.3, az, 1.6, 0.6, 1.6, dark); addGeo(new THREE.CylinderGeometry(1, 1, 1.7, 14), equip, new THREE.Matrix4().makeTranslation(ax, h + 1.45, az)); }
+  // flèches gothiques aux coins de certains toits
+  if (rand() < 0.55) for (const [px, pz] of [[x0 + 0.5, z0 + 0.5], [x1 - 0.5, z0 + 0.5], [x0 + 0.5, z1 - 0.5], [x1 - 0.5, z1 - 0.5]]) { const hh = range(2.5, 5.5); addGeo(new THREE.ConeGeometry(0.45, hh, 4), dark, new THREE.Matrix4().makeTranslation(px, h + 0.6 + hh / 2, pz)); boxW(px, h + 0.45, pz, 0.9, 0.3, 0.9, dark); }
   if (rand() < 0.6) { const ax = cx + range(-ix, ix), az = cz + range(-iz, iz), hh = range(3, 8); addGeo(new THREE.CylinderGeometry(0.06, 0.06, hh, 6), dark, new THREE.Matrix4().makeTranslation(ax, h + hh / 2, az)); addGeo(new THREE.SphereGeometry(0.16, 8, 6), lambert(0xe5503f, { emissive: 0x9a2a1e }), new THREE.Matrix4().makeTranslation(ax, h + hh, az)); }
 }
 const FRONT_NORMALS = { "+x": new THREE.Vector3(1, 0, 0), "-x": new THREE.Vector3(-1, 0, 0), "+z": new THREE.Vector3(0, 0, 1), "-z": new THREE.Vector3(0, 0, -1) };
@@ -148,7 +151,7 @@ function streetLamp(x, z, armDir) {
   const pole = lambert(0x383640), F = frame(new THREE.Vector3(x, 0.12, z), armDir);
   fcyl(F, 0, 0, 0, 0.07, 0.09, 5.2, pole);
   fbox(F, 0, 5.15, 0.55, 0.1, 0.1, 1.2, pole);
-  const headMat = lambert(0xf2e8d6, { emissive: 0xffe2b0 });
+  const headMat = lambert(0xffc080, { emissive: 0xff8a30 }); // lanterne à flamme
   if (!headMat.userData.night) { headMat.userData.night = true; nightMat(headMat, 0.12, 3.0); }
   fbox(F, 0, 5.05, 1.1, 0.26, 0.14, 0.5, headMat, false);
   LAMP_POS.push(F.p(0, 4.9, 1.1));
@@ -209,7 +212,8 @@ function pottedPlant(p) {
   addGeo(new THREE.IcosahedronGeometry(0.42, 0), lambert(0x4f7f45), new THREE.Matrix4().makeTranslation(p.x, p.y + 0.8, p.z));
 }
 function tree(p, kind, scale = 1) {
-  const trunk = lambert(0x5d4434), leaf = kind === "sakura" ? lambert(0xf2b7c8) : lambert(0xa9c25a);
+  // cerisiers aux feuilles couleur sang, ginkgos presque morts
+  const trunk = lambert(0x2e2420), leaf = kind === "sakura" ? lambert(0xa8202c) : lambert(0x5a5a30);
   const h = 3.2 * scale;
   addGeo(new THREE.CylinderGeometry(0.12 * scale, 0.2 * scale, h, 7), trunk, new THREE.Matrix4().makeTranslation(p.x, p.y + h / 2, p.z));
   const blobs = kind === "sakura" ? 4 : 3;
@@ -439,7 +443,7 @@ function buildBackdrop() {
   }
 
   const group = new THREE.Group(); group.position.copy(TOWER_POS); scene.add(group);
-  const RED = new THREE.Color(0xc8402f), WHITE = new THREE.Color(0xeeeae6), LAT = 250, TOP = 333, LEVELS = 16;
+  const RED = new THREE.Color(0x5a1414), WHITE = new THREE.Color(0x24222a), LAT = 250, TOP = 333, LEVELS = 16; // fer noir et sang séché
   const corners = (h) => { const w = 2.2 + 31.8 * Math.pow(1 - h / LAT, 2.2); return [[w, w], [-w, w], [-w, -w], [w, -w]].map(([x, z]) => new THREE.Vector3(x, h, z)); };
   const beams = [];
   for (let i = 0; i < LEVELS; i++) {
@@ -453,12 +457,12 @@ function buildBackdrop() {
   for (const [y, s, h] of [[125, 22, 9], [223, 10, 4]]) { const d = new THREE.Mesh(new THREE.BoxGeometry(s, h, s), lambert(0xeeeae6)); d.position.y = y; group.add(d); }
   const glow = (c, o = 1) => new THREE.MeshBasicMaterial({ color: c, fog: false, transparent: o < 1, opacity: o });
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.8, 12, 8), glow(0xfff4ec)); beacon.position.y = TOP; group.add(beacon); TOWER_BEACON = beacon;
-  for (const [r, h] of [[22, 318], [36, 305], [52, 292]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 6, 120), glow(0xf2f7ff, 0.95)); ring.rotation.x = Math.PI / 2; ring.position.y = h; group.add(ring); rings.push(ring); }
-  const sphere = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(78, 2)), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, fog: false }));
+  for (const [r, h] of [[22, 318], [36, 305], [52, 292]]) { const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 6, 120), glow(0xff4a3a, 0.95)); ring.rotation.x = Math.PI / 2; ring.position.y = h; group.add(ring); rings.push(ring); }
+  const sphere = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(78, 2)), new THREE.LineBasicMaterial({ color: 0xff6a5a, transparent: true, opacity: 0.25, fog: false }));
   sphere.position.y = 300; group.add(sphere); rings.push(sphere);
 
   const wingGeo = new THREE.BufferGeometry(); wingGeo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, -0.15, 0, 0, 0.25, 1, 0, 0], 3));
-  const bm = new THREE.MeshBasicMaterial({ color: 0x4a4550, side: THREE.DoubleSide });
+  const bm = new THREE.MeshBasicMaterial({ color: 0x0c0a0e, side: THREE.DoubleSide }); // corbeaux
   for (let i = 0; i < 24; i++) {
     const b = new THREE.Group(), l = new THREE.Mesh(wingGeo, bm), r = new THREE.Mesh(wingGeo, bm); r.scale.x = -1; b.add(l, r);
     const near = i < 10;

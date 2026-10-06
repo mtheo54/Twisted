@@ -18,7 +18,8 @@ class Sim {
       busyUntil: 0, chain: null, chainUntil: 0, queued: -1, queuedCount: 0, lastDodgeAt: -10, diving: false,
       statuses: new Map(), gateAt: -10, hitLog: [], combatUntil: -1 };
     // les combattants sans IA (le joueur) portent des armes
-    if (!def.ai) { e.weapon = "fists"; e.weapons = new Set(this.data.start_weapons); }
+    if (!def.ai) { e.weapon = this.data.start_weapons[0]; e.weapons = new Set(this.data.start_weapons); }
+    if (def.dodge && def.dodge.charges) e.stamina = def.dodge.charges;
     // les monstres : état de leur IA (voir thinkMonster)
     if (def.ai === "monster") e.mon = { def: this.data.bestiary[archetype], windup: null, dash: null, busyUntil: 0, staggerUntil: 0, cd: {}, next: this.time + 1,
       strafe: Math.random() < 0.5 ? 1 : -1, strafeAt: 0, wander: null, wanderAt: 0, intent: new THREE.Vector3(), run: false, state: "idle", aggro: false };
@@ -92,6 +93,7 @@ class Sim {
     }
     this.pending = waiting;
     for (const e of this.entities.values()) {
+      if (e.stamina !== undefined) { const d = this.data.actors[e.archetype].dodge; e.stamina = Math.min(d.charges, e.stamina + dt / (d.regen * this.mods(e).dodge_cd)); }
       if (e.queuedCount > 0 && this.time >= e.busyUntil) { const q = e.queued; e.queuedCount--; if (!e.queuedCount) e.queued = -1; if (this.time - q < 0.6) this.attack(e, false); else { e.queuedCount = 0; e.queued = -1; } }
       // statuts : expiration et effets périodiques
       for (const st of [...e.statuses.values()]) {
@@ -194,8 +196,14 @@ class Sim {
   // --- Esquive (Bitcrush) --------------------------------------------------------
   dodge(src, free) {
     const d = this.data.actors[src.archetype].dodge, m = this.mods(src);
-    if (!d || m.no_dodge || (!free && !this.ready(src, "bitcrush"))) return false;
-    src.readyAt.bitcrush = this.time + this.data.spells.bitcrush.cooldown * m.dodge_cd;
+    if (!d || m.no_dodge) return false;
+    // dash à charges (façon Ultrakill) : 3 barres d'endurance qui se rechargent
+    if (d.charges) {
+      if (!free) { if (src.stamina < 1) { this.emit({ type: "spell_not_ready", source: src.id, spell: "bitcrush" }); return false; } src.stamina -= 1; }
+    } else {
+      if (!free && !this.ready(src, "bitcrush")) return false;
+      src.readyAt.bitcrush = this.time + this.data.spells.bitcrush.cooldown * m.dodge_cd;
+    }
     src.invulnerableUntil = Math.max(src.invulnerableUntil, this.time + d.iframes);
     src.lastDodgeAt = this.time; src.busyUntil = this.time; src.queued = -1; src.queuedCount = 0;
     this.pending = this.pending.filter((p) => !(p.source === src.id && p.kind === "move"));

@@ -420,7 +420,7 @@ function stepMonsters(dt) {
     for (const b of colliders) { if (!bodyHits(b, m, m.pos.x, m.pos.y, m.pos.z)) continue; if (m.vel.y <= 0) { m.pos.y = b.max[1]; landed = true; } else { m.pos.y = b.min[1] - m.h - 1e-4; m.vel.y = 0; } }
     if (m.pos.y <= 0) { m.pos.y = 0; landed = true; }
     if (landed) {
-      if (m.airborne && m.vel.y < -6) { puff(m.pos, 6, 1.4); noiseHit(240, 1, 0.12, 0.18); m.vel.y *= -0.25; m.vel.x *= 0.6; m.vel.z *= 0.6; }
+      if (m.airborne && m.vel.y < -6) { if (m.vel.y < -9) { groundImpact(m.pos, 0.7, 0xff3a2a); decalAt(BLOOD_DECALS, m.pos, 1.2); } else puff(m.pos, 6, 1.4); m.vel.y *= -0.25; m.vel.x *= 0.6; m.vel.z *= 0.6; }
       else { if (m.airborne) { m.airborne = false; m.tumble = 0; } m.vel.y = 0; }
       m.grounded = true;
     } else m.grounded = false;
@@ -440,6 +440,11 @@ function monsterOnDamage(ev) {
   if (ev.pull) { m.vel.x = dir.x * ev.pull * 5; m.vel.z = dir.z * ev.pull * 5; m.vel.y = 2.5; m.knockT = 0.35; m.grounded = false; }
   else if (ev.launch) { m.vel.set(dir.x * ev.launch[0] * 0.7 * heavy, ev.launch[1] * (m.def.heavy ? 0.6 : 1), dir.z * ev.launch[0] * 0.7 * heavy); m.airborne = true; m.grounded = false; m.knockT = 0.5; m.tumble = 1; }
   else { m.vel.x += dir.x * (ev.push || 1) * 2.0 * heavy; m.vel.z += dir.z * (ev.push || 1) * 2.0 * heavy; m.knockT = Math.max(m.knockT, 0.18); }
+  // sang : gerbe dans le sens du coup, plus forte pour les gros coups
+  m.lastDir = dir.clone(); m.lastImpact = !!ev.impact || !!ev.launch;
+  if (!ev.dot) bloodSpray(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.55, 0)), dir, ev.amount * (ev.impact ? 1.6 : 1));
+  else if (Math.random() < 0.5) bloodSpray(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.55, 0)), new THREE.Vector3(), 3, 0.5);
+  if (ev.impact) groundImpact(m.pos, 1.0, 0xff3a2a);
   // réaction du corps
   m.twitch.z += (Math.random() < 0.5 ? -1 : 1) * 0.35; m.twitch.x -= 0.3;
   if (m.rig) startAction(m.rig, "c_hurt");
@@ -447,13 +452,25 @@ function monsterOnDamage(ev) {
 }
 function monsterDied(ev) {
   const m = MONSTERS.get(ev.id); if (!m) return;
-  m.dying = true; m.deadT = 0; m.windup = null;
-  if (m.rig) { startAction(m.rig, "c_die"); }
   PROGRESS.kills[m.kind] = (PROGRESS.kills[m.kind] || 0) + 1; saveProgress();
-  floatText(m.def.name + " vaincu", monsterTop(m.id), "float big");
-  burst(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.5, 0)), m.night ? [0xff3a2a, 0x2a0a10, 0xffffff] : [0xffffff, 0xffe28a, 0x9fe6ff], 3, 16);
-  tone(m.def.heavy ? 160 : 400, 40, 0.6, 0.12, "sawtooth"); noiseHit(1200, 0.6, 0.4, 0.15);
+  // il explose : gerbe de sang, morceaux qui volent et saignent
+  const dir = m.lastDir || new THREE.Vector3(), center = m.pos.clone().add(new THREE.Vector3(0, m.top * 0.5, 0)), power = m.lastImpact ? 1.5 : 1;
+  bloodSpray(center, dir, 45 * power, 2.2); bloodSpray(center, new THREE.Vector3(), 20, 3);
+  decalAt(BLOOD_DECALS, m.pos, m.def.heavy ? 2.6 : 1.6);
+  gibify(m, dir, power);
+  tone(m.def.heavy ? 160 : 400, 40, 0.6, 0.12, "sawtooth"); noiseHit(600, 0.5, 0.5, 0.3, "lowpass"); noiseHit(3000, 0.8, 0.2, 0.12);
+  FX.freeze = Math.max(FX.freeze, 0.07);
+  // style : points de mort, en l'air, à l'écrasement, changement d'arme…
+  const kinds = [];
+  let pts = 40 + (m.def.heavy ? 30 : 0);
+  if (!P.onFloor) { pts += 25; kinds.push("MORT AÉRIENNE"); }
+  if (m.airborne) { pts += 20; kinds.push("JONGLAGE"); }
+  if (P.diving || time - (P.slamLandAt ?? -9) < 0.3) { pts += 25; kinds.push("ÉCRASÉ"); }
+  if (STYLE.lastWeapon && STYLE.lastWeapon !== P.weapon) { pts += 15; kinds.push("ARSENAL"); }
+  STYLE.lastWeapon = P.weapon;
+  styleAdd(pts, kinds.length ? kinds.join(" · ") : (m.def.heavy ? "MASSACRE" : "MORT"));
   if (typeof npcOnKill === "function") npcOnKill(m.kind);
+  removeMonster(m);
 }
 function monsterEvent(ev) {
   const m = MONSTERS.get(ev.id); if (!m) return;
@@ -532,7 +549,7 @@ function updateMonsters(dt) {
     if (stunned && !m.stars) { m.stars = new THREE.Group(); for (let i = 0; i < 3; i++) { const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.1), glowM(0xffe28a)); m.stars.add(st); } scene.add(m.stars); }
     if (m.stars) { m.stars.visible = stunned; if (stunned) { m.stars.position.copy(m.pos).add(new THREE.Vector3(0, m.top + 0.1, 0)); m.stars.children.forEach((st, i) => { const a = m.t * 5 + (i * Math.PI * 2) / 3; st.position.set(Math.cos(a) * 0.5, 0, Math.sin(a) * 0.5); st.rotation.y += dt * 6; }); } }
     if (e.statuses.has("reverb_loop") && Math.floor(m.t / 0.9) !== Math.floor((m.t - dt) / 0.9)) pixelRing(m.pos, 1.8, 0.7, 0x9a7bff, 1.2);
-    if (m.dying && m.deadT > 1.5) { pixelBurst(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.4, 0))); dropNote(m.pos); removeMonster(m); }
+    if (m.dying && m.deadT > 1.5) { pixelBurst(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.4, 0))); removeMonster(m); }
   }
   for (const g of glints) {
     if (g.life <= 0) continue;
@@ -564,12 +581,12 @@ function updateNotes(dt) {
 // Ils apparaissent hors de vue, dans les rues, jamais trop près du joueur.
 // ============================================================================
 const SPAWN_ZONES = [[-4, 4, -72, -12], [-4, 4, 12, 72], [-72, -12, -3, 3], [12, 72, -3, 3], [-38, -26, 20, 38]];
-const SPAWNER = { timer: 14, on: true, wasNight: false };
+const SPAWNER = { timer: 3, on: true, wasNight: false };
 function pickSpawn(kind) {
   const r = MONSTER_SIZE[kind].r;
   for (let k = 0; k < 20; k++) {
     const z = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)], p = new THREE.Vector3(z[0] + Math.random() * (z[1] - z[0]), 0, z[2] + Math.random() * (z[3] - z[2]));
-    const d = p.distanceTo(P.pos); if (d < 22 || d > 60) continue;
+    const d = p.distanceTo(P.pos); if (d < 18 || d > 50) continue;
     p.y = dummyGround(p.x, p.z, 1);
     if (bodyFree({ r, h: 1.5 }, p.x, p.y + 0.05, p.z)) return p;
   }
@@ -578,15 +595,17 @@ function pickSpawn(kind) {
 function updateSpawner(dt) {
   const night = isNight();
   // à l'aube, les monstres de la nuit se dissolvent (sauf en plein combat)
-  if (SPAWNER.wasNight && !night) for (const m of MONSTERS.values()) if (m.def.night && !m.dying) { const e = sim.entities.get(m.id); if (!(e.combatUntil > sim.time)) { e.alive = false; m.dying = true; m.deadT = 0.9; } }
+  // les monstres ne sortent que la nuit : au lever du jour, ils se dissolvent
+  if (!night) for (const m of MONSTERS.values()) if (!m.dying) { const e = sim.entities.get(m.id); if (!(e.combatUntil > sim.time) || DN.hour > 7.5) { e.alive = false; m.dying = true; m.deadT = 0.9; } }
   SPAWNER.wasNight = night;
   SPAWNER.timer -= dt; if (SPAWNER.timer > 0 || !SPAWNER.on || overlay.hidden === false) return;
   SPAWNER.timer = 4;
   // trop loin : on retire
   for (const m of [...MONSTERS.values()]) { const e = sim.entities.get(m.id); if (!m.dying && m.pos.distanceTo(P.pos) > 85 && !(e.combatUntil > sim.time)) removeMonster(m); }
-  const alive = [...MONSTERS.values()].filter((m) => !m.dying).length, want = night ? 6 : 3;
+  SPAWNER.timer = night ? 2.5 : 4;
+  const alive = [...MONSTERS.values()].filter((m) => !m.dying).length, want = night ? 9 : 0;
   if (alive >= want) return;
-  const table = night ? [["gueule", 2], ["ombre_sub", 2], ["gresillon", 2], ["cable", 1]] : [["gresillon", 3], ["cable", 2]];
+  const table = [["gueule", 2], ["ombre_sub", 2], ["gresillon", 3], ["cable", 2]];
   let total = table.reduce((a, b) => a + b[1], 0), roll = Math.random() * total, kind = table[0][0];
   for (const [k, w] of table) { roll -= w; if (roll <= 0) { kind = k; break; } }
   const p = pickSpawn(kind); if (!p) return;

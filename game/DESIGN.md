@@ -569,3 +569,63 @@ autour, à 250 m de haut. Pas encore combattable.
 
 **Réalisme** : voitures garées (kei cars, taxis) aux phares allumés la
 nuit, nuages qui dérivent et changent de teinte avec l'heure.
+
+## 15. Virage dark fantasy, façon Ultrakill (démo web v7)
+
+**Le bonhomme** (image de référence : grosse tête ronde de chrome clair sur
+un corps-tige de métal sombre). Il est **semi-liquide** : ses membres
+s'allongent quand il frappe (le bras qui cogne s'étire jusqu'à ×1,9), ses
+jambes s'étirent à chaque foulée quand il fonce, ses bras traînent
+derrière lui, il s'étale dans le sens de la vitesse et s'étire en chute.
+Sa tête est montée sur un ressort et traîne derrière lui. Il laisse des
+gouttes de chrome quand il va très vite. Les passants et le Câblé gardent
+des proportions humaines (deux silhouettes pour le même squelette).
+
+**Déplacements** (toujours en 3e personne) :
+
+| Touche | Effet |
+|---|---|
+| ZQSD | course rapide permanente (11 m/s) |
+| Maj | dash (Bitcrush) : 3 charges qui se rechargent (0,9 s chacune), invincible, aussi en l'air |
+| Maj puis Espace | dash-saut : on garde 80 % de la vitesse du dash |
+| C au sol | glissade (17 m/s, on peut tourner un peu) ; sauter garde l'élan |
+| C en l'air | écrasement : chute à 55 m/s, cratère, dégâts autour |
+| Espace juste après un écrasement | rebond, d'autant plus haut que la chute était longue |
+| Espace contre un mur | 3 wall jumps par saut (à l'infini sur les murs tagués) |
+
+En l'air, l'élan est conservé : on peut seulement l'orienter. Au sol,
+l'excès de vitesse retombe doucement. Les clics en l'air donnent des coups
+normaux (on reste suspendu un instant).
+
+**Armes** : 10 en tout. La **Twisted Sword** est l'arme de départ (deux
+taillades, un estoc qui fonce, puis la torsion qui tourne deux fois et
+projette). Nouvelles armes posées sur des **autels** (pierre noire, bougies) :
+
+| Arme | Combo | Autel |
+|---|---|---|
+| Boom Box | 2 grands coups + « Drop the bass » : une ligne d'impacts fend le sol devant | au fond du parc |
+| Faux à cordes | 2 balayages à 240° + moisson (2 tours, ramène les ennemis) | ruelle taguée |
+| Diapason | 2 estocs rapides + résonance (étourdit 1,6 s) | toit du karaoké |
+| Poings sub | 2 coups lourds + infra-uppercut (envoie en l'air) | bout de la rue, au nord |
+
+**Ultra-violence** : les coups font gicler du sang qui tache le sol ; les
+monstres tués explosent en morceaux qui volent, rebondissent et saignent.
+Comme dans Ultrakill, **frapper de près soigne** (35 % des dégâts infligés
+à moins de 4,5 m). **Jauge de style** : D Détraqué, C Cruel, B Brutal,
+A Atroce, S Sanguinaire, SS Sadique, SSS Sans pitié, puis TWISTED ; bonus
+pour les morts aériennes, le jonglage, l'écrasement, le changement d'arme ;
+elle baisse quand on est touché ou qu'on traîne.
+
+**Impacts au sol** (sans bouger la caméra) : fissures, débris qui
+rebondissent, onde de choc, poussière, courte pause d'impact.
+
+**Monstres uniquement la nuit**, jusqu'à 9 à la fois, plus rapides et plus
+agressifs (ils viennent de loin). Au lever du jour, ils se dissolvent. Le
+jour sert à explorer, parler et trouver les autels.
+
+**Ambiance dark fantasy** : jour couvert et brumeux, crépuscule couleur
+sang, nuit d'encre sous une **lune rouge** ; pierre sombre, flèches
+gothiques sur les toits, cerisiers rouge sang, lanternes à flamme qui
+vacillent, braises et cendres dans l'air, corbeaux, tour en fer noir aux
+anneaux rouges. Étalonnage de l'image (moins saturée, plus contrastée),
+vignette et grain de film.

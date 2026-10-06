@@ -32,6 +32,10 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [x] PNJ : passants qui fuient les monstres, 6 personnages à qui parler (F), quêtes qui donnent les armes
 - [x] Dragon de jade préparé : il tourne autour de la tour la nuit
 - [x] Voitures garées, nuages
+- [x] Démo v7 : dark fantasy, bonhomme semi-liquide (image de référence), déplacements façon Ultrakill — **à tester par toi**
+- [x] Twisted Sword + 4 armes sur des autels (Boom Box, Faux à cordes, Diapason, Poings sub)
+- [x] Ultra-violence : sang, monstres en morceaux, soin en frappant de près, jauge de style
+- [x] Impacts au sol : fissures, débris, ondes de choc ; monstres uniquement la nuit
 - [ ] Combat contre le dragon (à imaginer ensemble)
 - [ ] Fusions sort + onde (à imaginer ensemble)
 - [ ] Reporter les choix validés dans le projet Godot

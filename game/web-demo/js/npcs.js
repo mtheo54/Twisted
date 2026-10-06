@@ -32,7 +32,7 @@ function setupPedestrians() {
     hair.position.set(0, 0.19, 0.01); rig.J.neck.g.add(hair);
     if (rand() < 0.35) { const bag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.36, 0.14), npcMat(pick([0x2b2b30, 0x7a3b3b, 0x3d4a6b]))); bag.position.set(0, 0.12, 0.22); rig.J.chest.g.add(bag); }
     const path = SIDEWALKS[i % SIDEWALKS.length], a = new THREE.Vector3(path[0], SW, path[1]), b = new THREE.Vector3(path[2], SW, path[3]);
-    const p = { rig, a, b, t: rand(), dir: rand() < 0.5 ? 1 : -1, speed: range(1.1, 1.5), pos: new THREE.Vector3(), yaw: 0, phase: rand() * 6, pause: 0, nextPause: range(6, 18), flee: 0, fleeDir: 1, night: i >= 4, shown: true };
+    const p = { rig, a, b, t: rand(), dir: rand() < 0.5 ? 1 : -1, speed: range(1.1, 1.5), pos: new THREE.Vector3(), yaw: 0, phase: rand() * 6, pause: 0, nextPause: range(6, 18), flee: 0, fleeDir: 1, night: true, shown: true }; // la nuit, tout le monde se barricade
     p.pos.lerpVectors(a, b, p.t); rig.root.position.copy(p.pos);
     peds.push(p);
   }
@@ -85,16 +85,16 @@ function updatePedestrians(dt) {
 const NPC_DEFS = [
   { id: "kenji", name: "Kenji", role: "batteur de rue", pos: [7.5, 10.2], face: Math.PI / 2, coat: 0x2b2b30, pants: 0x3d4a6b, skin: 0xd9b391,
     talk: () => {
-      if (!hasWeapon("sticks")) return { fresh: true, lines: ["Hé, toi ! T'es un bonhomme d'abrasion, non ? Ça se voit au chrome.", "Les rues sont pleines de parasites en ce moment. Des Grésillons, des Câblés… et la nuit, c'est bien pire.", "Tiens, prends mes baguettes de rechange. Trois frappes rapides, puis un roulement qui envoie valser !", "X ou la molette pour changer d'arme. Tab pour voir tout ton attirail."], onEnd: () => unlockWeapon("sticks") };
-      return { lines: pick([["Quand un monstre fait briller une étoile jaune au-dessus de sa tête, frappe-le : tu l'interromps.", "Une étoile rouge ? Il est lancé, rien ne l'arrête. Esquive avec C, ou place un Gater juste avant le coup."], ["Taro mixe sur la place du parc. Il a toujours besoin d'un coup de main.", "Et Yuna… elle ne chante que la nuit, devant le karaoké."], ["Les monstres lâchent des notes vertes en tombant. Ramasse-les : ça soigne."]]) };
+      if (!hasWeapon("sticks")) return { fresh: true, lines: ["Hé, toi ! T'es un bonhomme d'abrasion, non ? Ça se voit au chrome.", "Le jour, ça va. Mais quand la nuit tombe, les monstres sortent : Grésillons, Câblés, Gueules-enceintes… Tout le monde s'enferme.", "Tiens, prends mes baguettes de rechange. Trois frappes rapides, puis un roulement qui envoie valser !", "X ou la molette pour changer d'arme. Tab pour voir tout ton attirail."], onEnd: () => unlockWeapon("sticks") };
+      return { lines: pick([["Quand un monstre fait briller une étoile jaune au-dessus de sa tête, frappe-le : tu l'interromps.", "Une étoile rouge ? Il est lancé, rien ne l'arrête. Esquive avec C, ou place un Gater juste avant le coup."], ["Taro mixe sur la place du parc. Il a toujours besoin d'un coup de main.", "Et Yuna… elle ne chante que la nuit, devant le karaoké."], ["Frappe-les de près : leur sang te soigne. Et ne t'arrête jamais de bouger : dash, glissade, écrasement."], ["Il y a des autels dans la ville, avec des armes dessus. Cherche bien, même sur les toits."]]) };
     } },
   { id: "taro", name: "DJ Taro", role: "DJ du parc", pos: [-11.2, 21.5], face: -Math.PI / 2, coat: 0x5b4a6b, pants: 0x2b2b30, skin: 0xa8794f,
     talk: () => {
       const q = PROGRESS.quests.taro;
       if (hasWeapon("mic_stand")) return { lines: ["La nuit, les monstres sortent pour de vrai. Écoute bien : ils grondent avant de frapper.", "Et si tu croises une Gueule-enceinte… ne reste pas devant sa gueule quand elle crie."] };
-      if (!q) return { fresh: true, lines: ["Yo ! DJ Taro. Ces parasites brouillent mes platines, c'est l'enfer.", "Débarrasse le quartier de 3 monstres et je te file mon vieux pied de micro. Il a une sacrée allonge."], onEnd: () => { PROGRESS.quests.taro = { start: killCount() }; saveProgress(); showBanner("Quête : vaincre 3 monstres pour DJ Taro", 2.4); } };
+      if (!q) return { fresh: true, lines: ["Yo ! DJ Taro. Ces parasites brouillent mes platines, c'est l'enfer.", "La nuit tombée, débarrasse le quartier de 3 monstres et je te file mon vieux pied de micro. Il a une sacrée allonge."], onEnd: () => { PROGRESS.quests.taro = { start: killCount() }; saveProgress(); showBanner("Quête : vaincre 3 monstres pour DJ Taro", 2.4); } };
       const left = 3 - (killCount() - q.start);
-      if (left > 0) return { lines: [`Encore ${left} monstre${left > 1 ? "s" : ""}, l'ami. Ils traînent dans les grandes rues et dans le parc.`] };
+      if (left > 0) return { lines: [`Encore ${left} monstre${left > 1 ? "s" : ""}, l'ami. Ils sortent la nuit, dans les grandes rues et dans le parc.`] };
       return { fresh: true, lines: ["Ça, c'est du nettoyage ! Le son est revenu.", "Tiens, le pied de micro : balayage, estoc, puis un moulinet qui touche tout autour de toi."], onEnd: () => unlockWeapon("mic_stand") };
     } },
   { id: "rin", name: "Rin", role: "luthière", pos: [-7.55, -36.5], face: -Math.PI / 2, coat: 0x4f6b4a, pants: 0x3a3a42, skin: 0xf0d8c0,

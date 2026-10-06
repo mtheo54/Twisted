@@ -10,7 +10,7 @@ const P = {
   lungeLeft: 0, lungeTotal: 1, lungeSpeed: 0, ghost: 0, attackSlow: 0, diving: false, aiming: false, wave: "sine",
   sprint: 0, idle: 0, lying: false, waved: 0, t: 0, phase: 0, speedRatio: 0, flatSpeed: 0, wall: null, secrets: 0, dead: false,
   mods: null, healAcc: 0, healTimer: 0, trailTimer: 0, ringTimer: 0,
-  weapon: "fists", knock: 0, combat: 0, flailAt: -1, talking: null,
+  weapon: DATA.start_weapons[0], knock: 0, combat: 0, flailAt: -1, talking: null,
 };
 const R = 0.35, H = 1.8, STEP_UP = 0.42;
 P.id = sim.spawn("player", P.pos);
@@ -101,7 +101,7 @@ function slotInfo(i) {
 }
 function renderLoadout() {
   const slots = document.getElementById("loSlots"), grid = document.getElementById("loSpells"), waves = document.getElementById("loWaves"), title = document.getElementById("loGridTitle");
-  slots.innerHTML = `<div class="lo-slot fixed"><kbd>C</kbd><b style="color:${DATA.spells.bitcrush.color}">Bitcrush</b><small>esquive de base</small></div>` +
+  slots.innerHTML = `<div class="lo-slot fixed"><kbd>Maj</kbd><b style="color:${DATA.spells.bitcrush.color}">Bitcrush</b><small>dash, 3 charges</small></div>` +
     SLOTS.map((s, i) => { const inf = slotInfo(i); return `<button type="button" class="lo-slot${i === selectedSlot ? " sel" : ""}" data-slot="${i}"><kbd>${s.label} · ${s.kind === "spell" ? "sort" : "fusion"}</kbd><b style="color:${inf.color}">${inf.name}</b><small>${i === selectedSlot ? "choisis ci-dessous ↓" : "changer"}</small></button>`; }).join("");
   const kind = SLOTS[selectedSlot].kind;
   const keyOf = (id) => { const at = EQUIP.findIndex((e, k) => e === id && SLOTS[k].kind === kind); return at >= 0 ? "touche " + SLOTS[at].label : ""; };
@@ -135,7 +135,7 @@ let slotEls = [];
 function buildSpellBar() {
   const sb = DATA.spells.bitcrush;
   const wp = DATA.weapons[P.weapon];
-  const items = [{ key: "X", id: "weapon", short: wp.short, color: wp.color, weapon: true }, { sep: true }, { key: "C", id: "bitcrush", short: sb.short, color: sb.color }, ...SLOTS.map((s, i) => { const inf = slotInfo(i); return { key: s.label, id: inf.key, short: inf.short, color: inf.color, fusion: !!inf.fusion }; }),
+  const items = [{ key: "X", id: "weapon", short: wp.short, color: wp.color, weapon: true }, { sep: true }, { key: "Maj", id: "bitcrush", short: sb.short, color: sb.color }, ...SLOTS.map((s, i) => { const inf = slotInfo(i); return { key: s.label, id: inf.key, short: inf.short, color: inf.color, fusion: !!inf.fusion }; }),
     { sep: true }, ...["sine", "square", "triangle"].map((id) => ({ key: DATA.waves[id].key, id, wave: true, short: DATA.waves[id].short, color: DATA.waves[id].color }))];
   spellbar.innerHTML = items.map((it) => it.sep ? `<i class="sep"></i>` : `<div class="slot${it.wave ? " wave" : ""}${it.fusion ? " fusion" : ""}${it.weapon ? " weapon" : ""}" data-id="${it.id}"><span class="cd"></span><kbd>${it.key}</kbd><b style="color:${it.color}">${it.short}</b><small></small></div>`).join("");
   slotEls = [...spellbar.querySelectorAll(".slot")].map((el) => ({ el, id: el.dataset.id, cd: el.querySelector(".cd"), txt: el.querySelector("small") }));
@@ -159,7 +159,7 @@ const GUARD = { waist: { x: 0.08, y: 0.25 }, shoulderL: { x: 0.6, z: -0.25 }, el
   hipR: { x: -0.15, z: 0.08 }, hipL: { x: 0.3, z: -0.08 }, kneeR: { x: -0.35 }, kneeL: { x: -0.4 } };
 function punchKeys(side, w) {
   const o = side === "R" ? "L" : "R", s = side === "R" ? 1 : -1;
-  const strike = { waist: { x: 0.18, y: 0.65 * s }, chest: { y: 0.25 * s }, ["shoulder" + side]: { x: 1.5, z: 0.05 * s }, ["elbow" + side]: { x: 0.05 }, ["shoulder" + o]: { x: 0.5, z: -0.3 * s }, ["elbow" + o]: { x: 1.9 },
+  const strike = { waist: { x: 0.18, y: 0.65 * s }, chest: { y: 0.25 * s }, ["shoulder" + side]: { x: 1.5, z: 0.05 * s, s: 1.65 }, ["elbow" + side]: { x: 0.05 }, ["shoulder" + o]: { x: 0.5, z: -0.3 * s }, ["elbow" + o]: { x: 1.9 },
     ["hip" + o]: { x: 0.45 }, ["knee" + o]: { x: -0.5 }, ["hip" + side]: { x: -0.35 }, ["knee" + side]: { x: -0.15 } };
   return [
     { t: 0, k: 1.6, p: { waist: { x: 0.05, y: -0.45 * s }, chest: { y: -0.2 * s }, ["shoulder" + side]: { x: -0.3, z: 0.3 * s }, ["elbow" + side]: { x: 2.1 }, ["shoulder" + o]: { x: 0.6, z: -0.25 * s }, ["elbow" + o]: { x: 1.8 } } },
@@ -170,7 +170,7 @@ function punchKeys(side, w) {
 function stickKeys(side, w, hold = 0.08) {
   const o = side === "R" ? "L" : "R", s = side === "R" ? 1 : -1;
   const up = { waist: { x: -0.05, y: -0.3 * s }, ["shoulder" + side]: { x: 2.5, z: 0.25 * s }, ["elbow" + side]: { x: 1.5 }, ["shoulder" + o]: { x: 0.8, z: -0.2 * s }, ["elbow" + o]: { x: 1.3 } };
-  const hit = { waist: { x: 0.2, y: 0.4 * s }, ["shoulder" + side]: { x: 0.95, z: 0.05 * s }, ["elbow" + side]: { x: 0.15 }, ["shoulder" + o]: { x: 1.1, z: -0.2 * s }, ["elbow" + o]: { x: 1.5 },
+  const hit = { waist: { x: 0.2, y: 0.4 * s }, ["shoulder" + side]: { x: 0.95, z: 0.05 * s, s: 1.35 }, ["elbow" + side]: { x: 0.15 }, ["shoulder" + o]: { x: 1.1, z: -0.2 * s }, ["elbow" + o]: { x: 1.5 },
     ["hip" + o]: { x: 0.35 }, ["knee" + o]: { x: -0.45 }, ["hip" + side]: { x: -0.25 } };
   return [{ t: 0, k: 2, p: up }, { t: w, k: 6, p: hit }, { t: w + hold, p: hit }];
 }
@@ -179,13 +179,13 @@ const ANIMS = {
   jab2: (w) => punchKeys("R", w),
   drop: (w) => {
     const a = { waist: { x: -0.15, y: -1.0 }, chest: { y: -0.4 }, shoulderR: { x: -1.2, z: 0.6 }, elbowR: { x: 1.4 }, shoulderL: { x: 0.9, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.5 }, kneeL: { x: -0.8 }, hipR: { x: -0.3 }, kneeR: { x: -1.0 } };
-    const s = { waist: { x: 0.45, y: 1.05 }, chest: { y: 0.45 }, shoulderR: { x: 1.75, z: 0.1 }, elbowR: { x: 0 }, shoulderL: { x: -0.7, z: -0.6 }, elbowL: { x: 0.9 }, hipL: { x: 0.85 }, kneeL: { x: -0.4 }, hipR: { x: -0.7 }, kneeR: { x: -0.25 } };
+    const s = { waist: { x: 0.45, y: 1.05 }, chest: { y: 0.45 }, shoulderR: { x: 1.75, z: 0.1, s: 1.9 }, elbowR: { x: 0 }, shoulderL: { x: -0.7, z: -0.6 }, elbowL: { x: 0.9 }, hipL: { x: 0.85 }, kneeL: { x: -0.4 }, hipR: { x: -0.7 }, kneeR: { x: -0.25 } };
     return [{ t: 0, k: 1.4, p: a }, { t: w * 0.85, p: a }, { t: w, k: 6, p: s }, { t: w + 0.3, p: s }, { t: w + 0.6, p: GUARD }];
   },
   counter: (w) => {
     const legs = { hipR: { x: 0.55 }, kneeR: { x: -1.0 }, hipL: { x: -0.45 }, kneeL: { x: -0.5 } };
     const a = Object.assign({ waist: { x: 0.25, y: -1.3 }, shoulderR: { x: 0.4, z: 1.3 }, elbowR: { x: 0.9 }, shoulderL: { x: -0.4, z: -0.5 }, elbowL: { x: 1.2 } }, legs);
-    const s = Object.assign({ waist: { x: 0.2, y: 1.1 }, shoulderR: { x: 1.2, z: 1.0 }, elbowR: { x: 0.05 }, shoulderL: { x: -0.8, z: -0.7 }, elbowL: { x: 0.6 } }, legs);
+    const s = Object.assign({ waist: { x: 0.2, y: 1.1 }, shoulderR: { x: 1.2, z: 1.0, s: 1.6 }, elbowR: { x: 0.05 }, shoulderL: { x: -0.8, z: -0.7 }, elbowL: { x: 0.6 } }, legs);
     return [{ t: 0, k: 2, p: a }, { t: w + 0.05, k: 6, p: s }, { t: w + 0.2, p: s }, { t: w + 0.38, p: GUARD }];
   },
   // --- Baguettes ---
@@ -207,7 +207,7 @@ const ANIMS = {
   },
   ms2: (w) => {
     const a = { waist: { x: -0.05, y: -0.6 }, shoulderR: { x: 0.5, z: 0.3 }, elbowR: { x: 2.0 }, shoulderL: { x: 1.0, z: -0.1 }, elbowL: { x: 1.4 }, hipR: { x: -0.3 }, kneeR: { x: -0.5 }, hipL: { x: 0.3 }, kneeL: { x: -0.4 } };
-    const s = { waist: { x: 0.35, y: 0.35 }, shoulderR: { x: 1.05, z: 0.05 }, elbowR: { x: 0 }, shoulderL: { x: 1.2, z: 0.1 }, elbowL: { x: 0.6 }, hipL: { x: 0.8 }, kneeL: { x: -0.6 }, hipR: { x: -0.6 }, kneeR: { x: -0.1 } };
+    const s = { waist: { x: 0.35, y: 0.35 }, shoulderR: { x: 1.05, z: 0.05, s: 1.45 }, elbowR: { x: 0 }, shoulderL: { x: 1.2, z: 0.1 }, elbowL: { x: 0.6 }, hipL: { x: 0.8 }, kneeL: { x: -0.6 }, hipR: { x: -0.6 }, kneeR: { x: -0.1 } };
     return [{ t: 0, k: 2, p: a }, { t: w, k: 7, p: s }, { t: w + 0.16, p: s }];
   },
   // moulinet : bras tendu sur le côté, tout le corps fait un tour (voir spinBody)
@@ -215,18 +215,35 @@ const ANIMS = {
   // --- Guitare-hache ---
   gt1: (w) => {
     const a = { waist: { x: -0.15, y: -0.75 }, chest: { y: -0.35 }, shoulderR: { x: 2.7, z: 0.6 }, elbowR: { x: 0.9 }, shoulderL: { x: 1.6, z: 0.3 }, elbowL: { x: 1.4 }, hipR: { x: -0.2 }, kneeR: { x: -0.5 } };
-    const s = { waist: { x: 0.4, y: 0.75 }, chest: { y: 0.3 }, shoulderR: { x: 0.95, z: -0.3 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.6, z: -0.5 }, elbowL: { x: 1.0 }, hipL: { x: 0.6 }, kneeL: { x: -0.7 }, hipR: { x: -0.45 }, kneeR: { x: -0.2 } };
+    const s = { waist: { x: 0.4, y: 0.75 }, chest: { y: 0.3 }, shoulderR: { x: 0.95, z: -0.3, s: 1.35 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.6, z: -0.5 }, elbowL: { x: 1.0 }, hipL: { x: 0.6 }, kneeL: { x: -0.7 }, hipR: { x: -0.45 }, kneeR: { x: -0.2 } };
     return [{ t: 0, k: 1.4, p: a }, { t: w * 0.9, p: a }, { t: w, k: 6, p: s }, { t: w + 0.22, p: s }];
   },
   gt2: (w) => {
     const a = { waist: { x: 0.05, y: 0.9 }, chest: { y: 0.35 }, shoulderR: { x: 1.7, z: -0.7 }, elbowR: { x: 1.5 }, shoulderL: { x: 0.4, z: -0.5 }, elbowL: { x: 1.2 } };
-    const s = { waist: { x: 0.35, y: -0.8 }, chest: { y: -0.35 }, shoulderR: { x: 1.2, z: 1.1 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.3, z: -0.4 }, elbowL: { x: 1.4 }, hipR: { x: 0.55 }, kneeR: { x: -0.7 }, hipL: { x: -0.4 } };
+    const s = { waist: { x: 0.35, y: -0.8 }, chest: { y: -0.35 }, shoulderR: { x: 1.2, z: 1.1, s: 1.35 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.3, z: -0.4 }, elbowL: { x: 1.4 }, hipR: { x: 0.55 }, kneeR: { x: -0.7 }, hipL: { x: -0.4 } };
     return [{ t: 0, k: 1.4, p: a }, { t: w * 0.9, p: a }, { t: w, k: 6, p: s }, { t: w + 0.22, p: s }];
   },
   gt3: (w) => {
     const a = { waist: { x: -0.35 }, chest: { x: -0.15 }, shoulderR: { x: 3.1, z: 0.2 }, elbowR: { x: 0.6 }, shoulderL: { x: 3.0, z: -0.2 }, elbowL: { x: 0.8 }, hipR: { x: 0.6 }, kneeR: { x: -1.2 }, hipL: { x: 0.2 }, kneeL: { x: -0.6 }, neck: { x: -0.25 } };
-    const s = { waist: { x: 0.75 }, chest: { x: 0.2 }, shoulderR: { x: 0.85, z: 0.05 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.9, z: -0.05 }, elbowL: { x: 0.2 }, hipR: { x: 1.0 }, kneeR: { x: -1.6 }, hipL: { x: -0.4 }, kneeL: { x: -0.9 }, neck: { x: 0.3 } };
+    const s = { waist: { x: 0.75 }, chest: { x: 0.2 }, shoulderR: { x: 0.85, z: 0.05, s: 1.5 }, elbowR: { x: 0.05 }, shoulderL: { x: 0.9, z: -0.05 }, elbowL: { x: 0.2 }, hipR: { x: 1.0 }, kneeR: { x: -1.6 }, hipL: { x: -0.4 }, kneeL: { x: -0.9 }, neck: { x: 0.3 } };
     return [{ t: 0, k: 1.3, p: a }, { t: w * 0.85, p: a }, { t: w, k: 8, p: s }, { t: w + 0.4, p: s }];
+  },
+  // --- Twisted Sword : taillades horizontales, le bras s'étire ---
+  tw1: (w) => {
+    const a = { waist: { x: 0.05, y: -0.95 }, chest: { y: -0.4 }, shoulderR: { x: 1.5, z: 1.35 }, elbowR: { x: 0.9 }, shoulderL: { x: 0.7, z: -0.4 }, elbowL: { x: 1.6 } };
+    const s = { waist: { x: 0.25, y: 1.0 }, chest: { y: 0.4 }, shoulderR: { x: 1.25, z: -0.5, s: 1.45 }, elbowR: { x: 0.1 }, shoulderL: { x: 0.3, z: -0.8 }, elbowL: { x: 0.9 }, hipL: { x: 0.5 }, kneeL: { x: -0.6 }, hipR: { x: -0.35 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 7, p: s }, { t: w + 0.12, p: s }];
+  },
+  tw2: (w) => {
+    const a = { waist: { x: 0.05, y: 0.9 }, chest: { y: 0.4 }, shoulderR: { x: 1.4, z: -0.6 }, elbowR: { x: 1.5 }, shoulderL: { x: 0.6, z: -0.3 }, elbowL: { x: 1.6 } };
+    const s = { waist: { x: 0.25, y: -0.95 }, chest: { y: -0.4 }, shoulderR: { x: 1.35, z: 1.35, s: 1.45 }, elbowR: { x: 0.08 }, shoulderL: { x: 0.4, z: -0.4 }, elbowL: { x: 1.5 }, hipR: { x: 0.5 }, kneeR: { x: -0.6 }, hipL: { x: -0.35 } };
+    return [{ t: 0, k: 2, p: a }, { t: w, k: 7, p: s }, { t: w + 0.12, p: s }];
+  },
+  // uppercut : accroupi, puis tout le corps se déplie vers le haut et le bras s'allonge
+  uppercut: (w) => {
+    const a = { waist: { x: 0.5, y: -0.4 }, hipR: { x: 0.7 }, kneeR: { x: -1.2 }, hipL: { x: 0.5 }, kneeL: { x: -1.0 }, shoulderR: { x: -0.3, z: 0.3 }, elbowR: { x: 1.7 }, shoulderL: { x: 0.7, z: -0.3 }, elbowL: { x: 1.8 } };
+    const s = { waist: { x: -0.35, y: 0.4 }, chest: { x: -0.2 }, hipR: { x: -0.2 }, kneeR: { x: -0.1 }, hipL: { x: 0.2 }, kneeL: { x: -0.2 }, shoulderR: { x: 2.9, z: 0.1, s: 1.8 }, elbowR: { x: 0.25 }, shoulderL: { x: 0.3, z: -0.6 }, elbowL: { x: 1.4 }, neck: { x: -0.4 } };
+    return [{ t: 0, k: 2, p: a }, { t: w * 0.9, p: a }, { t: w, k: 8, p: s }, { t: w + 0.3, p: s }];
   },
   // --- Micro-fléau ---
   fl1: (w) => {
@@ -241,13 +258,13 @@ const ANIMS = {
   },
   fl3: (w) => {
     const a = { waist: { x: -0.25, y: -0.3 }, shoulderR: { x: 3.0, z: 0.4 }, elbowR: { x: 0.5 }, shoulderL: { x: 1.0, z: -0.3 }, elbowL: { x: 1.2 }, hipR: { x: -0.3 }, kneeR: { x: -0.4 } };
-    const s = { waist: { x: 0.35, y: 0.2 }, shoulderR: { x: 1.3, z: 0.05 }, elbowR: { x: 0 }, shoulderL: { x: 0.8, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.5 }, kneeL: { x: -0.6 } };
+    const s = { waist: { x: 0.35, y: 0.2 }, shoulderR: { x: 1.3, z: 0.05, s: 1.6 }, elbowR: { x: 0 }, shoulderL: { x: 0.8, z: -0.3 }, elbowL: { x: 1.3 }, hipL: { x: 0.5 }, kneeL: { x: -0.6 } };
     const yank = { waist: { x: -0.2, y: -0.5 }, shoulderR: { x: 0.3, z: 0.4 }, elbowR: { x: 2.0 }, shoulderL: { x: 0.9, z: -0.2 }, elbowL: { x: 1.5 }, hipR: { x: -0.4 }, kneeR: { x: -0.6 }, hipL: { x: 0.3 }, kneeL: { x: -0.4 } };
     return [{ t: 0, k: 2, p: a }, { t: w, k: 6, p: s }, { t: w + 0.1, p: s }, { t: w + 0.25, k: 5, p: yank }, { t: w + 0.45, p: yank }];
   },
   dive: () => { const p = { waist: { x: 0.75 }, shoulderR: { x: 2.3, z: 0.15 }, shoulderL: { x: 2.3, z: -0.15 }, elbowR: { x: 0.1 }, elbowL: { x: 0.1 }, hipR: { x: 0.9 }, kneeR: { x: -1.6 }, hipL: { x: 0.9 }, kneeL: { x: -1.6 } }; return [{ t: 0, k: 2, p }, { t: 99, p }]; },
   slam: () => { const p = { waist: { x: 0.95 }, shoulderR: { x: 1.5, z: 0.2 }, elbowR: { x: 0 }, shoulderL: { x: 1.3, z: -0.4 }, elbowL: { x: 0.3 }, hipR: { x: 1.3 }, kneeR: { x: -1.9 }, hipL: { x: 0.6 }, kneeL: { x: -1.6 } }; return [{ t: 0, k: 6, p }, { t: 0.35, p }, { t: 0.65, p: GUARD }]; },
-  dodge: (d) => { const p = { waist: { x: 0.6 }, shoulderR: { x: -1.1, z: 0.45 }, shoulderL: { x: -1.1, z: -0.45 }, elbowR: { x: 0.5 }, elbowL: { x: 0.5 }, hipR: { x: 1.0 }, kneeR: { x: -1.7 }, hipL: { x: -0.5 }, kneeL: { x: -0.9 } }; return [{ t: 0, k: 3, p }, { t: d, p }]; },
+  dodge: (d) => { const p = { waist: { x: 0.6 }, shoulderR: { x: -1.1, z: 0.45, s: 1.5 }, shoulderL: { x: -1.1, z: -0.45, s: 1.5 }, elbowR: { x: 0.5 }, elbowL: { x: 0.5 }, hipR: { x: 1.0 }, kneeR: { x: -1.7 }, hipL: { x: -0.5 }, kneeL: { x: -0.9 } }; return [{ t: 0, k: 3, p }, { t: d, p }]; },
   land: () => { const p = { hipR: { x: 0.8 }, kneeR: { x: -1.3 }, hipL: { x: 0.8 }, kneeL: { x: -1.3 }, waist: { x: 0.35 }, shoulderR: { x: 0.3, z: 0.6 }, shoulderL: { x: 0.3, z: -0.6 } }; return [{ t: 0, k: 5, p }, { t: 0.12, p }]; },
   // touché : le buste encaisse vers l'arrière, la tête suit
   hurt: () => { const p = { waist: { x: -0.35, y: 0.25 }, chest: { x: -0.2 }, neck: { x: -0.45 }, shoulderR: { x: 0.2, z: 0.7 }, shoulderL: { x: 0.4, z: -0.6 }, elbowR: { x: 0.9 }, elbowL: { x: 1.2 }, kneeR: { x: -0.4 }, kneeL: { x: -0.25 } }; return [{ t: 0, k: 7, p }, { t: 0.12, p }, { t: 0.32, k: 1.5, p: GUARD }]; },
@@ -271,11 +288,17 @@ const ANIMS = {
 };
 // le corps fait un tour complet (moulinet)
 function spinBody(rig, dur, turns = 1) { rig.spin.rotation.y = 0; play(rig.spin.rotation, [{ to: { y: Math.PI * 2 * turns }, dur, ease: easeInOut }], () => { rig.spin.rotation.y = 0; }); }
+const animOf = (move) => (DATA.moves[move] && DATA.moves[move].anim) || move;
 function startAction(rig, name, arg) { rig.action = { name, keys: (ANIMS[name] || ANIMS.jab2)(arg ?? 0.08), t: 0 }; }
 
 // Garde de combat, selon l'arme tenue
 const WEAPON_GUARD = {
   fists: GUARD,
+  twisted_sword: Object.assign({}, GUARD, { waist: { x: 0.1, y: 0.4 }, shoulderR: { x: 0.9, z: 0.35 }, elbowR: { x: 1.2 }, shoulderL: { x: 0.5, z: -0.35 }, elbowL: { x: 1.7 } }),
+  boombox: Object.assign({}, GUARD, { shoulderR: { x: 0.2, z: 0.3 }, elbowR: { x: 0.4 } }),
+  scythe: Object.assign({}, GUARD, { waist: { x: 0.12, y: 0.5 }, shoulderR: { x: 0.6, z: 0.4 }, elbowR: { x: 1.0 }, shoulderL: { x: 1.0, z: 0.2 }, elbowL: { x: 1.2 } }),
+  fork: Object.assign({}, GUARD, { waist: { x: 0.1, y: 0.45 }, shoulderR: { x: 0.65, z: 0.15 }, elbowR: { x: 1.1 }, shoulderL: { x: 1.0, z: 0.25 }, elbowL: { x: 1.2 } }),
+  sub_fists: GUARD,
   sticks: Object.assign({}, GUARD, { shoulderR: { x: 0.75, z: 0.3 }, elbowR: { x: 1.3 }, shoulderL: { x: 0.8, z: -0.3 }, elbowL: { x: 1.35 } }),
   mic_stand: Object.assign({}, GUARD, { waist: { x: 0.1, y: 0.45 }, shoulderR: { x: 0.65, z: 0.15 }, elbowR: { x: 0.9 }, shoulderL: { x: 1.0, z: 0.25 }, elbowL: { x: 1.2 } }),
   guitar: Object.assign({}, GUARD, { shoulderR: { x: 1.1, z: 0.35 }, elbowR: { x: 2.3 }, shoulderL: { x: 0.7, z: -0.25 }, elbowL: { x: 1.8 } }),
@@ -297,7 +320,14 @@ function nearestFoe(maxDist, needFront = false) {
 function basePose() {
   const b = {}, set = (j, x = 0, y = 0, z = 0) => { b[j] = { x, y, z }; };
   const M = P.mods, run = Math.min(1, P.flatSpeed / 5), spr = P.sprint, bank = Math.max(-0.35, Math.min(0.35, -P.yawRate * 0.07));
-  const guard = P.combat > 0.5 && P.onFloor && P.sprint < 0.3 && !P.aiming;
+  const guard = P.combat > 0.5 && P.onFloor && P.sprint < 0.3 && !P.aiming && !P.sliding;
+  if (P.sliding) {
+    // glissade : jambe d'appui tendue devant (et étirée), buste en arrière, bras qui traînent
+    set("hipR", 1.45); b.hipR.s = 1.35; set("kneeR", -0.1); set("hipL", 0.45, 0, -0.1); set("kneeL", -1.9);
+    set("waist", -0.55); set("chest", -0.2); set("neck", 0.55);
+    set("shoulderR", -0.7, 0, 0.6); set("shoulderL", -0.7, 0, -0.6); set("elbowR", 0.4); set("elbowL", 0.4); b.shoulderR.s = b.shoulderL.s = 1.3;
+    return b;
+  }
   if (P.onFloor && P.flatSpeed > 0.3) {
     // foulée : la jambe suit la direction de la marche (en arrière si l'on recule en garde)
     const f = facing(), dirDot = (P.vel.x * f.x + P.vel.z * f.z) / Math.max(0.01, P.flatSpeed), side = (P.vel.x * -f.z + P.vel.z * f.x) / Math.max(0.01, P.flatSpeed);
@@ -307,8 +337,11 @@ function basePose() {
     // bras : balancier opposé aux jambes, coudes de plus en plus pliés en courant
     set("shoulderR", -s * amp * (0.8 + 0.5 * spr), 0, 0.1); set("shoulderL", s * amp * (0.8 + 0.5 * spr), 0, -0.1);
     set("elbowR", 0.3 + 0.9 * run + 0.4 * spr); set("elbowL", 0.3 + 0.9 * run + 0.4 * spr);
-    set("waist", 0.08 * run + 0.22 * spr, s * 0.18 * run, bank); set("chest", 0.04 * spr, -s * 0.22 * run, 0);
-    set("neck", -0.08 * run - 0.1 * spr);
+    set("waist", 0.08 * run + 0.3 * spr, s * 0.18 * run, bank); set("chest", 0.04 * spr, -s * 0.22 * run, 0);
+    set("neck", -0.08 * run - 0.25 * spr);
+    // très vite : les jambes s'allongent à chaque foulée, les bras traînent derrière comme du liquide
+    b.hipR.s = 1 + 0.25 * spr * Math.max(0, s); b.hipL.s = 1 + 0.25 * spr * Math.max(0, -s);
+    if (spr > 0.3) { set("shoulderR", -1.1 * spr, 0, 0.35); set("shoulderL", -1.1 * spr, 0, -0.35); set("elbowR", 0.2); set("elbowL", 0.2); b.shoulderR.s = b.shoulderL.s = 1 + 0.4 * spr; }
   } else if (P.onFloor) {
     const br = Math.sin(P.t * 1.9);
     set("hipR", 0, 0, 0.04); set("hipL", 0, 0, -0.04); set("kneeR", -0.06); set("kneeL", -0.06);
@@ -324,6 +357,8 @@ function basePose() {
     set("hipR", 0.7, 0, 0.05); set("kneeR", -1.2); set("hipL", -0.15, 0, -0.05); set("kneeL", -0.5);
     set("shoulderR", -0.3, 0, 0.7 + 0.4 * fall); set("shoulderL", -0.3, 0, -0.7 - 0.4 * fall);
     set("elbowR", 0.7); set("elbowL", 0.7); set("waist", 0.15, 0, bank); set("neck", 0.1 * fall);
+    // chute rapide : les bras s'étirent vers le haut
+    const st = Math.min(1, Math.max(0, -P.vel.y - 8) / 20); if (st > 0) { set("shoulderR", 2.6 * st, 0, 0.4); set("shoulderL", 2.6 * st, 0, -0.4); b.shoulderR.s = b.shoulderL.s = 1 + 0.5 * st; }
   }
   if (M && M.tired && P.onFloor && P.flatSpeed > 0.3) { b.waist.x += 0.35 + Math.sin(P.t * 7) * 0.07; b.neck.x += 0.2; }
   // garde de combat : le haut du corps se met en garde, les genoux rebondissent
@@ -349,7 +384,7 @@ function actionPose(a) {
   const out = {}, names = new Set([...Object.keys(A.p), ...Object.keys(B.p)]);
   for (const j of names) {
     out[j] = {};
-    for (const ax of ["x", "y", "z"]) { const va = A.p[j]?.[ax] ?? B.p[j]?.[ax], vb = B.p[j]?.[ax] ?? A.p[j]?.[ax]; if (va !== undefined) out[j][ax] = va + (vb - va) * f; }
+    for (const ax of ["x", "y", "z", "s"]) { const va = A.p[j]?.[ax] ?? B.p[j]?.[ax], vb = B.p[j]?.[ax] ?? A.p[j]?.[ax]; if (va !== undefined) out[j][ax] = va + (vb - va) * f; }
   }
   const weight = a.t <= last.t ? 1 : Math.max(0, 1 - (a.t - last.t) / 0.15);
   return { out, k: (B !== A ? B.k : A.k) || 1, weight, done: a.t > last.t + 0.15 };
@@ -363,9 +398,9 @@ function animateRig(rig, base, dt) {
   if (rig.action) { rig.action.t += dt; act = actionPose(rig.action); if (act.done) rig.action = null; }
   const targets = {}, kMuls = {};
   for (const name of JOINTS) {
-    const tgt = base[name] || { x: 0, y: 0, z: 0 }, target = { x: tgt.x || 0, y: tgt.y || 0, z: tgt.z || 0 };
+    const tgt = base[name] || { x: 0, y: 0, z: 0 }, target = { x: tgt.x || 0, y: tgt.y || 0, z: tgt.z || 0, s: tgt.s || 1 };
     const o = act && act.out[name];
-    if (o) { for (const ax of ["x", "y", "z"]) if (o[ax] !== undefined) target[ax] = target[ax] + (o[ax] - target[ax]) * act.weight; kMuls[name] = act.k; }
+    if (o) { for (const ax of ["x", "y", "z", "s"]) if (o[ax] !== undefined) target[ax] = target[ax] + (o[ax] - target[ax]) * act.weight; kMuls[name] = act.k; }
     targets[name] = target;
   }
   const chestSet = base.chest || (act && act.out.chest);
@@ -380,9 +415,19 @@ function animateRig(rig, base, dt) {
     const jt = rig.J[name], target = targets[name], kMul = kMuls[name] || 1;
     const k = jt.k * kMul, cc = jt.c * Math.sqrt(kMul);
     for (let s = 0; s < steps; s++) for (const ax of ["x", "y", "z"]) { const r = jt.g.rotation; jt.v[ax] += (k * (target[ax] - r[ax]) - cc * jt.v[ax]) * h; r[ax] += jt.v[ax] * h; }
+    // étirement du membre (corps semi-liquide) : ressort plus mou, qui rebondit
+    if (rig.shape === "abrasion") {
+      jt.s = jt.s ?? 1;
+      for (let s = 0; s < steps; s++) { jt.vs += (k * 0.6 * (target.s - jt.s) - cc * 0.5 * jt.vs) * h; jt.s = Math.max(0.4, jt.s + jt.vs * h); }
+      const st = rig.stretch[name];
+      if (st) { st.mesh.scale.y = jt.s; st.mesh.position.y = st.meshY * jt.s; st.child.position.y = st.childY * jt.s; } else jt.g.scale.y = jt.s;
+    }
   }
-  rig.sqV += ((1 - rig.sq) * 260 - rig.sqV * 14) * dt; rig.sq += rig.sqV * dt;
-  const sq = Math.max(0.6, Math.min(1.4, rig.sq)); rig.body.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+  rig.sqV += ((1 - rig.sq) * 260 - rig.sqV * (rig.shape === "abrasion" ? 9 : 14)) * dt; rig.sq += rig.sqV * dt;
+  const lim = rig.shape === "abrasion" ? [0.4, 1.9] : [0.6, 1.4];
+  const sq = Math.max(lim[0], Math.min(lim[1], rig.sq)), sm = 1 + (rig.smear || 0);
+  const vs = 1 + (rig.vstretch || 0);
+  rig.body.scale.set(1 / Math.sqrt(sq * vs), sq * vs, sm / Math.sqrt(sq * vs));
 }
 function squash(amount) { model.sqV += amount; }
 function hasStatus(id) { const e = sim.entities.get(P.id); return !!(e && e.statuses.has(id)); }
@@ -529,7 +574,15 @@ function cycleWeapon(dir) {
 }
 function weaponMoveFx(ev) {
   const w = ev.windup;
-  if (ev.move === "ms3") spinBody(model, w + 0.36, 1);
+  if (ev.move === "ms3" || ev.move === "sc3") spinBody(model, w + 0.36, ev.move === "sc3" ? 2 : 1);
+  if (ev.move === "tw4") { spinBody(model, w + 0.3, 2); for (let i = 0; i < 4; i++) setTimeout(() => { hitSparks(P.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), facing().applyAxisAngle(UP, i * 1.6), 6, [0xd07bff, 0xffffff]); noiseHit(4200, 3, 0.05, 0.12); }, (w + i * 0.07) * 1000); }
+  if (ev.move === "sg3") { play(model.pose.position, [{ to: { y: -0.15 }, dur: w * 0.8 }, { to: { y: 0.6 }, dur: 0.12, ease: easeOut }, { to: { y: 0 }, dur: 0.3 }]); setTimeout(() => { groundImpact(P.pos, 1.0, 0xff9a5a); tone(60, 30, 0.4, 0.3, "sine"); }, w * 1000); }
+  if (ev.move === "df3") setTimeout(() => { pixelRing(P.pos.clone().addScaledVector(facing(), 3), 2.4, 0.5, 0x8fe6ff, 1.1); tone(440, 440, 0.6, 0.08, "sine"); tone(443, 443, 0.6, 0.06, "sine"); }, w * 1000);
+  if (ev.move === "bb3") {
+    play(model.pose.position, [{ to: { y: 0.4 }, dur: w * 0.6, ease: easeOut }, { to: { y: 0 }, dur: w * 0.4, ease: (t) => t * t }]);
+    // l'onde des basses : une ligne d'impacts qui part devant et fend le sol
+    setTimeout(() => { if (P.dead) return; const f = facing(), o = P.pos.clone(); for (let i = 0; i < 5; i++) setTimeout(() => groundImpact(o.clone().addScaledVector(f, 1.2 + i * 1.4), 1.3 - i * 0.12, 0xff5a3a), i * 55); powerChord(); }, w * 1000);
+  }
   if (ev.move === "st4") for (let i = 0; i < 5; i++) setTimeout(() => { noiseHit(2600 + i * 250, 4, 0.04, 0.13); tone(1900, 1500, 0.03, 0.03); }, (w + i * 0.06) * 1000);
   if (ev.move === "gt3") {
     // petit bond, puis la guitare frappe le sol : onde de choc
@@ -550,6 +603,11 @@ const SWING = {
   mic_stand: () => { noiseHit(900, 0.8, 0.2, 0.13); tone(300, 200, 0.15, 0.02, "sine"); },
   guitar: () => { noiseHit(500, 0.6, 0.26, 0.16); tone(110, 82, 0.3, 0.06, "sawtooth"); },
   flail: () => { noiseHit(1400, 0.5, 0.22, 0.1); tone(700, 1500, 0.14, 0.03, "sine"); },
+  twisted_sword: () => { noiseHit(5200, 1.5, 0.12, 0.12, "highpass"); tone(1800, 900, 0.08, 0.03, "sawtooth"); },
+  boombox: () => { noiseHit(400, 0.6, 0.28, 0.16); tone(55, 45, 0.3, 0.1, "sine"); },
+  scythe: () => { noiseHit(2200, 0.6, 0.25, 0.12); tone(660, 330, 0.2, 0.03, "triangle"); },
+  fork: () => { noiseHit(4000, 2, 0.08, 0.1, "highpass"); tone(880, 880, 0.15, 0.03, "sine"); },
+  sub_fists: () => { noiseHit(300, 0.8, 0.12, 0.14); tone(80, 50, 0.15, 0.1, "sine"); },
 };
 function swingSound(w) { (SWING[w] || SWING.fists)(); }
 function powerChord() { for (const f of [82.4, 123.5, 164.8, 207.7]) tone(f, f * 0.98, 0.7, 0.06, "sawtooth"); noiseHit(150, 0.7, 0.5, 0.35, "lowpass"); }
@@ -583,7 +641,7 @@ function softAim() {
 function startDodge(distance, duration) {
   wakeUp();
   const dir = P.wish.lengthSq() > 0.01 ? P.wish.clone().normalize() : facing();
-  P.dodgeAir = !P.onFloor; if (P.dodgeAir) P.airDash = 0;
+  P.dodgeAir = !P.onFloor; P.sliding = false;
   P.dodgeVel.copy(dir).multiplyScalar(distance / duration); P.dodgeLeft = duration; P.dodgeDur = duration; P.dodgeDist = distance;
   P.facingYaw = Math.atan2(-dir.x, -dir.z); P.idle = 0; P.lungeLeft = 0; startAction(model, "dodge", duration);
   pixelRing(P.pos, 2.4, 0.4, 0xbfe9ff); burst(P.pos.clone().add(new THREE.Vector3(0, 0.6, 0)), [0x9fe6ff, 0xff9fc8, 0xffffff], 2.5, 14);
@@ -605,8 +663,9 @@ function onEvent(ev) {
     case "move_started":
       if (!me) break;
       wakeUp(); P.idle = 0;
-      if (ev.move === "dive") { P.diving = true; startAction(model, "dive"); const f = facing(); P.vel.set(f.x * 3, -ev.dive_speed, f.z * 3); tone(900, 200, 0.25, 0.07, "sawtooth"); break; }
-      P.facingYaw = softAim(); startAction(model, ev.move, ev.windup); weaponMoveFx(ev);
+      if (ev.move === "dive") { P.diving = true; P.sliding = false; startAction(model, "dive"); P.vel.set(0, -ev.dive_speed, 0); squash(5); tone(900, 200, 0.25, 0.07, "sawtooth"); break; }
+      if (!P.onFloor) P.vel.y = Math.max(P.vel.y, 2.5); // coups en l'air : on reste suspendu un instant
+      P.facingYaw = softAim(); startAction(model, animOf(ev.move), ev.windup); weaponMoveFx(ev);
       P.lungeLeft = P.lungeTotal = ev.ghost ? 0.34 : ev.windup + 0.12; P.lungeSpeed = ev.lunge; P.attackSlow = ev.windup + ev.recover * 0.6;
       if (ev.ghost) P.ghost = ev.windup + 0.3;
       if (ev.move === "drop") { squash(-2.5); noiseHit(900, 0.6, 0.3, 0.12, "lowpass"); setTimeout(() => noiseHit(2200, 0.5, 0.12, 0.14, "highpass"), ev.windup * 1000); }
@@ -620,6 +679,12 @@ function onEvent(ev) {
         const label = (DATA.moves[ev.move] && DATA.moves[ev.move].label) || (ev.wave === "square" ? "SNIPE!" : null);
         if (label && !ev.delay && (ev.hit || 0) === 0) floatText(label, top.clone().add(new THREE.Vector3(0, 0.5, 0)), "float big");
         monsterOnDamage(ev); hitFeedback(ev);
+        // comme dans Ultrakill : frapper de près soigne (on se baigne dans les éclaboussures)
+        if (ev.source === P.id) {
+          styleAdd(ev.amount * 0.5);
+          const te = sim.entities.get(ev.target), pe = sim.entities.get(P.id);
+          if (te && pe && te.position.distanceTo(P.pos) < 4.5 && !ev.dot) sim.heal(pe, Math.round(ev.amount * 0.35));
+        }
       } else if (ev.target === dummy.id) {
         setDummyHealth(ev.health, ev.max_health);
         const top = dummy.pos.clone().add(new THREE.Vector3(0, 1.9, 0));
@@ -631,7 +696,7 @@ function onEvent(ev) {
       } else if (ev.target === P.id) {
         hitFlash = 1; setLife(ev.health, ev.max_health);
         floatText("-" + ev.amount, P.pos.clone().add(new THREE.Vector3(0, 2.0, 0)), "float hurt");
-        tone(220, 90, 0.2, 0.18, "square"); squash(-2);
+        tone(220, 90, 0.2, 0.18, "square"); squash(-2); if (ev.attack) styleHit();
         if (ev.direction && ev.push) { P.vel.x += ev.direction.x * ev.push; P.vel.z += ev.direction.z * ev.push; }
         // réaction : il encaisse, ou il est projeté au sol par les gros coups
         if (ev.knockdown && !P.dead) { knockDown(ev.direction); P.vel.y = 4; P.onFloor = false; noiseHit(180, 0.8, 0.3, 0.3, "lowpass"); FX.freeze = Math.max(FX.freeze, 0.08); }
@@ -841,7 +906,7 @@ function aimShot() {
 }
 // Touches de sorts : C esquive, A E sorts, R T sorts fusionnés (visés au centre de l'écran), 1 2 3 ondes.
 function readSpellKeys() {
-  if (pressed.has("KeyC")) { if ((P.onFloor || P.airDash > 0) && !P.mods.no_dodge) sim.queue({ type: "dodge", source: P.id }); else flashSlot("bitcrush"); }
+  if (pressed.has("ShiftLeft") || pressed.has("ShiftRight")) { if (!P.mods.no_dodge) sim.queue({ type: "dodge", source: P.id }); else flashSlot("bitcrush"); }
   SLOTS.forEach((s, i) => {
     if (!pressed.has(s.code)) return;
     if (s.kind === "spell") sim.queue({ type: "cast", source: P.id, spell: EQUIP[i] });
@@ -865,13 +930,21 @@ function physicsStep(dt) {
   // mode combat : un ennemi proche et actif
   P.combat += ((sim.inCombat(pe) && nearestFoe(12) ? 1 : 0) - P.combat) * Math.min(1, dt * 4);
   const moving = P.wish.lengthSq() > 0.01;
-  if (moving || pressed.has("Space") || pressed.has("KeyC")) wakeUp();
+  if (moving || pressed.has("Space") || pressed.has("KeyC") || pressed.has("ShiftLeft")) wakeUp();
 
-  const sprinting = (keys.has("ShiftLeft") || keys.has("ShiftRight")) && moving && !P.aiming;
-  P.sprint = Math.max(0, Math.min(1, P.sprint + (sprinting ? dt / STATS.sprint_ramp : -dt / 0.25)));
-  let speed = (STATS.walk_speed + (STATS.sprint_speed - STATS.walk_speed) * easeInOut(P.sprint)) * M.speed;
-  if (P.aiming) speed *= 0.65;
-  P.attackSlow = Math.max(0, P.attackSlow - dt); if (P.attackSlow > 0) speed *= 0.25;
+  // course rapide permanente (pas de marche lente) : Maj sert au dash
+  let speed = STATS.walk_speed * M.speed;
+  if (P.aiming) speed *= 0.75;
+  P.attackSlow = Math.max(0, P.attackSlow - dt); if (P.attackSlow > 0) speed *= 0.7;
+  // C : glissade au sol, écrasement en l'air
+  if (pressed.has("KeyC") && !P.onFloor && !P.diving && !P.dead && P.knock <= 0 && P.pos.y - groundUnder() > 0.8) { P.slamFrom = P.pos.y; sim.queue({ type: "attack", source: P.id, airborne: true }); }
+  const wantSlide = keys.has("KeyC") && P.onFloor && !P.diving && P.dodgeLeft <= 0 && !P.dead && P.knock <= 0;
+  if (wantSlide && !P.sliding) {
+    const dir = P.flatSpeed > 3 ? new THREE.Vector3(P.vel.x, 0, P.vel.z).normalize() : moving ? P.wish.clone().normalize() : facing();
+    P.sliding = true; P.slideDir = dir; P.slideSpeed = Math.max(STATS.slide_speed, P.flatSpeed); P.facingYaw = Math.atan2(-dir.x, -dir.z);
+    noiseHit(2600, 0.6, 0.3, 0.12, "highpass"); squash(-2);
+  }
+  if (P.sliding && !wantSlide) P.sliding = false;
   P.ghost = Math.max(0, P.ghost - dt);
 
   if (pressed.has("Space")) P.jumpBuffer = 0.12;
@@ -881,33 +954,60 @@ function physicsStep(dt) {
   P.wall = P.onFloor ? null : probeWall();
 
   if (!(P.dodgeLeft > 0 && P.dodgeAir)) P.vel.y -= STATS.gravity * dt;
-  if (P.dodgeLeft > 0) {
+  if (P.sliding) {
+    // glissade : on garde sa vitesse, on peut tourner un peu ; étincelles au sol
+    const want = moving ? P.wish.clone().normalize() : P.slideDir, ang = Math.atan2(P.slideDir.x * want.z - P.slideDir.z * want.x, P.slideDir.dot(want));
+    P.slideDir.applyAxisAngle(UP, -Math.max(-1.6 * dt, Math.min(1.6 * dt, ang))).normalize();
+    P.slideSpeed += (STATS.slide_speed - P.slideSpeed) * Math.min(1, dt * 1.2);
+    P.vel.x = P.slideDir.x * P.slideSpeed; P.vel.z = P.slideDir.z * P.slideSpeed; P.facingYaw = Math.atan2(-P.slideDir.x, -P.slideDir.z);
+    P.slideFx = (P.slideFx || 0) - dt; if (P.slideFx <= 0) { P.slideFx = 0.04; slideSparks(P.pos, P.slideDir); }
+  } else if (P.dodgeLeft > 0) {
     P.dodgeLeft -= dt; P.vel.x = P.dodgeVel.x; P.vel.z = P.dodgeVel.z; if (P.dodgeAir) P.vel.y = 0;
+    // fin du dash : on retombe à une vitesse de course (un peu plus en l'air)
+    if (P.dodgeLeft <= 0 && !P.extraDodges) { const d = P.dodgeVel.clone().normalize(), v = P.dodgeAir ? 16 : STATS.walk_speed * 1.3; P.vel.x = d.x * v; P.vel.z = d.z * v; }
     // Triple glitch : l'esquive suivante part dès la fin de la précédente
     if (P.dodgeLeft <= 0 && P.extraDodges > 0) { P.extraDodges--; P.airDash = 1; startDodge(P.dodgeDist, P.dodgeDur); }
-  } else if (P.lungeLeft > 0) {
+  } else if (P.lungeLeft > 0 && P.flatSpeed < P.lungeSpeed * 1.3) {
     P.lungeLeft -= dt; const f = facing(), k = Math.max(0, P.lungeLeft / P.lungeTotal);
     const foe = nearestFoe(6), toFoe = foe ? Math.hypot(foe.position.x - P.pos.x, foe.position.z - P.pos.z) - foe.radius + 0.5 : 99, brake = P.ghost > 0 ? 1 : Math.min(1, Math.max(0, (toFoe - 0.9) / 0.6));
     P.vel.x = f.x * P.lungeSpeed * k * brake; P.vel.z = f.z * P.lungeSpeed * k * brake;
   } else if (!P.diving) {
-    const accel = (P.onFloor ? STATS.accel * Math.max(1, M.speed) : STATS.air_accel * (P.airLock > 0 ? 0.12 : 1)) * dt;
-    const tx = P.wish.x * speed, tz = P.wish.z * speed, dx = tx - P.vel.x, dz = tz - P.vel.z, dl = Math.hypot(dx, dz);
+    // au sol : accélération franche, l'excès de vitesse retombe doucement ;
+    // en l'air : l'élan est conservé (on peut seulement l'orienter)
+    const cur = Math.hypot(P.vel.x, P.vel.z), over = cur > speed + 0.5;
+    let accel, max = speed;
+    if (P.onFloor) accel = over ? STATS.overspeed_decay : STATS.accel * Math.max(1, M.speed);
+    else { accel = STATS.air_accel * (P.airLock > 0 ? 0.15 : 1); max = Math.max(speed, cur); }
+    let tx = P.wish.x * max, tz = P.wish.z * max;
+    if (!P.onFloor && !moving) { tx = P.vel.x * (1 - 0.25 * dt); tz = P.vel.z * (1 - 0.25 * dt); }
+    else if (P.onFloor && over && moving) { tx = P.wish.x * (cur - STATS.overspeed_decay * dt); tz = P.wish.z * (cur - STATS.overspeed_decay * dt); accel = STATS.accel; }
+    accel *= dt;
+    const dx = tx - P.vel.x, dz = tz - P.vel.z, dl = Math.hypot(dx, dz);
     if (dl <= accel) { P.vel.x = tx; P.vel.z = tz; } else { P.vel.x += (dx / dl) * accel; P.vel.z += (dz / dl) * accel; }
   }
   if (P.wall && !P.diving && P.vel.y < -STATS.wall_slide_speed && P.wish.dot(P.wall.normal) < -0.3) P.vel.y = -STATS.wall_slide_speed;
 
+  // dash-saut : sauter pendant un dash au sol garde presque toute la vitesse du dash
+  if (P.jumpBuffer > 0 && P.dodgeLeft > 0 && !P.dodgeAir && !P.dead) {
+    P.dodgeLeft = 0; P.vel.x = P.dodgeVel.x * STATS.dash_jump; P.vel.z = P.dodgeVel.z * STATS.dash_jump; P.vel.y = STATS.jump_velocity * 0.9;
+    P.onFloor = false; P.coyote = 0; P.jumpBuffer = 0; P.airJumps = 1 + M.jumps; P.wallJumps = 0; squash(5); tone(300, 900, 0.12, 0.06, "square"); styleAdd(8, "DASH-SAUT");
+  }
   if (P.jumpBuffer > 0 && P.dodgeLeft <= 0 && !P.diving && !P.dead && P.knock <= 0) {
     if (P.onFloor || P.coyote > 0) {
-      P.vel.y = STATS.jump_velocity; P.onFloor = false; P.coyote = 0; P.jumpBuffer = 0; P.airJumps = 1 + M.jumps; P.wallJumps = 0; P.superUsed = false;
+      // rebond d'écrasement : sauter juste après un écrasement renvoie très haut
+      const bounce = time - (P.slamLandAt ?? -9) < 0.25 ? Math.min(20, (P.slamHeight || 0) * STATS.slam_bounce + 6) : 0;
+      P.vel.y = STATS.jump_velocity + bounce; P.onFloor = false; P.coyote = 0; P.jumpBuffer = 0; P.airJumps = 1 + M.jumps; P.wallJumps = 0; P.superUsed = false;
+      if (P.sliding) { P.sliding = false; styleAdd(5, "GLISSADE-SAUT"); }
+      if (bounce) { P.slamLandAt = -9; pixelRing(P.pos, 2.5, 0.4, 0xff5a3a); tone(200, 1200, 0.25, 0.08, "square"); styleAdd(10, "REBOND"); }
       squash(4); tone(320, 620, 0.09, 0.05); puff(P.pos, 4, 0.8);
-    } else if (P.wall && (P.wallJumps === 0 || P.wall.chain)) {
+    } else if (P.wall && (P.wallJumps < STATS.wall_jumps || P.wall.chain)) {
       const n = P.wall.normal;
       P.vel.set(n.x * STATS.wall_jump.push, STATS.wall_jump.up, n.z * STATS.wall_jump.push);
       P.wallJumps++; P.airLock = 0.22; P.jumpBuffer = 0; P.facingYaw = Math.atan2(-n.x, -n.z);
       if (P.wall.chain) { P.airJumps = 1 + M.jumps; P.airDash = 1; }
       puff(P.pos.clone().addScaledVector(n, -0.35).add(new THREE.Vector3(0, 0.9, 0)), 5, 0.6, P.wall.chain ? 0xff9fc8 : 0xd9cdbf);
       squash(-3); tone(420, 820, 0.08, 0.05); noiseHit(1500, 1, 0.06, 0.12);
-      if (!P.wall.chain && P.wallJumps === 1) P.hintSingle = (P.hintSingle || 0) + 1;
+      if (!P.wall.chain && P.wallJumps === STATS.wall_jumps) P.hintSingle = (P.hintSingle || 0) + 1;
     } else if (P.airJumps > 0) {
       P.vel.y = STATS.double_jump_velocity; P.airJumps--; P.jumpBuffer = 0; squash(3);
       model.flip.rotation.x = 0; play(model.flip.rotation, [{ to: { x: -Math.PI * 2 }, dur: 0.38, ease: linear }], () => { model.flip.rotation.x = 0; });
@@ -932,20 +1032,22 @@ function physicsStep(dt) {
   if (landed) {
     if (P.diving) {
       P.diving = false; sim.queue({ type: "dive_land", source: P.id }); startAction(model, "slam");
-      P.vel.x = P.vel.z = 0; P.attackSlow = 0.35; squash(-5);
-      pixelRing(P.pos, 3.4, 0.5, 0xffe28a); puff(P.pos, 14, 2.6);
+      P.vel.x = P.vel.z = 0; P.attackSlow = 0.15; squash(-7);
+      P.slamLandAt = time; P.slamHeight = Math.max(0, (P.slamFrom ?? P.pos.y) - P.pos.y);
+      groundImpact(P.pos, 1.5 + Math.min(2.5, P.slamHeight / 5), 0xff5a3a);
       tone(110, 40, 0.35, 0.35, "sine"); noiseHit(220, 0.8, 0.3, 0.3, "lowpass");
     } else if (!wasOnFloor && fallSpeed < -6) {
       squash(-Math.min(6, -fallSpeed * 0.3)); puff(P.pos, fallSpeed < -12 ? 10 : 5, 1.6); stepSound(surfaceAt(P.pos.x, P.pos.z), true);
       if (fallSpeed < -11 && !model.action) startAction(model, "land");
-      if (fallSpeed < -13) cam.shake = Math.max(cam.shake, Math.min(0.35, (-fallSpeed - 13) * 0.04 + 0.08));
+      if (fallSpeed < -20) groundImpact(P.pos, 0.6, 0xd9cdbf);
     }
     P.vel.y = 0; P.onFloor = true; P.airJumps = 1 + M.jumps; P.wallJumps = 0; P.airDash = 1; P.superUsed = false;
   } else P.onFloor = false;
 
   P.flatSpeed = Math.hypot(P.vel.x, P.vel.z);
-  // en combat (sans courir), le bonhomme reste tourné vers l'ennemi le plus proche : on tourne autour en garde
-  const foe = P.combat > 0.5 && P.sprint < 0.3 ? nearestFoe(9) : null;
+  P.sprint = Math.max(0, Math.min(1, (P.flatSpeed - 9) / 8)); // « très vite » : sert aux animations
+  // en combat (sans foncer), le bonhomme reste tourné vers l'ennemi le plus proche : on tourne autour en garde
+  const foe = P.combat > 0.5 && P.flatSpeed < 7 && !P.sliding ? nearestFoe(9) : null;
   if (P.aiming && !P.dead) P.facingYaw = lerpAngle(P.facingYaw, cam.yaw, 1 - Math.exp(-20 * dt));
   else if (foe && !P.dead && P.knock <= 0 && P.dodgeLeft <= 0 && P.lungeLeft <= 0 && P.airLock <= 0 && P.attackSlow <= 0) P.facingYaw = lerpAngle(P.facingYaw, Math.atan2(-(foe.position.x - P.pos.x), -(foe.position.z - P.pos.z)), 1 - Math.exp(-8 * dt));
   else if (P.flatSpeed > 0.5 && P.dodgeLeft <= 0 && P.airLock <= 0 && P.lungeLeft <= 0 && P.attackSlow <= 0) P.facingYaw = lerpAngle(P.facingYaw, Math.atan2(-P.vel.x, -P.vel.z), 1 - Math.exp(-12 * dt));
@@ -962,8 +1064,8 @@ function physicsStep(dt) {
     readSpellKeys();
     for (; attackClicks > 0; attackClicks--) {
       if (P.aiming) { const a = aimShot(); sim.queue({ type: "wave", source: P.id, wave: P.wave, origin: a.origin, dir: a.dir }); continue; }
-      const air = !P.onFloor && !P.diving && P.pos.y - groundUnder() > 1.0;
-      if (!P.diving) sim.queue({ type: "attack", source: P.id, airborne: air });
+      // en l'air, le clic donne des coups normaux (l'écrasement est sur C)
+      if (!P.diving) sim.queue({ type: "attack", source: P.id, airborne: false });
     }
   }
   pressed.clear();
@@ -971,7 +1073,7 @@ function physicsStep(dt) {
   if (P.pos.y < -20) P.pos.copy(SPAWN);
   if (vinyl.visible && P.pos.distanceTo(SECRET_POS) < 1.6) { vinyl.visible = false; P.secrets++; PROGRESS.vinyl = true; saveProgress(); document.getElementById("secrets").textContent = `Secrets ${P.secrets} / 1`; showBanner("Secret trouvé : le vinyle doré", 2.6); [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f * 1.01, 0.18, 0.06, "triangle"), i * 90)); }
   if (!P.alleyHint && P.pos.x > ALLEY.x0 && P.pos.x < ALLEY.x1 && P.pos.z > ALLEY.z0 && P.pos.z < ALLEY.z1) { P.alleyHint = true; showBanner("Murs tagués : wall jumps à l'infini", 2.4); }
-  if (P.hintSingle === 3) { P.hintSingle = 4; showBanner("Un seul wall jump par saut… sauf sur les murs tagués", 2.6); }
+  if (P.hintSingle === 3) { P.hintSingle = 4; showBanner("3 wall jumps par saut… sauf sur les murs tagués : à l'infini", 2.6); }
 
   if (P.flailAt > 0 && sim.time >= P.flailAt) { P.flailAt = -1; flailThrow(); }
   stepDummy(dt); stepMonsters(dt);
@@ -980,12 +1082,32 @@ function physicsStep(dt) {
   for (const ev of sim.drain()) onEvent(ev);
 }
 
+// --- Corps semi-liquide -------------------------------------------------------------------
+// Il s'étale dans le sens de la vitesse, s'étire quand il tombe ou saute, sa tête
+// traîne derrière (ressort) et il laisse des gouttes de chrome quand il fonce.
+const LIQ = { prev: new THREE.Vector3(), off: new THREE.Vector3(), offV: new THREE.Vector3(), drip: 0 };
+function liquidBody(dt) {
+  if (dt <= 0) return;
+  const acc = P.vel.clone().sub(LIQ.prev).divideScalar(dt); LIQ.prev.copy(P.vel);
+  const dash = P.dodgeLeft > 0 ? 1 : 0;
+  model.smear += ((dash ? 0.9 : Math.min(0.5, Math.max(0, (P.flatSpeed - 10) / 28)) + (P.sliding ? 0.35 : 0)) - model.smear) * Math.min(1, dt * 12);
+  model.vstretch = Math.min(0.55, Math.abs(P.vel.y) / 45) * (P.diving ? 1.4 : 1);
+  // tête : ressort contre l'accélération, exprimé dans le repère du bonhomme
+  const want = acc.clone().multiplyScalar(-0.0035).applyAxisAngle(UP, -P.facingYaw); want.clampLength(0, 0.32);
+  LIQ.offV.addScaledVector(want.sub(LIQ.off).multiplyScalar(140), dt).multiplyScalar(Math.exp(-9 * dt)); LIQ.off.addScaledVector(LIQ.offV, dt); LIQ.off.clampLength(0, 0.4);
+  model.head.position.copy(model.headRest).add(LIQ.off);
+  const j = Math.min(0.35, LIQ.offV.length() * 0.08); model.head.scale.set(1 + j, 1 - j * 0.6, 1 + j);
+  LIQ.drip -= dt;
+  if ((P.flatSpeed > 14 || dash || P.diving) && LIQ.drip <= 0) { LIQ.drip = 0.035; chromeDrip(P.pos.clone().add(new THREE.Vector3(range(-0.15, 0.15), range(0.3, 1.6), range(-0.15, 0.15))), P.vel); }
+}
+
 // --- Animation du bonhomme et de son double -------------------------------------------
 function animatePlayer(dt) {
   P.t += dt;
   model.root.position.copy(P.pos); model.root.rotation.y = P.facingYaw;
   const run = Math.min(1, P.speedRatio);
-  model.body.position.y = P.onFloor && !P.lying ? Math.abs(Math.cos(P.phase)) * 0.05 * run : 0;
+  model.body.position.y += ((P.sliding ? -0.5 : P.onFloor && !P.lying ? Math.abs(Math.cos(P.phase)) * 0.05 * run : 0) - model.body.position.y) * Math.min(1, dt * 18);
+  liquidBody(dt);
   if (!P.lying) {
     if (P.flatSpeed < 0.3 && P.onFloor && P.dodgeLeft <= 0 && !model.action && !P.aiming && P.combat < 0.5 && P.knock <= 0 && !P.talking && !(P.mods && P.mods.tired) && !hasStatus("chorus")) {
       P.idle += dt;
@@ -1005,7 +1127,7 @@ function animatePlayer(dt) {
       const pos = t.position.clone().addScaledVector(DELAY_GHOST.side, 1.15); pos.y = t.position.y;
       ghostRig.root.position.lerp(pos, 1 - Math.exp(-20 * dt));
       ghostRig.root.rotation.y = Math.atan2(-(t.position.x - pos.x), -(t.position.z - pos.z));
-      while (DELAY_GHOST.queue.length && sim.time >= DELAY_GHOST.queue[0].at) startAction(ghostRig, DELAY_GHOST.queue.shift().move, 0.08);
+      while (DELAY_GHOST.queue.length && sim.time >= DELAY_GHOST.queue[0].at) startAction(ghostRig, animOf(DELAY_GHOST.queue.shift().move), 0.08);
       const fade = Math.min(1, (DELAY_GHOST.until - sim.time) / 0.3);
       ghostMat.opacity = 0.55 * fade * (0.85 + Math.sin(time * 30) * 0.15);
       animateRig(ghostRig, guardBase(), dt);
@@ -1104,7 +1226,7 @@ function drawOverlay() {
     }
     return;
   }
-  const f = Math.max(0, Math.min(1, (P.flatSpeed - 6.5) / 3)) * (1 - cam.aim);
+  const f = Math.max(0, Math.min(1, (P.flatSpeed - 13) / 6)) * (1 - cam.aim);
   if (f <= 0) return;
   const cx = w / 2, cy = h / 2, maxR = Math.hypot(cx, cy);
   sg.lineCap = "round";
@@ -1116,7 +1238,7 @@ function drawOverlay() {
 }
 let lastFilter = "";
 function applyImpactFilter() {
-  let f = "";
+  let f = "saturate(0.82) contrast(1.1)"; // étalonnage dark fantasy
   if (FX.impact > 0) f = FX.impact > FX.impactDur * 0.5 ? "invert(1) grayscale(1) contrast(3)" : "grayscale(1) contrast(5) brightness(1.15)";
   if (f !== lastFilter) { renderer.domElement.style.filter = f; lastFilter = f; }
 }
@@ -1124,11 +1246,16 @@ function applyImpactFilter() {
 // --- HUD : sorts, recharges, statuts, viseur, fusion -------------------------------------
 const statusesEl = document.getElementById("statuses"), crosshair = document.getElementById("crosshair"), combatEl = document.getElementById("combat");
 let hudTimer = 0;
+const staminaEls = [...document.querySelectorAll("#stamina i")];
 function updateHud(realDt) {
   hudTimer -= realDt; if (hudTimer > 0) return; hudTimer = 0.08;
   const pe = sim.entities.get(P.id);
+  // endurance du dash : 3 barres
+  const st = pe.stamina ?? 3;
+  staminaEls.forEach((el, k) => { const f = Math.max(0, Math.min(1, st - k)) * 100; el.style.background = `linear-gradient(90deg, ${f >= 100 ? "#8fe6ff" : "#4a7a8a"} ${f}%, rgba(143,230,255,0.12) ${f}%)`; });
   for (const s of slotEls) {
     if (s.id === "weapon") continue;
+    if (s.id === "bitcrush") { s.cd.style.background = st < 1 ? "rgba(10,8,14,0.6)" : "transparent"; s.txt.textContent = Math.floor(st); s.el.classList.toggle("blocked", P.mods.no_dodge); continue; }
     const def = DATA.spells[s.id] || DATA.waves[s.id] || FUSION_BY_ID[s.id.replace("fusion:", "")], left = sim.cooldownLeft(pe, s.id), max = s.id === "bitcrush" ? def.cooldown * P.mods.dodge_cd : def.cooldown;
     const pct = max > 0 ? Math.min(100, (left / max) * 100) : 0;
     s.cd.style.background = pct > 0 ? `conic-gradient(rgba(10,8,14,0.78) ${pct}%, transparent 0)` : "transparent";
@@ -1161,7 +1288,7 @@ function renderPixelPass(dt) {
   pixCam.fov = camera.fov; pixCam.aspect = camera.aspect; pixCam.near = 0.05; pixCam.far = d + PIX.size * 2;
   pixCam.position.copy(camera.position); pixCam.quaternion.copy(camera.quaternion);
   pixCam.setViewOffset(fullW, fullH, sx - s / 2, sy - s / 2, s, s); pixCam.updateMatrixWorld();
-  const tint = chromeTint(); chrome.color.copy(tint); tintWeapons(tint);
+  const tint = chromeTint(); chrome.color.copy(tint); chromeBody.color.copy(tint).multiplyScalar(0.62); tintWeapons(tint);
   const fog = scene.fog; scene.fog = null;
   renderer.setClearColor(0x000000, 0);
   renderer.setRenderTarget(pixTarget); renderer.clear(); renderer.render(scene, pixCam);
@@ -1208,7 +1335,7 @@ function frame_(now) {
   FX.impact = Math.max(0, FX.impact - realDt);
   time += dt; acc += dt;
   while (acc >= STEP) { physicsStep(STEP); acc -= STEP; }
-  updateTimelines(dt); animatePlayer(dt); updateFlail(dt); updateMonsters(dt); updateNpcs(dt); updateDragon(dt); updateClouds(dt);
+  updateTimelines(dt); animatePlayer(dt); updateFlail(dt); updateMonsters(dt); updateFx(dt); updateAltars(dt); updateNpcs(dt); updateDragon(dt); updateClouds(dt);
   updateCamera(realDt); updateRings(dt); updateProjMeshes(dt); updateBeams(dt); statusEffects(dt);
   if (!WARN.kind) coneMat.emissiveIntensity = Math.max(0, coneMat.emissiveIntensity - dt * 9);
   for (const r of rings) r.rotation.z += dt * 0.12;

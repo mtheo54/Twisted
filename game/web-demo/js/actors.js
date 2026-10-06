@@ -27,44 +27,59 @@ function capsule(r, h, radial = 24, steps = 10) {
   return new THREE.LatheGeometry(pts, radial);
 }
 const JOINTS = ["waist", "chest", "neck", "shoulderR", "shoulderL", "elbowR", "elbowL", "hipR", "hipL", "kneeR", "kneeL"];
-// Proportions d'adulte (environ 1,85 m) : longues jambes, vrai buste, bras en
-// deux parties. On garde l'icône : tête ronde séparée du corps, formes
-// arrondies, chrome. Les mains ont un point d'accroche pour les armes.
+// Deux silhouettes partagent le même squelette (mêmes articulations) :
+//  - "abrasion" : le bonhomme d'abrasion, grosse tête ronde de chrome sur un
+//    corps-tige très fin (comme sur l'image de référence). Il est semi-liquide :
+//    ses membres s'étirent (canal « s » des articulations), il s'écrase, s'allonge.
+//  - "human" : proportions d'adulte, pour les passants et le Câblé.
+// Les mains ont un point d'accroche pour les armes.
 // root (position, cap) > spin > flip (salto, pivot au centre) > pose (chute, allongé) > body (écrasement / étirement)
 const RIG_GEO = new Map(); // géométries partagées des squelettes allégés
+const RIG_SHAPES = {
+  human: { pelvisY: 0.9, pelvis: [0.15, 0.34, 1.25, 0.85], waist: [0.15, 0.3, 0.12, 1.15, 0.82], chestY: 0.2, chest: [0.2, 0.44, 0.17, 1.25, 0.84], neckY: 0.42, head: [0.155, 0.17],
+    shoulder: [0.25, 0.33, 0.085], upper: [0.07, 0.32, -0.14], elbowY: -0.29, fore: [0.062, 0.3, -0.13], handY: -0.29, hand: 0.08, hip: [0.11, -0.06], thigh: [0.09, 0.46, -0.2], kneeY: -0.42, shin: [0.075, 0.42, -0.18], foot: [0.09, -0.38, -0.05, 1.65] },
+  abrasion: { pelvisY: 0.88, pelvis: [0.06, 0.2, 1, 1], waist: [0.062, 0.34, 0.15, 1, 1], chestY: 0.25, chest: [0.07, 0.46, 0.2, 1, 1], neckY: 0.38, head: [0.2, 0.23],
+    shoulder: [0.09, 0.36, 0.04], upper: [0.036, 0.34, -0.15], elbowY: -0.31, fore: [0.033, 0.32, -0.14], handY: -0.3, hand: 0.042, hip: [0.052, -0.05], thigh: [0.048, 0.46, -0.2], kneeY: -0.42, shin: [0.043, 0.44, -0.19], foot: [0.05, -0.41, -0.07, 2.4] },
+};
 // lowPoly : version allégée (passants, monstres) — moins de facettes, même silhouette.
-function buildRig(material, layer, lowPoly = false) {
+function buildRig(material, layer, lowPoly = false, shape = "human") {
+  const S = RIG_SHAPES[shape];
   const cached = (key, make) => RIG_GEO.get(key) || RIG_GEO.set(key, make()).get(key);
   const cap = (r, h) => (lowPoly ? cached(`c${r},${h}`, () => capsule(r, h, 10, 4)) : capsule(r, h)), sph = (r, a = 16, b = 10) => (lowPoly ? cached(`s${r}`, () => new THREE.SphereGeometry(r, 10, 7)) : new THREE.SphereGeometry(r, a, b));
   const rig = { root: new THREE.Group(), spin: new THREE.Group(), flip: new THREE.Group(), flipInner: new THREE.Group(), pose: new THREE.Group(), body: new THREE.Group(),
-    meshes: [], J: {}, action: null, sq: 1, sqV: 0, material, layer };
+    meshes: [], J: {}, stretch: {}, action: null, sq: 1, sqV: 0, smear: 0, material, layer, shape };
   rig.root.add(rig.spin); rig.spin.add(rig.flip); rig.flip.position.y = 0.95; rig.flip.add(rig.flipInner); rig.flipInner.position.y = -0.95;
   rig.flipInner.add(rig.pose); rig.pose.add(rig.body); scene.add(rig.root);
   const part = (parent, geo, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = new THREE.Mesh(geo, material); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.layers.set(layer); parent.add(m); rig.meshes.push(m); return m; };
-  const joint = (name, parent, x, y, z, k = 280, c = 24) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); rig.J[name] = { g, k, c, v: new THREE.Vector3() }; return g; };
+  const joint = (name, parent, x, y, z, k = 280, c = 24) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); rig.J[name] = { g, k, c, v: new THREE.Vector3(), vs: 0 }; return g; };
   rig.part = part;
-  rig.pelvis = new THREE.Group(); rig.pelvis.position.y = 0.9; rig.body.add(rig.pelvis);
-  part(rig.pelvis, cap(0.15, 0.34), 0, -0.02, 0, 1.25, 1, 0.85);
+  rig.pelvis = new THREE.Group(); rig.pelvis.position.y = S.pelvisY; rig.body.add(rig.pelvis);
+  part(rig.pelvis, cap(S.pelvis[0], S.pelvis[1]), 0, -0.02, 0, S.pelvis[2], 1, S.pelvis[3]);
   const waistJ = joint("waist", rig.pelvis, 0, 0.05, 0, 220, 19);
-  part(waistJ, cap(0.15, 0.3), 0, 0.12, 0, 1.15, 1, 0.82);
-  const chestJ = joint("chest", waistJ, 0, 0.2, 0, 200, 18);
-  part(chestJ, cap(0.2, 0.44), 0, 0.17, 0, 1.25, 1, 0.84);
-  const neckJ = joint("neck", chestJ, 0, 0.42, 0, 110, 11);
-  rig.head = part(neckJ, sph(0.155, 28, 18), 0, 0.17, 0);
+  part(waistJ, cap(S.waist[0], S.waist[1]), 0, S.waist[2], 0, S.waist[3], 1, S.waist[4]);
+  const chestJ = joint("chest", waistJ, 0, S.chestY, 0, 200, 18);
+  part(chestJ, cap(S.chest[0], S.chest[1]), 0, S.chest[2], 0, S.chest[3], 1, S.chest[4]);
+  const neckJ = joint("neck", chestJ, 0, S.neckY, 0, 110, 11);
+  rig.head = part(neckJ, sph(S.head[0], 28, 18), 0, S.head[1], 0);
+  rig.headRest = rig.head.position.clone();
   for (const [side, s] of [["R", 1], ["L", -1]]) {
-    const sh = joint("shoulder" + side, chestJ, 0.25 * s, 0.33, 0, 300, 23);
-    part(sh, sph(0.085, 14, 10), 0, 0, 0);
-    part(sh, cap(0.07, 0.32), 0.0, -0.14, 0);
-    const el = joint("elbow" + side, sh, 0, -0.29, 0, 320, 23);
-    part(el, cap(0.062, 0.3), 0, -0.13, 0);
-    const hand = new THREE.Group(); hand.position.set(0, -0.29, 0); el.add(hand);
-    part(hand, sph(0.08, 16, 10), 0, 0, 0, 1, 1.1, 0.9);
+    const sh = joint("shoulder" + side, chestJ, S.shoulder[0] * s, S.shoulder[1], 0, 300, 23);
+    part(sh, sph(S.shoulder[2], 14, 10), 0, 0, 0);
+    const upper = part(sh, cap(S.upper[0], S.upper[1]), 0.0, S.upper[2], 0);
+    const el = joint("elbow" + side, sh, 0, S.elbowY, 0, 320, 23);
+    const fore = part(el, cap(S.fore[0], S.fore[1]), 0, S.fore[2], 0);
+    const hand = new THREE.Group(); hand.position.set(0, S.handY, 0); el.add(hand);
+    // étirement d'un membre : on allonge le segment et on éloigne l'articulation suivante (pas de déformation de l'arme)
+    rig.stretch["shoulder" + side] = { mesh: upper, child: el, meshY: S.upper[2], childY: S.elbowY };
+    rig.stretch["elbow" + side] = { mesh: fore, child: hand, meshY: S.fore[2], childY: S.handY };
+    part(hand, sph(S.hand, 16, 10), 0, 0, 0, 1, 1.1, 0.9);
     rig["hand" + side] = hand;
-    const hip = joint("hip" + side, rig.pelvis, 0.11 * s, -0.06, 0, 300, 25);
-    part(hip, cap(0.09, 0.46), 0, -0.2, 0);
-    const kn = joint("knee" + side, hip, 0, -0.42, 0, 320, 25);
-    part(kn, cap(0.075, 0.42), 0, -0.18, 0);
-    part(kn, sph(0.09, 16, 10), 0, -0.38, -0.05, 1, 0.55, 1.65);
+    const hip = joint("hip" + side, rig.pelvis, S.hip[0] * s, S.hip[1], 0, 300, 25);
+    const thigh = part(hip, cap(S.thigh[0], S.thigh[1]), 0, S.thigh[2], 0);
+    const kn = joint("knee" + side, hip, 0, S.kneeY, 0, 320, 25);
+    rig.stretch["hip" + side] = { mesh: thigh, child: kn, meshY: S.thigh[2], childY: S.kneeY };
+    part(kn, cap(S.shin[0], S.shin[1]), 0, S.shin[2], 0);
+    part(kn, sph(S.foot[0], 16, 10), 0, S.foot[1], S.foot[2], 1, 0.6, S.foot[3]);
   }
   return rig;
 }
@@ -81,10 +96,13 @@ function setRigWeapon(rig, weaponId) {
     g.userData.meshes = meshes; rig["hand" + side].add(g); rig["weapon" + side] = g; rig.meshes.push(...meshes);
   }
 }
-const model = buildRig(chrome, MODEL_LAYER);
+const model = buildRig(chrome, MODEL_LAYER, false, "abrasion");
+// comme sur l'image : tête de chrome clair, corps-tige d'un métal plus sombre
+const chromeBody = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0x9a9ea8 });
+for (const m of model.meshes) if (m !== model.head) m.material = chromeBody;
 // Double fantôme du Delay : même bonhomme, translucide et cyan, rendu normalement
 const ghostMat = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0x7fe3ff, transparent: true, opacity: 0.55, depthWrite: false });
-const ghostRig = buildRig(ghostMat, 0);
+const ghostRig = buildRig(ghostMat, 0, false, "abrasion");
 ghostRig.root.visible = false;
 
 const blobTex = canvasTex(64, 64, (g) => { const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, "rgba(0,0,0,0.5)"); grd.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = grd; g.fillRect(0, 0, 64, 64); }, false);

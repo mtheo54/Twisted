@@ -263,16 +263,20 @@ const colliders = [];
 const zones = [];
 const UP = new THREE.Vector3(0, 1, 0);
 const MATS = {};
+// Étalonnage dark fantasy : toutes les couleurs du décor sont assombries et
+// un peu bleuies (les lumières, elles, restent vives).
+const GRADE = new THREE.Color(0.66, 0.62, 0.72);
+const graded = (c) => new THREE.Color(c ?? 0xffffff).multiply(GRADE);
 function lambert(hex, extra = {}) {
   const key = "L" + hex + JSON.stringify(extra);
-  if (!MATS[key]) MATS[key] = new THREE.MeshLambertMaterial(Object.assign({ color: hex }, extra));
+  if (!MATS[key]) MATS[key] = new THREE.MeshLambertMaterial(Object.assign({}, extra, { color: graded(hex) }));
   return MATS[key];
 }
 // Matériaux qui s'allument la nuit (fenêtres, enseignes, vitrines, lampes) :
 // world.js fait varier leur émission selon l'heure.
 const NIGHT_MATS = [];
 function nightMat(m, day, night) { NIGHT_MATS.push({ m, day, night }); m.emissiveIntensity = day; return m; }
-function texMat(tex, extra = {}) { return new THREE.MeshLambertMaterial(Object.assign({ map: tex }, extra)); }
+function texMat(tex, extra = {}) { return new THREE.MeshLambertMaterial(Object.assign({ map: tex }, extra, { color: graded(extra.color) })); }
 function litMat(tex) { return nightMat(new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex }), 0.45, 1.15); }
 
 function addGeo(geo, mat, matrix, cast = true) {
