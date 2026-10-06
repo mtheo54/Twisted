@@ -41,6 +41,8 @@ const DATA = {
     fl1: { damage: 9, range: 4.8, arc_deg: 60, windup: 0.12, recover: 0.22, window: 0.45, next: "fl2", lunge: 1, push: 1.5, hitstop: 0.05 },
     fl2: { damage: 10, range: 4.8, arc_deg: 60, windup: 0.12, recover: 0.22, window: 0.45, next: "fl3", lunge: 1, push: 1.5, hitstop: 0.05 },
     fl3: { damage: 14, range: 5.6, arc_deg: 70, windup: 0.2, recover: 0.4, lunge: 0, pull: 7, stun: 1, hitstop: 0.1, impact: true, label: "LARSEN-CROCHET!" },
+    // roulade : attaquer pendant une glissade (avec n'importe quelle arme)
+    roll: { damage: 18, range: 2.7, arc_deg: 240, windup: 0.14, recover: 0.26, lunge: 0, launch: [5, 10], hitstop: 0.08, impact: true, label: "ROULADE!" },
     // Twisted Sword : l'arme signature, lame torsadée. Deux taillades, un estoc, puis la torsion (2 tours)
     tw1: { damage: 13, range: 2.7, arc_deg: 150, windup: 0.07, recover: 0.15, window: 0.45, next: "tw2", lunge: 4.5, push: 2, hitstop: 0.05 },
     tw2: { damage: 14, range: 2.7, arc_deg: 150, windup: 0.07, recover: 0.15, window: 0.45, next: "tw3", lunge: 4.5, push: 2, hitstop: 0.05 },

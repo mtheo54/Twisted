@@ -3,6 +3,8 @@
 // Démarrage : tous les fichiers sont chargés, on construit le monde puis on lance la boucle.
 // Les enseignes en japonais attendent la police (2,5 s maximum).
 // ============================================================================
+// Si la carte graphique lâche, on le dit clairement au lieu d'afficher un écran figé.
+renderer.domElement.addEventListener("webglcontextlost", (e) => { e.preventDefault(); showBanner("La carte graphique a décroché : recharge la page (F5)", 30); });
 async function start() {
   try { await Promise.race([document.fonts.load(`900 64px "Zen Kaku Gothic New"`, "ラーメン寿司居酒屋カラオケ百貨店"), new Promise((r) => setTimeout(r, 2500))]); } catch (e) { /* police de secours */ }
   buildTextures(); buildCity(); buildBackdrop(); setupNight(); setupClouds(); buildDragon(); setupNpcs(); setupAltars();

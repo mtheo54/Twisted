@@ -7,13 +7,14 @@
 // Les coups (dégâts, portée, enchaînements) sont dans data.js (DATA.weapons).
 // ============================================================================
 const WEAPON_MATS = [];
-function weaponMat(color) { const m = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color }); m.userData.base = new THREE.Color(color); WEAPON_MATS.push(m); return m; }
+function weaponMat(color) { const m = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color }); m.userData.base = new THREE.Color(color); m.userData.shared = true; WEAPON_MATS.push(m); return m; }
 const WM = {
   wood: weaponMat(0xe0a868), tip: weaponMat(0xfff1d6), steel: weaponMat(0x9aa3b4), dark: weaponMat(0x3a3a44), black: weaponMat(0x232228),
   red: weaponMat(0xe0453a), white: weaponMat(0xf4efe8), gold: weaponMat(0xb8963a), violet: weaponMat(0xb9a6ff), blade: weaponMat(0x5a5468),
   // lueurs : pas assombries la nuit (elles brillent dans le noir)
   glow: new THREE.MeshBasicMaterial({ color: 0xd07bff, toneMapped: false }), glowBlue: new THREE.MeshBasicMaterial({ color: 0x8fe6ff, toneMapped: false }), redglow: new THREE.MeshBasicMaterial({ color: 0xff3a2a, toneMapped: false }),
 };
+for (const m of Object.values(WM)) m.userData.shared = true;
 const AX = -Math.PI / 2; // couche un cylindre (axe y) le long de -z
 const WEAPON_MODELS = {
   fists: null,

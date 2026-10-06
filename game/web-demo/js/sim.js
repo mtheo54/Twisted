@@ -118,7 +118,7 @@ class Sim {
     if (!src) return;
     if (c.type === "respawn") { src.alive = true; src.health = src.maxHealth; src.statuses.clear(); this.emit({ type: "revived", id: src.id, health: src.health, max_health: src.maxHealth }); return; }
     if (!src.alive) return;
-    if (c.type === "attack") this.attack(src, !!c.airborne);
+    if (c.type === "attack") this.attack(src, !!c.airborne, !!c.slide);
     else if (c.type === "dive_land") this.landDive(src);
     else if (c.type === "dodge") this.dodge(src, false);
     else if (c.type === "cast") this.cast(src, c.spell);
@@ -136,7 +136,7 @@ class Sim {
 
   // --- Corps à corps -----------------------------------------------------------
   breakChorus(src) { for (const st of [...src.statuses.values()]) if (this.data.statuses[st.id].break_on_attack) { this.removeStatus(src, st.id, "broken"); this.emit({ type: "chorus_broken", id: src.id }); } }
-  attack(src, airborne) {
+  attack(src, airborne, slide = false) {
     this.breakChorus(src);
     if (airborne) {
       if (src.diving) return;
@@ -147,7 +147,8 @@ class Sim {
     if (this.time < src.busyUntil) { src.queued = this.time; src.queuedCount = Math.min(2, src.queuedCount + 1); return; }
     const wpn = this.data.weapons[src.weapon || "fists"];
     let move = wpn.combo;
-    if (this.time - src.lastDodgeAt < 0.55) move = wpn.counter;
+    if (slide) move = "roll";
+    else if (this.time - src.lastDodgeAt < 0.55) move = wpn.counter;
     else if (src.chain && this.time <= src.chainUntil) move = src.chain;
     const m = this.data.moves[move];
     src.busyUntil = this.time + m.windup + m.recover;

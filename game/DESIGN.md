@@ -572,8 +572,11 @@ nuit, nuages qui dérivent et changent de teinte avec l'heure.
 
 ## 15. Virage dark fantasy, façon Ultrakill (démo web v7)
 
-**Le bonhomme** (images de référence : grosse tête ronde de chrome clair,
-corps plein et arrondi aux membres épais, façon icône chromée). Il est **semi-liquide** : ses membres
+**Le bonhomme** (image de départ `reference/bonhomme_abrasion.png`) : grosse
+tête ronde séparée du corps par un petit espace, **torse en forme de
+pilule** large et arrondi (trois pilules de même largeur qui se chevauchent :
+il reste lisse mais se plie à la taille et au buste), bras et jambes en
+tubes épais aux bouts arrondis, tout en chrome. Il est **semi-liquide** : ses membres
 s'allongent quand il frappe (le bras qui cogne s'étire jusqu'à ×1,9), ses
 jambes s'étirent à chaque foulée quand il fonce, ses bras traînent
 derrière lui, il s'étale dans le sens de la vitesse et s'étire en chute.
@@ -590,6 +593,7 @@ des proportions humaines (deux silhouettes pour le même squelette).
 | Maj puis Espace | dash-saut : on garde 80 % de la vitesse du dash |
 | C au sol | glissade (17 m/s, on peut tourner un peu) ; sauter garde l'élan |
 | C en l'air | écrasement : chute à 55 m/s, cratère, dégâts autour |
+| Clic pendant une glissade | roulade avant qui frappe tout autour et projette, puis on se relève avec l'élan |
 | Espace juste après un écrasement | rebond, d'autant plus haut que la chute était longue |
 | Espace contre un mur | 3 wall jumps par saut (à l'infini sur les murs tagués) |
 
@@ -629,3 +633,9 @@ gothiques sur les toits, cerisiers rouge sang, lanternes à flamme qui
 vacillent, braises et cendres dans l'air, corbeaux, tour en fer noir aux
 anneaux rouges. Étalonnage de l'image (moins saturée, plus contrastée),
 vignette et grain de film.
+
+**Stabilité** : les monstres, projectiles, rayons, morceaux de monstres et
+armes retirés libèrent leur mémoire graphique (sinon elle se remplissait à
+chaque nuit de combat jusqu'au plantage du navigateur). La boucle de jeu ne
+peut plus s'arrêter sur une erreur : l'erreur s'affiche en petit en haut à
+gauche (à transmettre). Une pause d'impact ne dure jamais plus de 0,25 s.

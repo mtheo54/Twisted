@@ -38,14 +38,17 @@ const RIG_GEO = new Map(); // géométries partagées des squelettes allégés
 const RIG_SHAPES = {
   human: { pelvisY: 0.9, pelvis: [0.15, 0.34, 1.25, 0.85], waist: [0.15, 0.3, 0.12, 1.15, 0.82], chestY: 0.2, chest: [0.2, 0.44, 0.17, 1.25, 0.84], neckY: 0.42, head: [0.155, 0.17],
     shoulder: [0.25, 0.33, 0.085], upper: [0.07, 0.32, -0.14], elbowY: -0.29, fore: [0.062, 0.3, -0.13], handY: -0.29, hand: 0.08, hip: [0.11, -0.06], thigh: [0.09, 0.46, -0.2], kneeY: -0.42, shin: [0.075, 0.42, -0.18], foot: [0.09, -0.38, -0.05, 1.65] },
-  // bonhomme d'abrasion : grosse tête ronde, corps plein et arrondi, membres épais (image de référence)
-  abrasion: { pelvisY: 0.88, pelvis: [0.13, 0.3, 1.2, 0.9], waist: [0.14, 0.34, 0.14, 1.15, 0.88], chestY: 0.24, chest: [0.18, 0.46, 0.18, 1.18, 0.9], neckY: 0.4, head: [0.21, 0.24],
-    shoulder: [0.2, 0.34, 0.085], upper: [0.075, 0.34, -0.15], elbowY: -0.31, fore: [0.07, 0.32, -0.14], handY: -0.3, hand: 0.08, hip: [0.095, -0.05], thigh: [0.09, 0.46, -0.2], kneeY: -0.42, shin: [0.08, 0.44, -0.19], foot: [0.09, -0.41, -0.06, 1.7] },
+  // bonhomme d'abrasion (image de départ) : grosse tête ronde, flottante, séparée par un petit
+  // espace ; torse en forme de pilule, large et arrondi, fait de 3 pilules de même largeur
+  // qui se chevauchent (bassin, taille, buste) : il reste lisse mais peut se plier ;
+  // bras et jambes en tubes épais aux bouts arrondis.
+  abrasion: { pelvisY: 0.86, pelvis: [0.2, 0.4, 1.22, 0.84], waist: [0.205, 0.42, 0.16, 1.22, 0.84], chestY: 0.22, chest: [0.215, 0.5, 0.17, 1.24, 0.86], neckY: 0.43, head: [0.23, 0.26],
+    shoulder: [0.275, 0.3, 0.095], upper: [0.088, 0.36, -0.15], elbowY: -0.31, fore: [0.085, 0.34, -0.14], handY: -0.31, hand: 0.095, hip: [0.11, -0.04], thigh: [0.098, 0.48, -0.2], kneeY: -0.42, shin: [0.092, 0.46, -0.19], foot: [0.1, -0.41, -0.05, 1.5] },
 };
 // lowPoly : version allégée (passants, monstres) — moins de facettes, même silhouette.
 function buildRig(material, layer, lowPoly = false, shape = "human") {
   const S = RIG_SHAPES[shape];
-  const cached = (key, make) => RIG_GEO.get(key) || RIG_GEO.set(key, make()).get(key);
+  const cached = (key, make) => { if (!RIG_GEO.has(key)) { const g = make(); SHARED_GEO.add(g); RIG_GEO.set(key, g); } return RIG_GEO.get(key); };
   const cap = (r, h) => (lowPoly ? cached(`c${r},${h}`, () => capsule(r, h, 10, 4)) : capsule(r, h)), sph = (r, a = 16, b = 10) => (lowPoly ? cached(`s${r}`, () => new THREE.SphereGeometry(r, 10, 7)) : new THREE.SphereGeometry(r, a, b));
   const rig = { root: new THREE.Group(), spin: new THREE.Group(), flip: new THREE.Group(), flipInner: new THREE.Group(), pose: new THREE.Group(), body: new THREE.Group(),
     meshes: [], J: {}, stretch: {}, action: null, sq: 1, sqV: 0, smear: 0, material, layer, shape };
@@ -86,7 +89,7 @@ function buildRig(material, layer, lowPoly = false, shape = "human") {
 }
 // Change l'arme tenue : les maillages vont dans les points d'accroche des mains.
 function setRigWeapon(rig, weaponId) {
-  for (const k of ["weaponR", "weaponL"]) if (rig[k]) { rig[k].parent.remove(rig[k]); rig.meshes = rig.meshes.filter((m) => !rig[k].userData.meshes.includes(m)); rig[k] = null; }
+  for (const k of ["weaponR", "weaponL"]) if (rig[k]) { rig[k].parent.remove(rig[k]); disposeObject(rig[k]); rig.meshes = rig.meshes.filter((m) => !rig[k].userData.meshes.includes(m)); rig[k] = null; }
   const make = WEAPON_MODELS[weaponId];
   if (!make) return;
   for (const [side, build] of Object.entries(make)) {
@@ -99,7 +102,7 @@ function setRigWeapon(rig, weaponId) {
 }
 const model = buildRig(chrome, MODEL_LAYER, false, "abrasion");
 // comme sur l'image : tête de chrome clair, corps-tige d'un métal plus sombre
-const chromeBody = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0x9a9ea8 });
+const chromeBody = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0xc4c8d0 });
 for (const m of model.meshes) if (m !== model.head) m.material = chromeBody;
 // Double fantôme du Delay : même bonhomme, translucide et cyan, rendu normalement
 const ghostMat = new THREE.MeshMatcapMaterial({ matcap: MATCAP, color: 0x7fe3ff, transparent: true, opacity: 0.55, depthWrite: false });

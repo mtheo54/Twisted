@@ -77,15 +77,15 @@ const CRACK_TEX = canvasTex(256, 256, (g) => {
   const grd = g.createRadialGradient(128, 128, 0, 128, 128, 46); grd.addColorStop(0, "rgba(10,8,10,0.85)"); grd.addColorStop(1, "rgba(10,8,10,0)"); g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
 }, false);
 const decals = [];
-function makeDecalPool(n, tex, life) {
+function makeDecalPool(n, tex, life, tint = 0xffffff) {
   const pool = [];
   for (let i = 0; i < n; i++) {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ map: Array.isArray(tex) ? tex[i % tex.length] : tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ map: Array.isArray(tex) ? tex[i % tex.length] : tex, color: tint, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 1; scene.add(m); pool.push({ m, t: 0, life });
   }
   return { pool, i: 0 };
 }
-const BLOOD_DECALS = makeDecalPool(90, SPLAT_TEX, 45), CRACK_DECALS = makeDecalPool(24, CRACK_TEX, 30);
+const BLOOD_DECALS = makeDecalPool(90, SPLAT_TEX, 45, 0x7a3030), CRACK_DECALS = makeDecalPool(24, CRACK_TEX, 30);
 function decalAt(P0, pos, size, y) {
   const d = P0.pool[P0.i++ % P0.pool.length];
   d.m.position.set(pos.x, (y ?? groundAt(pos)) + 0.012 + Math.random() * 0.004, pos.z); d.m.scale.set(size, size, 1); d.m.rotation.z = Math.random() * Math.PI * 2;
@@ -173,12 +173,12 @@ function gibify(m, dir, power = 1) {
     gibs.push({ o, vel, spin: new THREE.Vector3(range(-14, 14), range(-14, 14), range(-14, 14)), life: range(5, 8), ground: m.pos.y, bleed: range(0.4, 1.4), drip: 0, landed: 0, s0: ws.clone() });
   }
   m.extra = m.extra.filter((x) => !taken.has(x));
-  while (gibs.length > 140) { const g = gibs.shift(); scene.remove(g.o); }
+  while (gibs.length > 140) { const g = gibs.shift(); scene.remove(g.o); disposeObject(g.o); }
 }
 function updateGibs(dt) {
   for (let i = gibs.length - 1; i >= 0; i--) {
     const g = gibs[i]; g.life -= dt;
-    if (g.life <= 0) { scene.remove(g.o); gibs.splice(i, 1); continue; }
+    if (g.life <= 0) { scene.remove(g.o); disposeObject(g.o); gibs.splice(i, 1); continue; }
     g.vel.y -= 22 * dt; g.o.position.addScaledVector(g.vel, dt);
     g.o.rotation.x += g.spin.x * dt; g.o.rotation.y += g.spin.y * dt; g.o.rotation.z += g.spin.z * dt;
     if (g.o.position.y < g.ground + 0.05) {

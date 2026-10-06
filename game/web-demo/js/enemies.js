@@ -123,8 +123,10 @@ function spawnMonster(kind, pos) {
   return m;
 }
 function removeMonster(m) {
-  scene.remove(m.root); for (const x of m.extra) scene.remove(x); for (const r of m.ropes) r.dispose();
-  if (m.stars) scene.remove(m.stars); if (m.bar) m.bar.remove();
+  scene.remove(m.root); disposeObject(m.root);
+  for (const x of m.extra) { scene.remove(x); disposeObject(x); }
+  for (const r of m.ropes) { r.dispose(); r.line.material.dispose(); }
+  if (m.stars) { scene.remove(m.stars); disposeObject(m.stars); } if (m.bar) m.bar.remove();
   MONSTERS.delete(m.id); sim.despawn(m.id);
 }
 const addTo = (parent, geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1, shadow = true) => {

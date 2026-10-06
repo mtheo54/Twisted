@@ -267,6 +267,16 @@ const MATS = {};
 // un peu bleuies (les lumières, elles, restent vives).
 const GRADE = new THREE.Color(0.66, 0.62, 0.72);
 const graded = (c) => new THREE.Color(c ?? 0xffffff).multiply(GRADE);
+// Libère la mémoire de la carte graphique d'un objet retiré de la scène
+// (formes et matériaux), sauf ce qui est partagé (marqué userData.shared).
+const SHARED_GEO = new WeakSet();
+function disposeObject(obj) {
+  obj.traverse((o) => {
+    if (o.geometry && !SHARED_GEO.has(o.geometry)) o.geometry.dispose();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) if (!m.userData.shared) m.dispose();
+  });
+}
 function lambert(hex, extra = {}) {
   const key = "L" + hex + JSON.stringify(extra);
   if (!MATS[key]) MATS[key] = new THREE.MeshLambertMaterial(Object.assign({}, extra, { color: graded(hex) }));

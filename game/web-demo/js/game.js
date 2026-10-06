@@ -270,6 +270,10 @@ const ANIMS = {
   hurt: () => { const p = { waist: { x: -0.35, y: 0.25 }, chest: { x: -0.2 }, neck: { x: -0.45 }, shoulderR: { x: 0.2, z: 0.7 }, shoulderL: { x: 0.4, z: -0.6 }, elbowR: { x: 0.9 }, elbowL: { x: 1.2 }, kneeR: { x: -0.4 }, kneeL: { x: -0.25 } }; return [{ t: 0, k: 7, p }, { t: 0.12, p }, { t: 0.32, k: 1.5, p: GUARD }]; },
   // projeté au sol : bras et jambes en l'air pendant la chute
   knocked: () => { const p = { waist: { x: -0.3 }, neck: { x: 0.5 }, shoulderR: { x: 1.8, z: 0.9 }, shoulderL: { x: 1.8, z: -0.9 }, elbowR: { x: 0.5 }, elbowL: { x: 0.5 }, hipR: { x: 0.9 }, kneeR: { x: -0.9 }, hipL: { x: 0.6 }, kneeL: { x: -0.5 } }; return [{ t: 0, k: 4, p }, { t: 0.5, p }, { t: 0.8, k: 1, p: { waist: { x: 0.2 }, neck: { x: 0.2 }, shoulderR: { x: 0.3, z: 0.4 }, shoulderL: { x: 0.3, z: -0.4 }, hipR: { x: 0.3 }, kneeR: { x: -0.6 }, hipL: { x: 0.1 }, kneeL: { x: -0.2 } } }, { t: 1.2, p: {} }]; },
+  // roulade : roulé en boule (genoux contre le torse-pilule plié), puis on se déplie
+  roll: () => { const p = { waist: { x: 1.1 }, chest: { x: 0.6 }, neck: { x: 0.7 }, hipR: { x: 1.9 }, kneeR: { x: -2.3 }, hipL: { x: 1.9 }, kneeL: { x: -2.3 }, shoulderR: { x: 1.3, z: 0.4 }, shoulderL: { x: 1.3, z: -0.4 }, elbowR: { x: 1.6 }, elbowL: { x: 1.6 } };
+    const out = { waist: { x: 0.2 }, shoulderR: { x: 0.9, z: 1.0, s: 1.5 }, shoulderL: { x: 0.9, z: -1.0, s: 1.5 }, elbowR: { x: 0.1 }, elbowL: { x: 0.1 } };
+    return [{ t: 0, k: 4, p }, { t: 0.32, p }, { t: 0.42, k: 5, p: out }, { t: 0.6, p: out }]; },
   // dégainer une arme
   draw: () => { const p = { waist: { y: -0.4 }, shoulderR: { x: 1.2, z: 0.9 }, elbowR: { x: 1.2 }, neck: { y: 0.3 } }; return [{ t: 0, k: 4, p }, { t: 0.15, p }, { t: 0.35, k: 2, p: {} }]; },
   // sort lancé : paumes en avant
@@ -520,7 +524,7 @@ function makeProjMesh(kind) {
 function updateProjMeshes(dt) {
   for (const [id, mesh] of projMeshes) {
     const p = sim.projectiles.get(id);
-    if (!p) { scene.remove(mesh); projMeshes.delete(id); continue; }
+    if (!p) { scene.remove(mesh); disposeObject(mesh); projMeshes.delete(id); continue; }
     mesh.position.copy(p.pos); mesh.lookAt(p.pos.clone().add(p.vel));
     if (p.kind === "sine") mesh.children.forEach((s, i) => s.position.set(Math.sin(time * 18 + p.phase - i * 0.7) * 0.22, 0, -i * 0.16 + 0.3));
     if (p.kind === "larsen") { mesh.userData.ring.rotation.x += dt * 6; const s = 1 + Math.sin(time * 20) * 0.12; mesh.scale.setScalar(s); }
@@ -547,7 +551,7 @@ function updateBeams(dt) {
   for (let i = beams.length - 1; i >= 0; i--) {
     const b = beams[i]; b.life -= dt;
     b.line.material.opacity = b.core.material.opacity = Math.max(0, b.life / 0.3);
-    if (b.life <= 0) { scene.remove(b.line, b.core); beams.splice(i, 1); }
+    if (b.life <= 0) { scene.remove(b.line, b.core); disposeObject(b.line); disposeObject(b.core); beams.splice(i, 1); }
   }
 }
 const FX = { freeze: 0, impact: 0, impactDur: 0.13, impactWorld: new THREE.Vector3() };
@@ -665,6 +669,16 @@ function onEvent(ev) {
       wakeUp(); P.idle = 0;
       if (ev.move === "dive") { P.diving = true; P.sliding = false; startAction(model, "dive"); P.vel.set(0, -ev.dive_speed, 0); squash(5); tone(900, 200, 0.25, 0.07, "sawtooth"); break; }
       if (!P.onFloor) P.vel.y = Math.max(P.vel.y, 2.5); // coups en l'air : on reste suspendu un instant
+      if (ev.move === "roll") {
+        // roulade avant : on garde l'élan de la glissade, le corps se roule en boule puis se relève
+        const d = P.slideDir ? P.slideDir.clone() : facing(), v = Math.max(P.flatSpeed, 13);
+        P.sliding = false; P.rollT = 0.5; P.vel.x = d.x * v; P.vel.z = d.z * v; P.facingYaw = Math.atan2(-d.x, -d.z);
+        model.flip.rotation.x = 0; play(model.flip.rotation, [{ to: { x: -Math.PI * 2 }, dur: 0.42, ease: easeInOut }], () => { model.flip.rotation.x = 0; });
+        play(model.pose.position, [{ to: { y: -0.45 }, dur: 0.12 }, { to: { y: -0.45 }, dur: 0.2 }, { to: { y: 0 }, dur: 0.18, ease: easeBack }]);
+        startAction(model, "roll", ev.windup); squash(-3); noiseHit(900, 0.6, 0.3, 0.14); styleAdd(6, "ROULADE");
+        setTimeout(() => { if (!P.dead) groundImpact(P.pos, 0.8, 0xd07bff); }, ev.windup * 1000);
+        break;
+      }
       P.facingYaw = softAim(); startAction(model, animOf(ev.move), ev.windup); weaponMoveFx(ev);
       P.lungeLeft = P.lungeTotal = ev.ghost ? 0.34 : ev.windup + 0.12; P.lungeSpeed = ev.lunge; P.attackSlow = ev.windup + ev.recover * 0.6;
       if (ev.ghost) P.ghost = ev.windup + 0.3;
@@ -938,7 +952,8 @@ function physicsStep(dt) {
   P.attackSlow = Math.max(0, P.attackSlow - dt); if (P.attackSlow > 0) speed *= 0.7;
   // C : glissade au sol, écrasement en l'air
   if (pressed.has("KeyC") && !P.onFloor && !P.diving && !P.dead && P.knock <= 0 && P.pos.y - groundUnder() > 0.8) { P.slamFrom = P.pos.y; sim.queue({ type: "attack", source: P.id, airborne: true }); }
-  const wantSlide = keys.has("KeyC") && P.onFloor && !P.diving && P.dodgeLeft <= 0 && !P.dead && P.knock <= 0;
+  P.rollT = Math.max(0, (P.rollT || 0) - dt);
+  const wantSlide = keys.has("KeyC") && P.rollT <= 0 && P.onFloor && !P.diving && P.dodgeLeft <= 0 && !P.dead && P.knock <= 0;
   if (wantSlide && !P.sliding) {
     const dir = P.flatSpeed > 3 ? new THREE.Vector3(P.vel.x, 0, P.vel.z).normalize() : moving ? P.wish.clone().normalize() : facing();
     P.sliding = true; P.slideDir = dir; P.slideSpeed = Math.max(STATS.slide_speed, P.flatSpeed); P.facingYaw = Math.atan2(-dir.x, -dir.z);
@@ -1065,7 +1080,7 @@ function physicsStep(dt) {
     for (; attackClicks > 0; attackClicks--) {
       if (P.aiming) { const a = aimShot(); sim.queue({ type: "wave", source: P.id, wave: P.wave, origin: a.origin, dir: a.dir }); continue; }
       // en l'air, le clic donne des coups normaux (l'écrasement est sur C)
-      if (!P.diving) sim.queue({ type: "attack", source: P.id, airborne: false });
+      if (!P.diving) sim.queue({ type: "attack", source: P.id, airborne: false, slide: P.sliding });
     }
   }
   pressed.clear();
@@ -1288,7 +1303,7 @@ function renderPixelPass(dt) {
   pixCam.fov = camera.fov; pixCam.aspect = camera.aspect; pixCam.near = 0.05; pixCam.far = d + PIX.size * 2;
   pixCam.position.copy(camera.position); pixCam.quaternion.copy(camera.quaternion);
   pixCam.setViewOffset(fullW, fullH, sx - s / 2, sy - s / 2, s, s); pixCam.updateMatrixWorld();
-  const tint = chromeTint(); chrome.color.copy(tint); chromeBody.color.copy(tint).multiplyScalar(0.62); tintWeapons(tint);
+  const tint = chromeTint(); chrome.color.copy(tint); chromeBody.color.copy(tint).multiplyScalar(0.85); tintWeapons(tint);
   const fog = scene.fog; scene.fog = null;
   renderer.setClearColor(0x000000, 0);
   renderer.setRenderTarget(pixTarget); renderer.clear(); renderer.render(scene, pixCam);
@@ -1328,7 +1343,20 @@ function project(world) { const v = world.clone().project(camera); return { x: (
 const dummyBar = document.getElementById("dummyBar");
 const STEP = 1 / 60;
 let last = performance.now(), acc = 0, time = 0;
+// La boucle ne doit jamais s'arrêter : on redemande l'image suivante d'abord,
+// et une erreur éventuelle est affichée discrètement (à me transmettre) au lieu de figer le jeu.
+const ERRORS = { n: 0, el: null };
+function reportError(e) {
+  ERRORS.n++;
+  if (ERRORS.n <= 3) console.error(e);
+  if (!ERRORS.el) { ERRORS.el = document.createElement("div"); ERRORS.el.className = "hud"; ERRORS.el.style.cssText = "left:20px;top:96px;font-size:11px;color:#ff9a8a;max-width:60vw"; document.body.appendChild(ERRORS.el); }
+  ERRORS.el.textContent = `Erreur (×${ERRORS.n}) : ${e && e.message} — ${((e && e.stack) || "").split("\n")[1] || ""}`.slice(0, 220);
+}
 function frame_(now) {
+  requestAnimationFrame(frame_);
+  try { tick(now); } catch (e) { reportError(e); }
+}
+function tick(now) {
   const realDt = Math.min(0.1, (now - last) / 1000); last = now;
   let dt = paused ? 0 : realDt;
   // pause d'impact, jamais plus d'un quart de seconde d'affilée (sécurité anti-blocage)
@@ -1364,5 +1392,4 @@ function frame_(now) {
     if (f.age > f.life || p.behind) { f.el.remove(); floats.splice(i, 1); }
   }
   if (bannerTimer > 0) { bannerTimer -= realDt; if (bannerTimer <= 0) document.getElementById("banner").style.opacity = 0; }
-  requestAnimationFrame(frame_);
 }
