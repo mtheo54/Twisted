@@ -32,7 +32,7 @@ std::string platformDeviceName() {
 std::string platformDataDir() {
     char base[MAX_PATH];
     DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base, MAX_PATH);
-    std::string dir = (n > 0 && n < MAX_PATH) ? std::string(base) + "\\RAW" : "C:\\RAW";
+    std::string dir = (n > 0 && n < MAX_PATH) ? std::string(base) + "\\Twisted" : "C:\\Twisted";
     CreateDirectoryA(dir.c_str(), nullptr);
     return dir;
 }

@@ -40,8 +40,8 @@ std::string platformDeviceName() {
 
 std::string platformDataDir() {
     NSArray* dirs = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-    if (dirs.count == 0) return "/tmp/RAW";
-    NSString* dir = [dirs[0] stringByAppendingPathComponent:@"RAW"];
+    if (dirs.count == 0) return "/tmp/Twisted";
+    NSString* dir = [dirs[0] stringByAppendingPathComponent:@"Twisted"];
     [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     return std::string([dir UTF8String]);
 }
