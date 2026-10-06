@@ -73,7 +73,6 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 .chip em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
 #crosshair { left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 2px solid rgba(255,255,255,0.85); border-radius: 50%; }
 #crosshair::after { content: attr(data-wave); position: absolute; top: 28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; color: var(--ink); }
-#fusionHint { left: 50%; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); font-family: var(--display); letter-spacing: 0.1em; color: var(--gold); background: var(--panel); padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
 #combat { right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); font-weight: 900; letter-spacing: 0.14em; font-size: 12px; color: #ff9a8a; border: 1px solid rgba(255,154,138,0.5); padding: 5px 10px; border-radius: 6px; background: var(--panel); }
 #loadout { position: fixed; inset: 0; background: rgba(15,12,20,0.72); display: grid; place-items: center; padding: 16px; overflow: auto; }
 .lo-card { width: min(980px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: #1d1827; border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; display: grid; gap: 12px; }
@@ -92,7 +91,8 @@ body { margin: 0; background: var(--night); color: var(--ink); font-family: var(
 button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { border-color: rgba(234,164,127,0.6); }
 .lo-spell.on { background: rgba(255,255,255,0.06); }
 .lo-top { display: flex; justify-content: space-between; gap: 8px; } .lo-top em { font-style: normal; color: var(--peach); font-size: 12px; }
-.lo-desc { color: var(--muted); line-height: 1.45; } .lo-cd { font-size: 12px; color: var(--ink); }
+.lo-desc { color: var(--muted); line-height: 1.45; } .lo-mix { font-size: 12px; color: var(--ink); opacity: 0.8; }
+.slot.fusion { border-color: rgba(255,210,122,0.45); } .lo-cd { font-size: 12px; color: var(--ink); }
 .lo-table { overflow-x: auto; }
 .lo-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .lo-table th, .lo-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -115,10 +115,10 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
   <kbd>Clic ×3</kbd><span>combo, le 3e projette</span>
   <kbd>Saut + clic</kbd><span>frappe plongeante</span>
   <kbd>C</kbd><span>Bitcrush (esquive) · C + clic : contre</span>
-  <kbd>A E R T</kbd><span>tes 4 sorts</span>
+  <kbd>A E</kbd><span>tes 2 sorts</span>
+  <kbd>R T</kbd><span>tes 2 sorts fusionnés</span>
   <kbd>Clic droit</kbd><span>viser · clic : tirer l'onde</span>
   <kbd>1 2 3</kbd><span>onde sinus, carré, triangle</span>
-  <kbd>F + 2 touches</kbd><span>fusion de sorts ou d'ondes</span>
   <kbd>Tab</kbd><span>mes sorts et fusions</span>
   <kbd>M · P · H</kbd><span>son · pixels · cette aide</span>
 </div>
@@ -128,19 +128,17 @@ button.lo-spell { cursor: pointer; } button.lo-spell:hover, .lo-slot:hover { bor
 <div class="hud" id="statuses"></div>
 <div class="hud" id="spellbar"></div>
 <div class="hud" id="crosshair" hidden></div>
-<div class="hud" id="fusionHint" hidden></div>
 <div class="hud" id="combat" hidden>MODE COMBAT</div>
 
 <div id="loadout" hidden>
   <div class="lo-card" role="dialog" aria-label="Mes sorts">
     <div class="lo-head"><h2>Mes sorts</h2><button id="loClose" type="button">Valider (Tab)</button></div>
-    <p class="lo-hint">Choisis un emplacement, puis un sort. Le Bitcrush (esquive) est toujours sur C.</p>
+    <p class="lo-hint">Choisis un emplacement, puis ce que tu y mets. A et E : sorts de base · R et T : sorts déjà fusionnés, prêts à lancer d'une seule touche. Le Bitcrush (esquive) reste toujours sur C.</p>
     <div class="lo-slots" id="loSlots"></div>
+    <h3 id="loGridTitle"></h3>
     <div class="lo-grid" id="loSpells"></div>
     <h3>Ondes de visée <small>clic droit pour viser, clic pour tirer</small></h3>
     <div class="lo-grid" id="loWaves"></div>
-    <h3>Fusions <small>maintiens F puis appuie sur deux touches · grisées : sort non équipé</small></h3>
-    <div class="lo-table"><table><thead><tr><th>Fusion</th><th>Sorts</th><th>Effet</th><th>Recharge</th></tr></thead><tbody id="loFusions"></tbody></table></div>
   </div>
 </div>
 
@@ -225,24 +223,24 @@ const DATA = {
   },
   // Fusions : A + B (l'ordre ne compte pas). Ajouter une fusion = ajouter une ligne.
   fusions: [
-    { a: "bitcrush", b: "gater", name: "Saut glitch", cooldown: 10, effect: "teleport_behind", combat_only: true, desc: "Téléportation derrière l'ennemi le plus proche (en combat seulement)." },
-    { a: "bitcrush", b: "reverb", name: "Peau d'oignon", cooldown: 12, effect: "phase", desc: "Esquive en traînée de doubles : 1,5 s intouchable, tu traverses les ennemis." },
-    { a: "bitcrush", b: "delay", name: "Triple glitch", cooldown: 9, effect: "triple_dodge", desc: "Trois esquives d'affilée, sans recharge entre elles." },
-    { a: "bitcrush", b: "distortion", name: "Distorsion glitch", cooldown: 20, effect: "status", status: "distortion_x", desc: "Distortion poussée : dégâts infligés et reçus ×2,2." },
-    { a: "bitcrush", b: "chorus", name: "Déphasage", cooldown: 14, effect: "destabilize", radius: 6, desc: "Déstabilise les ennemis proches : étourdis 2 s." },
-    { a: "bitcrush", b: "saturation", name: "Surchauffe glitch", cooldown: 24, effect: "status", status: "saturation_x", desc: "Saturation poussée (vitesse ×2, 4 sauts), puis 7 s d'épuisement." },
-    { a: "reverb", b: "delay", name: "Écho infini", cooldown: 40, effect: "reverb_loop", desc: "3 dégâts par seconde à l'infini, tant que l'ennemi n'esquive pas." },
-    { a: "reverb", b: "distortion", name: "Distorsion douce", cooldown: 16, effect: "status", status: "distortion_soft", desc: "12 s : dégâts infligés ×1,25, reçus ×1,1." },
-    { a: "reverb", b: "chorus", name: "Chœur lointain", cooldown: 22, effect: "status", status: "chorus_soft", desc: "Soin de 2 PV par seconde pendant 15 s, et tu peux attaquer." },
-    { a: "reverb", b: "saturation", name: "Saturation douce", cooldown: 18, effect: "status", status: "saturation_soft", desc: "10 s : vitesse ×1,3 et 3 sauts, puis 2,5 s de fatigue." },
-    { a: "delay", b: "distortion", name: "Crescendo", cooldown: 20, effect: "status", status: "crescendo", desc: "10 s : chaque coup +10 % de dégâts, le malus de dégâts reçus baisse de 10 % à chaque coup." },
-    { a: "delay", b: "chorus", name: "Super saut", cooldown: 15, effect: "status", status: "super_jump", desc: "10 s : après le double saut, un super saut, même en l'air." },
-    { a: "delay", b: "saturation", name: "Tempo", cooldown: 18, effect: "status", status: "tempo", desc: "8 s : vitesse ×1,25 et Delay à 100 %, puis 2,5 s de fatigue." },
-    { a: "distortion", b: "chorus", name: "Renvoi", cooldown: 22, effect: "status", status: "reflect", desc: "8 s : les dégâts reçus repartent vers l'attaquant et te soignent de moitié." },
-    { a: "distortion", b: "saturation", name: "Quitte ou double", cooldown: 45, effect: "all_in", desc: "10 s : dégâts ×3, vitesse ×1,8. Si l'ennemi visé n'est pas tombé à la fin… c'est toi qui tombes." },
-    { a: "sine", b: "square", name: "PWM", cooldown: 8, effect: "wave", wave: "pwm", desc: "Rayon large qui traverse tout sur 40 m (20 dégâts à chaque cible)." },
-    { a: "sine", b: "triangle", name: "Onde douce", cooldown: 7, effect: "wave", wave: "soft", desc: "4 orbes lents qui suivent la cible (7 dégâts chacun)." },
-    { a: "square", b: "triangle", name: "Dent de scie", cooldown: 9, effect: "wave", wave: "saw", desc: "Rafale de 8 tirs rapides qui suivent un peu la cible." },
+    { a: "bitcrush", b: "gater", id: "tp", short: "TP", name: "Saut glitch", cooldown: 10, effect: "teleport_behind", combat_only: true, desc: "Téléportation derrière l'ennemi le plus proche (en combat seulement)." },
+    { a: "bitcrush", b: "reverb", id: "oignon", short: "OIGN", name: "Peau d'oignon", cooldown: 12, effect: "phase", desc: "Esquive en traînée de doubles : 1,5 s intouchable, tu traverses les ennemis." },
+    { a: "bitcrush", b: "delay", id: "triple", short: "×3", name: "Triple glitch", cooldown: 9, effect: "triple_dodge", desc: "Trois esquives d'affilée, sans recharge entre elles." },
+    { a: "bitcrush", b: "distortion", id: "dist_x", short: "DIST+", name: "Distorsion glitch", cooldown: 20, effect: "status", status: "distortion_x", desc: "Distortion poussée : dégâts infligés et reçus ×2,2." },
+    { a: "bitcrush", b: "chorus", id: "dephasage", short: "DÉPH", name: "Déphasage", cooldown: 14, effect: "destabilize", radius: 6, desc: "Déstabilise les ennemis proches : étourdis 2 s." },
+    { a: "bitcrush", b: "saturation", id: "surchauffe", short: "SURCH", name: "Surchauffe glitch", cooldown: 24, effect: "status", status: "saturation_x", desc: "Saturation poussée (vitesse ×2, 4 sauts), puis 7 s d'épuisement." },
+    { a: "reverb", b: "delay", id: "echo_infini", short: "∞ÉCHO", name: "Écho infini", cooldown: 40, effect: "reverb_loop", desc: "3 dégâts par seconde à l'infini, tant que l'ennemi n'esquive pas." },
+    { a: "reverb", b: "distortion", id: "dist_soft", short: "DIST−", name: "Distorsion douce", cooldown: 16, effect: "status", status: "distortion_soft", desc: "12 s : dégâts infligés ×1,25, reçus ×1,1." },
+    { a: "reverb", b: "chorus", id: "choeur", short: "CHŒUR", name: "Chœur lointain", cooldown: 22, effect: "status", status: "chorus_soft", desc: "Soin de 2 PV par seconde pendant 15 s, et tu peux attaquer." },
+    { a: "reverb", b: "saturation", id: "sat_soft", short: "SAT−", name: "Saturation douce", cooldown: 18, effect: "status", status: "saturation_soft", desc: "10 s : vitesse ×1,3 et 3 sauts, puis 2,5 s de fatigue." },
+    { a: "delay", b: "distortion", id: "crescendo", short: "CRESC", name: "Crescendo", cooldown: 20, effect: "status", status: "crescendo", desc: "10 s : chaque coup +10 % de dégâts, le malus de dégâts reçus baisse de 10 % à chaque coup." },
+    { a: "delay", b: "chorus", id: "super_saut", short: "SAUT↑", name: "Super saut", cooldown: 15, effect: "status", status: "super_jump", desc: "10 s : après le double saut, un super saut, même en l'air." },
+    { a: "delay", b: "saturation", id: "tempo", short: "TEMPO", name: "Tempo", cooldown: 18, effect: "status", status: "tempo", desc: "8 s : vitesse ×1,25 et Delay à 100 %, puis 2,5 s de fatigue." },
+    { a: "distortion", b: "chorus", id: "renvoi", short: "RENV", name: "Renvoi", cooldown: 22, effect: "status", status: "reflect", desc: "8 s : les dégâts reçus repartent vers l'attaquant et te soignent de moitié." },
+    { a: "distortion", b: "saturation", id: "all_in", short: "×2?", name: "Quitte ou double", cooldown: 45, effect: "all_in", desc: "10 s : dégâts ×3, vitesse ×1,8. Si l'ennemi visé n'est pas tombé à la fin… c'est toi qui tombes." },
+    { a: "sine", b: "square", id: "pwm", short: "PWM", name: "PWM", cooldown: 8, effect: "wave", wave: "pwm", desc: "Rayon large qui traverse tout sur 40 m (20 dégâts à chaque cible)." },
+    { a: "sine", b: "triangle", id: "onde_douce", short: "ORBES", name: "Onde douce", cooldown: 7, effect: "wave", wave: "soft", desc: "4 orbes lents qui suivent la cible (7 dégâts chacun)." },
+    { a: "square", b: "triangle", id: "dent_scie", short: "SAW", name: "Dent de scie", cooldown: 9, effect: "wave", wave: "saw", desc: "Rafale de 8 tirs rapides qui suivent un peu la cible." },
   ],
   // Attaques de l'enceinte en mode combat (signalées avant de partir)
   enemy_attacks: {
@@ -369,7 +367,7 @@ class Sim {
     else if (c.type === "dodge") this.dodge(src, false);
     else if (c.type === "cast") this.cast(src, c.spell);
     else if (c.type === "wave") this.fireWave(src, c.wave, c.origin, c.dir, true);
-    else if (c.type === "fuse") this.fuse(src, c.a, c.b, c.origin, c.dir);
+    else if (c.type === "fuse") this.fuse(src, c.fusion, c.origin, c.dir);
   }
 
   // --- Corps à corps -----------------------------------------------------------
@@ -461,10 +459,11 @@ class Sim {
     this.applyStatus(src, sp.status, { source: src.id });
     this.emit({ type: "spell_cast", source: src.id, spell: id });
   }
-  fuse(src, a, b, origin, dir) {
-    const f = this.data.fusions.find((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a));
-    const key = "fusion:" + (f ? f.name : "");
-    if (!f) { this.emit({ type: "fusion_unknown", source: src.id, a, b }); return; }
+  // Sorts déjà fusionnés : équipés tels quels, ils ont leur propre recharge.
+  fuse(src, fid, origin, dir) {
+    const f = this.data.fusions.find((x) => x.id === fid);
+    if (!f) return;
+    const key = "fusion:" + f.id;
     if (!this.ready(src, key)) { this.emit({ type: "spell_not_ready", source: src.id, spell: key }); return; }
     if (f.combat_only && !this.inCombat(src)) { this.emit({ type: "fusion_refused", source: src.id, name: f.name, reason: "Seulement en combat" }); return; }
     if (f.effect === "teleport_behind") {
@@ -490,8 +489,7 @@ class Sim {
     } else if (f.effect === "status") this.applyStatus(src, f.status, { source: src.id });
     else if (f.effect === "wave") { this.breakChorus(src); this.fireWave(src, f.wave, origin, dir, false); }
     src.readyAt[key] = this.time + f.cooldown;
-    for (const k of [a, b]) { const cd = (this.data.spells[k] || this.data.waves[k]).cooldown; src.readyAt[k] = Math.max(src.readyAt[k] ?? 0, this.time + cd); }
-    this.emit({ type: "fusion", source: src.id, name: f.name, a, b, effect: f.effect, wave: f.wave });
+    this.emit({ type: "fusion", source: src.id, name: f.name, a: f.a, b: f.b, effect: f.effect, wave: f.wave });
   }
 
   // --- Ondes de visée ------------------------------------------------------------
@@ -1566,7 +1564,7 @@ const SPAWN = new THREE.Vector3(2, 0, 16);
 const P = {
   pos: SPAWN.clone(), vel: new THREE.Vector3(), onFloor: true, coyote: 0, jumpBuffer: 0, airJumps: 1, wallJumps: 0, airLock: 0, airDash: 1, superUsed: false,
   facingYaw: 0, prevYaw: 0, yawRate: 0, wish: new THREE.Vector3(), dodgeLeft: 0, dodgeVel: new THREE.Vector3(), dodgeAir: false, extraDodges: 0,
-  lungeLeft: 0, lungeTotal: 1, lungeSpeed: 0, ghost: 0, attackSlow: 0, diving: false, aiming: false, wave: "sine", fuseSel: [],
+  lungeLeft: 0, lungeTotal: 1, lungeSpeed: 0, ghost: 0, attackSlow: 0, diving: false, aiming: false, wave: "sine",
   sprint: 0, idle: 0, lying: false, waved: 0, t: 0, phase: 0, speedRatio: 0, flatSpeed: 0, wall: null, secrets: 0, dead: false,
   mods: null, healAcc: 0, healTimer: 0, trailTimer: 0, ringTimer: 0,
 };
@@ -1583,10 +1581,13 @@ sim.world.blocked = (a, b) => {
 };
 
 // --- Sorts équipés (A E R T), choisis dans la fenêtre « Mes sorts » ----------------
-const SLOTS = [{ code: "KeyQ", label: "A" }, { code: "KeyE", label: "E" }, { code: "KeyR", label: "R" }, { code: "KeyT", label: "T" }];
+// A et E : sorts de base · R et T : sorts déjà fusionnés
+const SLOTS = [{ code: "KeyQ", label: "A", kind: "spell" }, { code: "KeyE", label: "E", kind: "spell" }, { code: "KeyR", label: "R", kind: "fusion" }, { code: "KeyT", label: "T", kind: "fusion" }];
+const FUSION_BY_ID = Object.fromEntries(DATA.fusions.map((f) => [f.id, f]));
+const FUSION_COLOR = "#ffd27a";
 const WAVE_KEYS = { Digit1: "sine", Digit2: "square", Digit3: "triangle" };
-let EQUIP = ["gater", "reverb", "delay", "distortion"];
-try { const saved = JSON.parse(localStorage.getItem("twisted.loadout") || "null"); if (Array.isArray(saved) && saved.length === 4 && saved.every((s) => DATA.spells[s])) EQUIP = saved; } catch (e) { /* pas de stockage : sorts par défaut */ }
+let EQUIP = ["gater", "delay", "tp", "renvoi"];
+try { const saved = JSON.parse(localStorage.getItem("twisted.loadout2") || "null"); if (Array.isArray(saved) && saved.length === 4 && saved.every((s, i) => (SLOTS[i].kind === "spell" ? DATA.spells[s] : FUSION_BY_ID[s]))) EQUIP = saved; } catch (e) { /* pas de stockage : sorts par défaut */ }
 const nameOf = (id) => (DATA.spells[id] || DATA.waves[id] || {}).name || id;
 
 const keys = new Set(), pressed = new Set();
@@ -1597,7 +1598,7 @@ let paused = false;
 addEventListener("keydown", (e) => {
   if (e.code === "Tab") { e.preventDefault(); toggleLoadout(); return; }
   if (paused) { if (e.code === "Escape") toggleLoadout(false); return; }
-  if (["Space", "ShiftLeft", "KeyW", "KeyA", "KeyS", "KeyD", "KeyF", "KeyQ", "KeyE", "KeyR", "KeyT"].includes(e.code)) e.preventDefault();
+  if (["Space", "ShiftLeft", "KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyR", "KeyT"].includes(e.code)) e.preventDefault();
   if (!keys.has(e.code)) pressed.add(e.code);
   keys.add(e.code);
   if (e.code === "KeyP") setPixelMode(!PIX.on);
@@ -1642,25 +1643,36 @@ let selectedSlot = 0;
 function toggleLoadout(open = !paused) {
   paused = open; loadoutEl.hidden = !open;
   if (open) { keys.clear(); P.aiming = false; try { document.exitPointerLock(); } catch (e) { /* rien */ } renderLoadout(); }
-  else { try { localStorage.setItem("twisted.loadout", JSON.stringify(EQUIP)); } catch (e) { /* rien */ } buildSpellBar(); if (overlay.hidden) requestLock(); }
+  else { try { localStorage.setItem("twisted.loadout2", JSON.stringify(EQUIP)); } catch (e) { /* rien */ } buildSpellBar(); if (overlay.hidden) requestLock(); }
   updateResume();
 }
+// Ce que contient un emplacement : clé de recharge, nom, abréviation, couleur
+function slotInfo(i) {
+  const id = EQUIP[i];
+  if (SLOTS[i].kind === "spell") { const sp = DATA.spells[id]; return { key: id, name: sp.name, short: sp.short, color: sp.color }; }
+  const f = FUSION_BY_ID[id]; return { key: "fusion:" + id, name: f.name, short: f.short, color: FUSION_COLOR, fusion: f };
+}
 function renderLoadout() {
-  const slots = document.getElementById("loSlots"), grid = document.getElementById("loSpells"), waves = document.getElementById("loWaves"), fus = document.getElementById("loFusions");
+  const slots = document.getElementById("loSlots"), grid = document.getElementById("loSpells"), waves = document.getElementById("loWaves"), title = document.getElementById("loGridTitle");
   slots.innerHTML = `<div class="lo-slot fixed"><kbd>C</kbd><b style="color:${DATA.spells.bitcrush.color}">Bitcrush</b><small>esquive de base</small></div>` +
-    SLOTS.map((s, i) => `<button type="button" class="lo-slot${i === selectedSlot ? " sel" : ""}" data-slot="${i}"><kbd>${s.label}</kbd><b style="color:${DATA.spells[EQUIP[i]].color}">${nameOf(EQUIP[i])}</b><small>${i === selectedSlot ? "choisis un sort ↓" : "changer"}</small></button>`).join("");
-  grid.innerHTML = Object.entries(DATA.spells).filter(([id]) => id !== "bitcrush").map(([id, s]) => {
-    const at = EQUIP.indexOf(id);
-    return `<button type="button" class="lo-spell${at >= 0 ? " on" : ""}" data-spell="${id}"><span class="lo-top"><b style="color:${s.color}">${s.name}</b><em>${at >= 0 ? "touche " + SLOTS[at].label : ""}</em></span><span class="lo-desc">${s.desc}</span><span class="lo-cd">Recharge ${s.cooldown} s</span></button>`;
-  }).join("");
+    SLOTS.map((s, i) => { const inf = slotInfo(i); return `<button type="button" class="lo-slot${i === selectedSlot ? " sel" : ""}" data-slot="${i}"><kbd>${s.label} · ${s.kind === "spell" ? "sort" : "fusion"}</kbd><b style="color:${inf.color}">${inf.name}</b><small>${i === selectedSlot ? "choisis ci-dessous ↓" : "changer"}</small></button>`; }).join("");
+  const kind = SLOTS[selectedSlot].kind;
+  const keyOf = (id) => { const at = EQUIP.findIndex((e, k) => e === id && SLOTS[k].kind === kind); return at >= 0 ? "touche " + SLOTS[at].label : ""; };
+  if (kind === "spell") {
+    title.innerHTML = `Sorts de base <small>pour A et E</small>`;
+    grid.innerHTML = Object.entries(DATA.spells).filter(([id]) => id !== "bitcrush").map(([id, sp]) =>
+      `<button type="button" class="lo-spell${keyOf(id) ? " on" : ""}" data-pick="${id}"><span class="lo-top"><b style="color:${sp.color}">${sp.name}</b><em>${keyOf(id)}</em></span><span class="lo-desc">${sp.desc}</span><span class="lo-cd">Recharge ${sp.cooldown} s</span></button>`).join("");
+  } else {
+    title.innerHTML = `Sorts fusionnés <small>pour R et T · déjà prêts, une seule touche</small>`;
+    grid.innerHTML = DATA.fusions.map((f) =>
+      `<button type="button" class="lo-spell${keyOf(f.id) ? " on" : ""}" data-pick="${f.id}"><span class="lo-top"><b style="color:${FUSION_COLOR}">${f.name}</b><em>${keyOf(f.id)}</em></span><span class="lo-mix">${nameOf(f.a)} + ${nameOf(f.b)}</span><span class="lo-desc">${f.desc}</span><span class="lo-cd">Recharge ${f.cooldown} s${f.combat_only ? " · en combat" : ""}</span></button>`).join("");
+  }
   waves.innerHTML = ["sine", "square", "triangle"].map((id) => { const w = DATA.waves[id]; return `<div class="lo-spell on"><span class="lo-top"><b style="color:${w.color}">${w.short} ${w.name}</b><em>touche ${w.key}</em></span><span class="lo-desc">${w.desc}</span><span class="lo-cd">Recharge ${w.cooldown} s</span></div>`; }).join("");
-  const have = (id) => id === "bitcrush" || DATA.waves[id] || EQUIP.includes(id);
-  fus.innerHTML = DATA.fusions.map((f) => `<tr class="${have(f.a) && have(f.b) ? "" : "off"}"><td><b>${f.name}</b></td><td>${nameOf(f.a)} + ${nameOf(f.b)}</td><td>${f.desc}</td><td class="num">${f.cooldown} s</td></tr>`).join("");
   slots.querySelectorAll("[data-slot]").forEach((b) => b.addEventListener("click", () => { selectedSlot = +b.dataset.slot; renderLoadout(); }));
-  grid.querySelectorAll("[data-spell]").forEach((b) => b.addEventListener("click", () => {
-    const id = b.dataset.spell, at = EQUIP.indexOf(id);
-    if (at >= 0 && at !== selectedSlot) EQUIP[at] = EQUIP[selectedSlot];
-    EQUIP[selectedSlot] = id; selectedSlot = (selectedSlot + 1) % 4; renderLoadout();
+  grid.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
+    const id = b.dataset.pick, at = EQUIP.findIndex((e, k) => e === id && SLOTS[k].kind === kind);
+    if (at >= 0 && at !== selectedSlot) EQUIP[at] = EQUIP[selectedSlot]; // déjà équipé ailleurs : on échange
+    EQUIP[selectedSlot] = id; renderLoadout();
   }));
 }
 document.getElementById("loClose").addEventListener("click", () => toggleLoadout(false));
@@ -1669,8 +1681,10 @@ document.getElementById("loClose").addEventListener("click", () => toggleLoadout
 const spellbar = document.getElementById("spellbar");
 let slotEls = [];
 function buildSpellBar() {
-  const items = [{ key: "C", id: "bitcrush" }, ...SLOTS.map((s, i) => ({ key: s.label, id: EQUIP[i] })), { sep: true }, ...["sine", "square", "triangle"].map((id) => ({ key: DATA.waves[id].key, id, wave: true }))];
-  spellbar.innerHTML = items.map((it) => it.sep ? `<i class="sep"></i>` : `<div class="slot${it.wave ? " wave" : ""}" data-id="${it.id}"><span class="cd"></span><kbd>${it.key}</kbd><b style="color:${(DATA.spells[it.id] || DATA.waves[it.id]).color}">${it.wave ? DATA.waves[it.id].short : DATA.spells[it.id].short}</b><small></small></div>`).join("");
+  const sb = DATA.spells.bitcrush;
+  const items = [{ key: "C", id: "bitcrush", short: sb.short, color: sb.color }, ...SLOTS.map((s, i) => { const inf = slotInfo(i); return { key: s.label, id: inf.key, short: inf.short, color: inf.color, fusion: !!inf.fusion }; }),
+    { sep: true }, ...["sine", "square", "triangle"].map((id) => ({ key: DATA.waves[id].key, id, wave: true, short: DATA.waves[id].short, color: DATA.waves[id].color }))];
+  spellbar.innerHTML = items.map((it) => it.sep ? `<i class="sep"></i>` : `<div class="slot${it.wave ? " wave" : ""}${it.fusion ? " fusion" : ""}" data-id="${it.id}"><span class="cd"></span><kbd>${it.key}</kbd><b style="color:${it.color}">${it.short}</b><small></small></div>`).join("");
   slotEls = [...spellbar.querySelectorAll(".slot")].map((el) => ({ el, id: el.dataset.id, cd: el.querySelector(".cd"), txt: el.querySelector("small") }));
 }
 buildSpellBar();
@@ -2152,22 +2166,15 @@ function aimShot() {
   const origin = P.pos.clone().add(new THREE.Vector3(0, 1.3, 0)).addScaledVector(facing(), 0.45).addScaledVector(right, 0.25);
   return { origin, dir: target.sub(origin).normalize() };
 }
-// Touches de sorts : seules, elles lancent le sort ; avec F maintenu, elles se fusionnent.
+// Touches de sorts : C esquive, A E sorts, R T sorts fusionnés (visés au centre de l'écran), 1 2 3 ondes.
 function readSpellKeys() {
-  const tokens = [];
-  if (pressed.has("KeyC")) tokens.push("bitcrush");
-  SLOTS.forEach((s, i) => { if (pressed.has(s.code)) tokens.push(EQUIP[i]); });
-  for (const [code, w] of Object.entries(WAVE_KEYS)) if (pressed.has(code)) tokens.push(w);
-  const fusing = keys.has("KeyF");
-  if (!fusing) P.fuseSel = [];
-  for (const tok of tokens) {
-    if (fusing) {
-      if (!P.fuseSel.includes(tok)) P.fuseSel.push(tok);
-      if (P.fuseSel.length === 2) { const a = aimShot(); sim.queue({ type: "fuse", source: P.id, a: P.fuseSel[0], b: P.fuseSel[1], origin: a.origin, dir: a.dir }); P.fuseSel = []; }
-    } else if (tok === "bitcrush") { if ((P.onFloor || P.airDash > 0) && !P.mods.no_dodge) sim.queue({ type: "dodge", source: P.id }); else flashSlot("bitcrush"); }
-    else if (DATA.waves[tok]) { P.wave = tok; tone(1000, 1000, 0.03, 0.03, "sine"); }
-    else sim.queue({ type: "cast", source: P.id, spell: tok });
-  }
+  if (pressed.has("KeyC")) { if ((P.onFloor || P.airDash > 0) && !P.mods.no_dodge) sim.queue({ type: "dodge", source: P.id }); else flashSlot("bitcrush"); }
+  SLOTS.forEach((s, i) => {
+    if (!pressed.has(s.code)) return;
+    if (s.kind === "spell") sim.queue({ type: "cast", source: P.id, spell: EQUIP[i] });
+    else { const a = aimShot(); sim.queue({ type: "fuse", source: P.id, fusion: EQUIP[i], origin: a.origin, dir: a.dir }); }
+  });
+  for (const [code, w] of Object.entries(WAVE_KEYS)) if (pressed.has(code)) { P.wave = w; tone(1000, 1000, 0.03, 0.03, "sine"); }
 }
 
 function physicsStep(dt) {
@@ -2432,13 +2439,13 @@ function applyImpactFilter() {
 }
 
 // --- HUD : sorts, recharges, statuts, viseur, fusion -------------------------------------
-const statusesEl = document.getElementById("statuses"), crosshair = document.getElementById("crosshair"), fusionHint = document.getElementById("fusionHint"), combatEl = document.getElementById("combat");
+const statusesEl = document.getElementById("statuses"), crosshair = document.getElementById("crosshair"), combatEl = document.getElementById("combat");
 let hudTimer = 0;
 function updateHud(realDt) {
   hudTimer -= realDt; if (hudTimer > 0) return; hudTimer = 0.08;
   const pe = sim.entities.get(P.id);
   for (const s of slotEls) {
-    const def = DATA.spells[s.id] || DATA.waves[s.id], left = sim.cooldownLeft(pe, s.id), max = s.id === "bitcrush" ? def.cooldown * P.mods.dodge_cd : def.cooldown;
+    const def = DATA.spells[s.id] || DATA.waves[s.id] || FUSION_BY_ID[s.id.replace("fusion:", "")], left = sim.cooldownLeft(pe, s.id), max = s.id === "bitcrush" ? def.cooldown * P.mods.dodge_cd : def.cooldown;
     const pct = max > 0 ? Math.min(100, (left / max) * 100) : 0;
     s.cd.style.background = pct > 0 ? `conic-gradient(rgba(10,8,14,0.78) ${pct}%, transparent 0)` : "transparent";
     s.txt.textContent = left > 0.05 && max > 1 ? left.toFixed(left < 10 ? 1 : 0) : "";
@@ -2452,8 +2459,6 @@ function updateHud(realDt) {
   }).join("");
   crosshair.hidden = !P.aiming;
   if (P.aiming) crosshair.dataset.wave = DATA.waves[P.wave].short + " " + DATA.waves[P.wave].name;
-  fusionHint.hidden = !keys.has("KeyF");
-  if (keys.has("KeyF")) fusionHint.textContent = "FUSION : " + (P.fuseSel.length ? nameOf(P.fuseSel[0]) + " + …" : "choisis deux sorts ou deux ondes");
   combatEl.hidden = !sim.inCombat(pe);
 }
 

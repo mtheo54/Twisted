@@ -476,11 +476,14 @@ génériques : joueur et ennemis utilisent les mêmes.
 les combos (plan ciné, ralenti et secousses retirés). La pause d'impact et
 les impact frames restent.
 
-**Touches** : C Bitcrush (esquive de base) · A E R T : 4 sorts au choix ·
-clic droit maintenu : viser, clic : tirer l'onde choisie (1 sinus, 2 carré,
-3 triangle) · F maintenu + deux touches : fusion (sorts entre eux, ondes
-entre elles) · Tab : fenêtre « Mes sorts » (choix des 4 sorts, liste des
-ondes et des fusions, sauvegardée dans le navigateur).
+**Touches** : C Bitcrush (esquive de base) · **A E : 2 sorts de base** ·
+**R T : 2 sorts déjà fusionnés** (choisis parmi les 18 fusions, lancés
+d'une seule touche, visés au centre de l'écran) · clic droit maintenu :
+viser, clic : tirer l'onde choisie (1 sinus, 2 carré, 3 triangle) · Tab :
+fenêtre « Mes sorts » (sauvegardée dans le navigateur).
+
+*Validé ensuite* : plus de fusion en direct (« F + deux touches »). Une
+fusion équipée a sa propre recharge et ne bloque pas ses sorts d'origine.
 
 | Sort | Effet | Recharge |
 |---|---|---|
@@ -498,7 +501,7 @@ ondes et des fusions, sauvegardée dans le navigateur).
 | Carré | sniper : rayon instantané 80 m, 34 dégâts | 3,5 s |
 | Triangle | 9 dégâts à toute distance, suit légèrement la cible | 0,45 s |
 
-Fusions (recharge propre + les deux sorts repartent en recharge) :
+Fusions (sorts fusionnés, recharge propre) :
 Saut glitch 10 s · Peau d'oignon 12 s · Triple glitch 9 s · Distorsion
 glitch 20 s · Déphasage 14 s · Surchauffe glitch 24 s · Écho infini 40 s ·
 Distorsion douce 16 s · Chœur lointain 22 s · Saturation douce 18 s ·
