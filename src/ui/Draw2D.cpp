@@ -75,6 +75,20 @@ std::vector<std::string> fontCandidates(int family) {  // 0 sans, 1 mono, 2 seri
 #endif
 }
 
+// Symbol font for the few glyphs the text fonts lack (Segoe UI has no ◎ ▾ ●, for instance).
+std::vector<std::string> symbolFontCandidates() {
+#if defined(_WIN32)
+    const char* win = std::getenv("WINDIR");
+    std::string dir = std::string(win ? win : "C:\\Windows") + "\\Fonts\\";
+    return {dir + "seguisym.ttf", dir + "arial.ttf"};
+#elif defined(__APPLE__)
+    return {"/System/Library/Fonts/Apple Symbols.ttf", "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial Unicode.ttf"};
+#else
+    return {"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"};
+#endif
+}
+
 uint32_t nextCodepoint(const std::string& s, size_t& i) {
     const unsigned char c = (unsigned char)s[i++];
     if (c < 0x80) return c;
@@ -120,14 +134,24 @@ bool Draw2D::bakeFonts() {
     for (int fam = 0; fam < 3; ++fam)
         for (const auto& path : fontCandidates(fam)) {
             files[fam] = readFile(path);
-            if (!files[fam].empty()) { offsets[fam] = stbtt_GetFontOffsetForIndex(files[fam].data(), 0); break; }
+            if (!files[fam].empty()) { offsets[fam] = std::max(0, stbtt_GetFontOffsetForIndex(files[fam].data(), 0)); break; }
         }
+    std::vector<unsigned char> symFile;
+    stbtt_fontinfo symInfo{};
+    for (const auto& path : symbolFontCandidates()) {
+        symFile = readFile(path);
+        if (!symFile.empty() &&
+            stbtt_InitFont(&symInfo, symFile.data(), std::max(0, stbtt_GetFontOffsetForIndex(symFile.data(), 0))))
+            break;
+        symFile.clear();
+    }
 
     // Latin-1 plus the few typographic characters the UI uses.
     std::vector<int> cps;
     for (int c = 32; c < 127; ++c) cps.push_back(c);
     for (int c = 160; c < 256; ++c) cps.push_back(c);
-    for (int c : {0x2212, 0x2026, 0x2014, 0x2013, 0x2192, 0x221E, 0x2248, 0x25CE, 0x25B6, 0x25A0, 0x2022, 0x25BE, 0x014D})
+    for (int c : {0x2212, 0x2026, 0x2014, 0x2013, 0x2192, 0x221E, 0x2248, 0x25CE, 0x25B6, 0x25A0, 0x2022, 0x25BE, 0x25CF,
+                  0x014D})
         cps.push_back(c);
 
     std::vector<unsigned char> atlas((size_t)kAtlas * kAtlas, 0);
@@ -144,9 +168,28 @@ bool Draw2D::bakeFonts() {
         range.array_of_unicode_codepoints = cps.data();
         range.num_chars = (int)cps.size();
         range.chardata_for_range = packed.data();
-        if (!stbtt_PackFontRanges(&pc, files[fam].data(), offsets[fam] < 0 ? 0 : offsets[fam], &range, 1)) continue;
         stbtt_fontinfo info;
-        stbtt_InitFont(&info, files[fam].data(), offsets[fam] < 0 ? 0 : offsets[fam]);
+        if (!stbtt_InitFont(&info, files[fam].data(), offsets[fam])) continue;
+        // Characters this font lacks are taken from the symbol font instead.
+        std::vector<int> missing;
+        std::vector<size_t> missingAt;
+        if (!symFile.empty())
+            for (size_t i = 0; i < cps.size(); ++i)
+                if (cps[i] >= 0x100 && !stbtt_FindGlyphIndex(&info, cps[i]) && stbtt_FindGlyphIndex(&symInfo, cps[i])) {
+                    missing.push_back(cps[i]);
+                    missingAt.push_back(i);
+                }
+        if (!stbtt_PackFontRanges(&pc, files[fam].data(), offsets[fam], &range, 1)) continue;
+        if (!missing.empty()) {
+            std::vector<stbtt_packedchar> symPacked(missing.size());
+            stbtt_pack_range sr{};
+            sr.font_size = range.font_size;
+            sr.array_of_unicode_codepoints = missing.data();
+            sr.num_chars = (int)missing.size();
+            sr.chardata_for_range = symPacked.data();
+            if (stbtt_PackFontRanges(&pc, symFile.data(), (int)(symInfo.data ? symInfo.fontstart : 0), &sr, 1))
+                for (size_t k = 0; k < missing.size(); ++k) packed[missingAt[k]] = symPacked[k];
+        }
         int asc, desc, gap;
         stbtt_GetFontVMetrics(&info, &asc, &desc, &gap);
         Font& font = fonts_[f];
