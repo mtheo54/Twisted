@@ -9,6 +9,8 @@
 #include "../ui/Editor.h"
 #include "../ui/Gl.h"
 
+#include <string>
+
 // Objective-C class names are global to the process: suffix them per build so two
 // versions of the plugin loaded in the same host never clash.
 #ifndef TW_OBJC_SUFFIX
@@ -79,7 +81,11 @@
 - (NSPoint)local:(NSEvent*)e { return [self convertPoint:[e locationInWindow] fromView:nil]; }
 - (BOOL)shift:(NSEvent*)e { return ([e modifierFlags] & NSEventModifierFlagShift) != 0; }
 
-- (void)mouseDown:(NSEvent*)e { NSPoint p = [self local:e]; if (editor) editor->mouseDown((float)p.x, (float)p.y, [self shift:e]); }
+- (void)mouseDown:(NSEvent*)e {
+    [self.window makeFirstResponder:self];  // garantit que keyDown: arrive bien ici, pas ailleurs
+    NSPoint p = [self local:e];
+    if (editor) editor->mouseDown((float)p.x, (float)p.y, [self shift:e]);
+}
 - (void)mouseUp:(NSEvent*)e { NSPoint p = [self local:e]; if (editor) editor->mouseUp((float)p.x, (float)p.y); }
 - (void)mouseDragged:(NSEvent*)e { NSPoint p = [self local:e]; if (editor) editor->mouseMove((float)p.x, (float)p.y, [self shift:e]); }
 - (void)mouseMoved:(NSEvent*)e { NSPoint p = [self local:e]; if (editor) editor->mouseMove((float)p.x, (float)p.y, [self shift:e]); }
@@ -88,6 +94,41 @@
     NSPoint p = [self local:e];
     const CGFloat dy = [e hasPreciseScrollingDeltas] ? [e scrollingDeltaY] / 10.0 : [e deltaY];
     if (editor && dy != 0) editor->mouseWheel((float)p.x, (float)p.y, (float)dy, [self shift:e]);
+}
+
+// ---- saisie clavier pour le panneau de licence ----
+// Sans effet si aucun champ n'a le focus : la touche remonte normalement à l'hôte (super),
+// comme n'importe quelle vue qui ne la consomme pas.
+- (void)keyDown:(NSEvent*)e {
+    if (!editor || !editor->wantsKeyboard()) { [super keyDown:e]; return; }
+    const unsigned short code = [e keyCode];
+    const BOOL cmd = ([e modifierFlags] & NSEventModifierFlagCommand) != 0;
+    if (cmd && [[e charactersIgnoringModifiers] isEqualToString:@"v"]) {
+        NSString* s = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+        if (s) { const char* u = [s UTF8String]; if (u) editor->textInput(std::string(u)); }
+        return;
+    }
+    // Codes matériel standards (kVK_*), valables quel que soit l'agencement du clavier.
+    switch (code) {
+        case 51: editor->keyCommand(tw::Editor::KeyCmd::Backspace); return;  // Delete = retour arrière
+        case 36: case 76: editor->keyCommand(tw::Editor::KeyCmd::Enter); return;  // Return / entrée pavé numérique
+        case 53: editor->keyCommand(tw::Editor::KeyCmd::Escape); return;
+        case 48: editor->keyCommand(tw::Editor::KeyCmd::Tab); return;
+        default: break;
+    }
+    NSString* chars = [e characters];  // texte composé (accents, touches mortes) selon l'agencement actif
+    if (chars) { const char* u = [chars UTF8String]; if (u) editor->textInput(std::string(u)); }
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent*)e {
+    // Empêche Cmd+V d'être avalé par un raccourci menu de l'hôte avant d'atteindre keyDown:,
+    // mais seulement quand un champ de licence a le focus — sinon le raccourci de l'hôte passe.
+    if (editor && editor->wantsKeyboard() && ([e modifierFlags] & NSEventModifierFlagCommand) &&
+        [[e charactersIgnoringModifiers] isEqualToString:@"v"]) {
+        [self keyDown:e];
+        return YES;
+    }
+    return NO;
 }
 
 @end

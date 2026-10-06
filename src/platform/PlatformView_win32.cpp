@@ -5,6 +5,7 @@
 #include "../ui/Gl.h"
 
 #include <cstdio>
+#include <string>
 
 namespace tw {
 
@@ -35,6 +36,35 @@ HMODULE thisModule() {
     GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                        (LPCSTR)&thisModule, &m);
     return m;
+}
+
+// Un caractère UTF-16 (parfois une paire de substituts pour un seul caractère au-delà du
+// plan de base) converti en UTF-8, pour Editor::textInput. Les clés de licence, e-mails et
+// mots de passe restent presque toujours du BMP, mais on traite les paires correctement
+// par politesse plutôt que de les ignorer en silence.
+std::string utf16ToUtf8(const wchar_t* w, int n) {
+    if (n <= 0) return {};
+    const int len = WideCharToMultiByte(CP_UTF8, 0, w, n, nullptr, 0, nullptr, nullptr);
+    if (len <= 0) return {};
+    std::string out(size_t(len), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w, n, out.data(), len, nullptr, nullptr);
+    return out;
+}
+
+// Presse-papiers (Ctrl+V) : texte Unicode uniquement, jamais de saut de ligne au milieu
+// (Editor::textInput filtre déjà les caractères de contrôle, mais autant ne pas lire plus
+// que nécessaire).
+std::string clipboardText(HWND owner) {
+    if (!OpenClipboard(owner)) return {};
+    std::string out;
+    if (HANDLE h = GetClipboardData(CF_UNICODETEXT)) {
+        if (const wchar_t* w = (const wchar_t*)GlobalLock(h)) {
+            out = utf16ToUtf8(w, (int)wcslen(w));
+            GlobalUnlock(h);
+        }
+    }
+    CloseClipboard();
+    return out;
 }
 
 float systemScale(HWND hwnd) {
@@ -238,6 +268,37 @@ private:
         }
         case WM_GETDLGCODE:
             return DLGC_WANTALLKEYS;
+        // ---- saisie clavier pour le panneau de licence (sans effet si aucun champ n'a le focus) ----
+        case WM_CHAR: {
+            if (!self->editor_.wantsKeyboard()) break;
+            const wchar_t c = (wchar_t)wp;
+            if (c < 0x20) break;  // Entrée/Retour/Tab/Échap arrivent par WM_KEYDOWN, pas ici
+            if (c >= 0xD800 && c <= 0xDBFF) { self->pendingHighSurrogate_ = c; return 0; }  // substitut haut
+            if (c >= 0xDC00 && c <= 0xDFFF) {  // substitut bas : combine avec celui d'avant
+                if (self->pendingHighSurrogate_) {
+                    const wchar_t pair[2] = {self->pendingHighSurrogate_, c};
+                    self->editor_.textInput(utf16ToUtf8(pair, 2));
+                    self->pendingHighSurrogate_ = 0;
+                }
+                return 0;
+            }
+            self->pendingHighSurrogate_ = 0;
+            self->editor_.textInput(utf16ToUtf8(&c, 1));
+            return 0;
+        }
+        case WM_KEYDOWN: {
+            if (!self->editor_.wantsKeyboard()) break;
+            const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            if (ctrl && wp == 'V') { self->editor_.textInput(clipboardText(hwnd)); return 0; }
+            switch (wp) {
+                case VK_BACK: self->editor_.keyCommand(Editor::KeyCmd::Backspace); return 0;
+                case VK_RETURN: self->editor_.keyCommand(Editor::KeyCmd::Enter); return 0;
+                case VK_ESCAPE: self->editor_.keyCommand(Editor::KeyCmd::Escape); return 0;
+                case VK_TAB: self->editor_.keyCommand(Editor::KeyCmd::Tab); return 0;
+                default: break;
+            }
+            break;
+        }
         default:
             break;
         }
@@ -251,6 +312,7 @@ private:
     float hostScale_ = 0.f;
     bool tracking_ = false;
     wchar_t className_[64] = {};
+    wchar_t pendingHighSurrogate_ = 0;  // WM_CHAR livre les caractères astraux en deux messages
 };
 } // namespace
 

@@ -68,25 +68,40 @@ add_library(twisted_core STATIC
   src/ui/Draw2D.cpp
   src/ui/Editor.cpp)
 if(WIN32)
-  target_sources(twisted_core PRIVATE src/platform/PlatformView_win32.cpp)
-  target_link_libraries(twisted_core PUBLIC opengl32 gdi32 user32)
+  target_sources(twisted_core PRIVATE src/platform/PlatformView_win32.cpp
+                                       src/license/net_win.cpp src/license/platform_win.cpp)
+  target_link_libraries(twisted_core PUBLIC opengl32 gdi32 user32 winhttp advapi32)
   target_compile_definitions(twisted_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
 elseif(APPLE)
-  target_sources(twisted_core PRIVATE src/platform/PlatformView_cocoa.mm)
-  set_source_files_properties(src/platform/PlatformView_cocoa.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_sources(twisted_core PRIVATE src/platform/PlatformView_cocoa.mm src/license/platform_mac.mm)
+  set_source_files_properties(src/platform/PlatformView_cocoa.mm src/license/platform_mac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
   string(REPLACE "." "_" TW_OBJC_SUFFIX "${PROJECT_VERSION}")
   target_compile_definitions(twisted_core PRIVATE TW_OBJC_SUFFIX=${TW_OBJC_SUFFIX})
-  target_link_libraries(twisted_core PUBLIC "-framework Cocoa" "-framework OpenGL" "-framework CoreFoundation")
+  target_link_libraries(twisted_core PUBLIC "-framework Cocoa" "-framework OpenGL" "-framework CoreFoundation"
+                                             "-framework Foundation" "-framework IOKit")
 else()
   find_package(X11 REQUIRED)
   find_package(OpenGL REQUIRED)
-  target_sources(twisted_core PRIVATE src/platform/PlatformView_x11.cpp)
+  target_sources(twisted_core PRIVATE src/platform/PlatformView_x11.cpp src/license/platform_linux.cpp)
   target_link_libraries(twisted_core PUBLIC X11::X11 OpenGL::GL OpenGL::GLX)
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(twisted_core PUBLIC Threads::Threads)
 target_include_directories(twisted_core PUBLIC src PRIVATE ${stb_SOURCE_DIR})
 target_compile_definitions(twisted_core PUBLIC TW_VERSION_STRING="${PROJECT_VERSION}")
+
+# ---- licence (abrasion.dev, même conception que RAW) ------------------------------------
+# La vraie clé publique du serveur est déjà dans src/license/manager.h (même serveur que RAW,
+# donc la même clé) : rien à fournir par défaut. Pour la remplacer ou pointer vers un autre
+# serveur de test : -DTWISTED_SERVER_PUBLIC_KEY="...".
+if(DEFINED TWISTED_SERVER_PUBLIC_KEY)
+  target_compile_definitions(twisted_core PRIVATE TWISTED_SERVER_PUBLIC_KEY="${TWISTED_SERVER_PUBLIC_KEY}")
+endif()
+# Mode développement : vise http://127.0.0.1:3000 au lieu de https://abrasion.dev.
+option(TWISTED_DEV_BUILD "Version de développement : serveur local 127.0.0.1:3000" OFF)
+if(TWISTED_DEV_BUILD)
+  target_compile_definitions(twisted_core PRIVATE TWISTED_DEV_BUILD)
+endif()
 
 if(MSVC)
   target_compile_options(twisted_core PUBLIC /O2 /W3 /utf-8)
@@ -116,8 +131,9 @@ if(TWISTED_BUILD_CLAP)
   add_library(twisted_clap MODULE src/clap/ClapPlugin.cpp)
   target_include_directories(twisted_clap PRIVATE ${clap_SOURCE_DIR}/include)
   target_link_libraries(twisted_clap PRIVATE twisted_core)
-  # Both plugins are named "Twisted": keep their import libraries (.lib/.exp) apart, otherwise
-  # a parallel MSVC build writes them to the same file (LNK1104).
+  # ARCHIVE_OUTPUT_DIRECTORY distinct de celui du VST3 : sous Windows, la .lib d'import
+  # générée à côté de la .dll s'appelle aussi "Twisted.lib" pour les deux cibles (même
+  # OUTPUT_NAME) ; sans ça, les deux liens peuvent se marcher dessus (LNK1104).
   set_target_properties(twisted_clap PROPERTIES OUTPUT_NAME Twisted PREFIX ""
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/implib/clap)
   if(APPLE)

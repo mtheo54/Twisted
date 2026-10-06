@@ -4,7 +4,10 @@
 
 namespace tw {
 
-PluginCore::PluginCore() : engine_(std::make_unique<Engine>()), analyzer_(std::make_unique<Analyzer>(*engine_)) {}
+PluginCore::PluginCore() : engine_(std::make_unique<Engine>()), analyzer_(std::make_unique<Analyzer>(*engine_)) {
+    // Vérification de licence immédiate, puis en fond (thread séparé, jamais l'audio).
+    license.start();
+}
 
 PluginCore::~PluginCore() { analyzer_->stop(); }
 

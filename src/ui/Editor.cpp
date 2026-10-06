@@ -23,6 +23,23 @@ const char* const kBirdsText[5] = {"ni oiseaux ni dragon", "6 corbeaux le jour, 
                                    "14 corbeaux le jour, dragon adulte la nuit", "26 corbeaux le jour, dragon ancien la nuit",
                                    "40 corbeaux le jour, dragon gigantesque la nuit"};
 
+// Police bloc 5×7, dessinée en rectangles (jamais en texte) : sert uniquement à l'écran BRUT.
+// Aucune dépendance à l'atlas de polices TrueType de Draw2D — garantit un rendu toujours
+// visible et toujours de la même taille, même si aucune police système n'a pu être chargée.
+constexpr uint8_t kT5x7[7] = {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100};
+constexpr uint8_t kW5x7[7] = {0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001};
+constexpr uint8_t kI5x7[7] = {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b11111};
+constexpr uint8_t kS5x7[7] = {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110};
+constexpr uint8_t kE5x7[7] = {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111};
+constexpr uint8_t kD5x7[7] = {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110};
+const uint8_t* glyph5x7(char c) {
+    switch (c) {
+        case 'T': return kT5x7; case 'W': return kW5x7; case 'I': return kI5x7;
+        case 'S': return kS5x7; case 'E': return kE5x7; case 'D': return kD5x7;
+        default: return nullptr;
+    }
+}
+
 const char* timeOfDay(float m) {
     return m < 25 ? "jour" : m < 45 ? "après-midi" : m < 62 ? "crépuscule" : m < 80 ? "soir" : "nuit";
 }
@@ -49,6 +66,7 @@ void Editor::layout() {
     presetBox_ = {kWidth - 470.f, 11, 200, 30};
     analyseBtn_ = {kWidth - 256.f, 11, 116, 30};
     bypassBtn_ = {kWidth - 126.f, 11, 108, 30};
+    licPill_ = {410, 11, 128, 30};  // toujours accessible sauf en BRUT (écran à part)
 
     struct K { uint32_t id; const char* label; const char* fx; int group; };
     const K ks[] = {
@@ -172,6 +190,7 @@ void Editor::tick(float dt) {
         toast(b);
     }
     if (toastTime_ > 0) toastTime_ -= dt;
+    licCaretT_ += dt;
 
     // bass hits from the analysis thread
     BassHit hit;
@@ -195,14 +214,47 @@ void Editor::tick(float dt) {
     in.clipStyle = (int)p.get(kClipStyle);
     in.bypass = p.get(kBypass) >= 0.5f;
     in.cameraOnBass = p.get(kCameraBass) >= 0.5f;
-    in.licensed = core_.licensed.load();
+    in.licensed = core_.licensed();
     in.quickBuild = core_.towerShown.load();
     if (stage_.contains(mouseX_, mouseY_) && dragKnob_ < 0) {
         in.mouseX = (mouseX_ - stage_.x) / stage_.w - 0.5f;
         in.mouseY = (mouseY_ - stage_.y) / stage_.h - 0.5f;
     }
     scene_.update(dt, in);
-    if (scene_.buildProgress() >= 1.f) core_.towerShown.store(true);
+    // Porte "Tower" : vérifiée une seule fois, au moment précis où la tour finit de se
+    // construire (pas à chaque image : la vérification Ed25519 + lecture disque a un coût,
+    // inutile de la refaire 60×/s). Forcer towerShown à true par un patch mémoire ne suffit
+    // plus seul : il faudrait aussi contourner ce point, sans quoi la prochaine vérif de fond
+    // du contrôleur verra l'incohérence et basculera en BRUT.
+    if (scene_.buildProgress() >= 1.f && !core_.towerShown.load()) {
+        if (core_.license.gate(license::LicenseController::Gate::Tower)) core_.towerShown.store(true);
+    }
+
+    // Porte "Interface" : revérifiée à intervalle régulier (pas à chaque image non plus),
+    // depuis le thread GUI uniquement — jamais depuis l'audio.
+    licGateTimer_ += dt;
+    if (licGateTimer_ > 2.f) {
+        licGateTimer_ = 0;
+        core_.license.gate(license::LicenseController::Gate::Interface);
+    }
+
+    // Répercute dans le panneau la réponse du contrôleur à une activation/connexion en cours.
+    // On compare un compteur de séquence, jamais le texte du message : deux échecs identiques
+    // de suite ("Mauvais mot de passe.") doivent chacun débloquer "en cours…", pas seulement
+    // le premier.
+    const auto snap = core_.license.snapshot();
+    if (licBusy_) {
+        if (snap.seq > licSeenSeq_) {
+            licSeenSeq_ = snap.seq;
+            licStatus_ = snap.message;
+            licBusy_ = false;
+        } else if ((licBusyTimeout_ -= dt) <= 0) {
+            // Filet de sécurité : le serveur n'a jamais répondu (réseau coupé, hôte injoignable).
+            licStatus_ = "Pas de réponse du serveur. Vérifie ta connexion et réessaie.";
+            licBusy_ = false;
+        }
+    }
+    if (snap.drm == license::Drm::Valid && licPanel_ != LicPanel::None) licenceClose();
 }
 
 void Editor::render(int fbW, int fbH) {
@@ -212,6 +264,20 @@ void Editor::render(int fbW, int fbH) {
     firstFrame_ = false;
     dt = std::min(dt, 0.05f);
     tick(dt);
+
+    // BRUT : contournement détecté. L'interface entière disparaît derrière un fond noir et
+    // le nom du plugin, sans aucun réglage. Une seule issue, toujours honnête : la ligne du
+    // bas rouvre l'écran d'activation (pour un faux positif — horloge système décalée, etc.).
+    if (core_.license.uiLocked()) {
+        glViewport(0, 0, fbW, fbH);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        if (!glOk_) return;
+        draw_.begin(fbW, fbH);
+        drawBrut();
+        draw_.end();
+        return;
+    }
 
     glViewport(0, 0, fbW, fbH);
     glClearColor(kLacquer.r, kLacquer.g, kLacquer.b, 1);
@@ -230,6 +296,7 @@ void Editor::render(int fbW, int fbH) {
     drawOptions();
     drawStatus();
     drawMenu();
+    drawLicencePanel();
     draw_.end();
 }
 
@@ -258,6 +325,14 @@ void Editor::drawHeader() {
     const bool byp = core_.params.get(kBypass) >= 0.5f;
     drawButton(bypassBtn_, "Bypass", byp ? Color{1, 1, 1, 1} : kWashi, byp ? kShu : kLine, byp ? kShu : kPanel);
     draw_.circle(bypassBtn_.x + 16, bypassBtn_.y + bypassBtn_.h / 2, 3.5f, byp ? hexColor(0xffd9cf) : kLine);
+
+    drawLicencePill();
+}
+
+void Editor::drawLicencePill() {
+    const bool ok = core_.licensed();
+    const std::string label = ok ? "● Licence" : "Activer";
+    drawButton(licPill_, label, ok ? kOk : kKin, ok ? withAlpha(kOk, 0.5f) : withAlpha(kKin, 0.6f), kPanel);
 }
 
 void Editor::drawKnobs() {
@@ -340,21 +415,24 @@ void Editor::drawOverlays() {
         draw_.text(kFontUi, x + 13 + lw, y + 20, k.fx, kWashi);
     }
 
-    // licence: no tower without it
+    // licence: no tower without it. Le message est cliquable (ouvre le panneau d'activation).
     const float build = scene_.buildProgress();
-    if (!core_.licensed.load() || build < 1.f) {
-        const bool waiting = !core_.licensed.load();
+    licMsgBox_ = Rect{};
+    if (!core_.licensed() || build < 1.f) {
+        const bool waiting = !core_.licensed();
         const std::string l1 = waiting ? "La tour attend sa licence" : "Construction de la tour…";
-        const std::string l2 = waiting ? "Active Twisted avec ta clé de licence ou ton compte abrasion.dev"
+        const std::string l2 = waiting ? "Clique pour activer Twisted, par clé ou compte abrasion.dev"
                                        : "Licence reconnue";
         const float w = std::max(draw_.textWidth(kFontUi, l1), draw_.textWidth(kFontSmall, l2)) + 40;
         const float x = (kWidth - w) / 2, y = stage_.y + 214;
         const float a = waiting ? 1.f : std::min(1.f, (1.f - build) * 4.f);
         if (a > 0.01f) {
-            draw_.roundRect(x, y, w, 50, 8, withAlpha(kLacquer, 0.85f * a));
-            draw_.roundRectStroke(x, y, w, 50, 8, 1, withAlpha(kKin, 0.6f * a));
+            const bool hot = waiting && Rect{x, y, w, 50}.contains(mouseX_, mouseY_);
+            draw_.roundRect(x, y, w, 50, 8, withAlpha(kLacquer, (hot ? 0.95f : 0.85f) * a));
+            draw_.roundRectStroke(x, y, w, 50, 8, 1, withAlpha(kKin, (hot ? 0.9f : 0.6f) * a));
             draw_.text(kFontUi, kWidth / 2.f, y + 21, l1, withAlpha(kKin, a), 1);
             draw_.text(kFontSmall, kWidth / 2.f, y + 38, l2, withAlpha(kWashi, 0.8f * a), 1);
+            if (waiting) licMsgBox_ = Rect{x, y, w, 50};
         }
     }
 
@@ -461,6 +539,33 @@ void Editor::mouseDown(float x, float y, bool shift) {
     (void)shift;
     mouseX_ = x;
     mouseY_ = y;
+
+    // BRUT : plus aucun contrôle n'existe, seule la ligne du bas (issue honnête) réagit.
+    if (core_.license.uiLocked()) {
+        if (licBrutBottom_.contains(x, y)) licenceOpen();
+        return;
+    }
+
+    // Panneau de licence ouvert : il intercepte tous les clics, rien d'autre ne réagit en dessous.
+    if (licPanel_ != LicPanel::None) {
+        if (licClose_.contains(x, y)) { licenceClose(); return; }
+        if (core_.licensed()) {
+            if (licLogout_.contains(x, y)) { core_.license.requestLogout(); licenceClose(); }
+            return;
+        }
+        if (licTabKey_.contains(x, y)) { licAccountTab_ = false; licFocus_ = LicField::Key; return; }
+        if (licTabAccount_.contains(x, y)) { licAccountTab_ = true; licFocus_ = LicField::Email; return; }
+        if (!licAccountTab_ && licFieldKey_.contains(x, y)) { licFocus_ = LicField::Key; return; }
+        if (licAccountTab_ && licFieldEmail_.contains(x, y)) { licFocus_ = LicField::Email; return; }
+        if (licAccountTab_ && licFieldPassword_.contains(x, y)) { licFocus_ = LicField::Password; return; }
+        if (licSubmit_.contains(x, y)) { licenceSubmit(); return; }
+        // clic en dehors de la boîte : referme (comme un clic hors menu), sans rien activer d'autre
+        if (!licPanelBox_.contains(x, y)) licenceClose();
+        return;
+    }
+    if (licMsgBox_.contains(x, y)) { licenceOpen(); return; }
+    if (licPill_.contains(x, y)) { licenceOpen(); return; }
+
     if (menu_ != Menu::None) {
         for (size_t i = 0; i < menuHits_.size(); ++i)
             if (menuHits_[i].contains(x, y)) {
@@ -548,6 +653,176 @@ void Editor::mouseWheel(float x, float y, float dy, bool shift) {
 void Editor::mouseLeave() {
     mouseX_ = mouseY_ = -1;
     hoverKnob_ = -1;
+}
+
+// ------------------------------------------------------------------------------------------
+// Licence : panneau d'activation, pastille d'en-tête, écran BRUT
+// ------------------------------------------------------------------------------------------
+void Editor::licenceOpen() {
+    licPanel_ = LicPanel::Form;
+    licStatus_.clear();
+    licBusy_ = false;
+    licFocus_ = core_.licensed() ? LicField::None : (licAccountTab_ ? LicField::Email : LicField::Key);
+}
+
+void Editor::licenceClose() {
+    licPanel_ = LicPanel::None;
+    licFocus_ = LicField::None;
+}
+
+std::string& Editor::focusedText() {
+    switch (licFocus_) {
+        case LicField::Email: return licEmailText_;
+        case LicField::Password: return licPasswordText_;
+        default: return licKeyText_;
+    }
+}
+
+void Editor::licenceSubmit() {
+    if (licBusy_) return;  // une demande est déjà en vol : pas de double soumission
+    if (licAccountTab_) {
+        if (licEmailText_.empty() || licPasswordText_.empty()) return;
+        licSeenSeq_ = core_.license.requestLogin(licEmailText_, licPasswordText_);
+        licStatus_ = "Connexion en cours…";
+    } else {
+        if (licKeyText_.empty()) return;
+        licSeenSeq_ = core_.license.requestActivateKey(licKeyText_);
+        licStatus_ = "Activation en cours…";
+    }
+    licPasswordText_.clear();  // jamais gardé en mémoire plus que le temps de l'envoi
+    licBusy_ = true;
+    licBusyTimeout_ = 20.f;  // filet de sécurité si le serveur ne répond jamais (voir tick())
+}
+
+void Editor::textInput(const std::string& utf8) {
+    if (licFocus_ == LicField::None) return;
+    std::string& s = focusedText();
+    for (size_t i = 0; i < utf8.size();) {
+        const unsigned char c = (unsigned char)utf8[i];
+        if (c < 0x20) { ++i; continue; }  // jamais de saut de ligne ni de tabulation dans un champ
+        const int len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        if (s.size() + (size_t)len > 256) break;  // longueur raisonnable, même pour un collage
+        s.append(utf8, i, (size_t)len);
+        i += (size_t)len;
+    }
+}
+
+void Editor::keyCommand(KeyCmd cmd) {
+    if (licPanel_ == LicPanel::None) return;
+    switch (cmd) {
+        case KeyCmd::Escape:
+            licenceClose();
+            break;
+        case KeyCmd::Enter:
+            if (licFocus_ != LicField::None) licenceSubmit();
+            break;
+        case KeyCmd::Tab:
+            if (licAccountTab_) licFocus_ = (licFocus_ == LicField::Email) ? LicField::Password : LicField::Email;
+            break;
+        case KeyCmd::Backspace: {
+            if (licFocus_ == LicField::None) return;
+            std::string& s = focusedText();
+            if (s.empty()) return;
+            size_t i = s.size() - 1;
+            while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80) --i;  // retire tout le codepoint UTF-8
+            s.erase(i);
+            break;
+        }
+    }
+}
+
+void Editor::drawLicencePanel() {
+    if (licPanel_ == LicPanel::None) return;
+    draw_.rect(0, 0, kWidth, kHeight, withAlpha(kSumi, 0.72f));  // assombrit tout le reste
+
+    const bool ok = core_.licensed();
+    const float w = 440, h = ok ? 150.f : (licAccountTab_ ? 300.f : 230.f);
+    const float x = (kWidth - w) / 2, y = (kHeight - h) / 2;
+    licPanelBox_ = {x, y, w, h};
+    draw_.roundRect(x, y, w, h, 10, kPanel);
+    draw_.roundRectStroke(x, y, w, h, 10, 1, kLine);
+
+    float cy = y + 26;
+    draw_.text(kFontUi, x + w / 2, cy, ok ? "LICENCE TWISTED" : "ACTIVER TWISTED", kWashi, 1);
+
+    licClose_ = {x + w - 34, y + 8, 26, 26};
+    draw_.text(kFontUi, licClose_.x + 13, licClose_.y + 18, "×", kMuted, 1);
+    cy += 34;
+
+    if (ok) {
+        const auto snap = core_.license.snapshot();
+        draw_.text(kFontSmall, x + w / 2, cy, snap.user.empty() ? "Licence active sur cet appareil" : ("Connecté : " + snap.user), kMuted, 1);
+        cy += 34;
+        licLogout_ = {x + 40, cy, w - 80, 32};
+        drawButton(licLogout_, "Se déconnecter / libérer cet appareil", kWashi, kLine, kLacquer);
+        cy += 46;
+        if (!licStatus_.empty()) draw_.text(kFontSmall, x + w / 2, cy, licStatus_, kMuted, 1);
+        return;
+    }
+
+    licTabKey_ = {x + 30, cy, (w - 60) / 2 - 4, 28};
+    licTabAccount_ = {x + 30 + (w - 60) / 2 + 4, cy, (w - 60) / 2 - 4, 28};
+    drawButton(licTabKey_, "Clé de licence", licAccountTab_ ? kMuted : kKin, licAccountTab_ ? kLine : withAlpha(kKin, 0.6f), licAccountTab_ ? kLacquer : kPanel);
+    drawButton(licTabAccount_, "Compte abrasion", licAccountTab_ ? kKin : kMuted, licAccountTab_ ? withAlpha(kKin, 0.6f) : kLine, licAccountTab_ ? kPanel : kLacquer);
+    cy += 44;
+
+    const bool blink = std::fmod(licCaretT_, 1.f) < 0.5f;
+    auto field = [&](const Rect& r, const char* label, const std::string& value, bool focused, bool mask) {
+        draw_.text(kFontLabel, r.x, r.y - 6, label, kMuted);
+        draw_.roundRect(r.x, r.y, r.w, r.h, 6, kLacquer);
+        draw_.roundRectStroke(r.x, r.y, r.w, r.h, 6, 1, focused ? kKin : kLine);
+        std::string shown = mask ? std::string(value.size(), '*') : value;
+        if (focused && blink) shown += "|";
+        draw_.text(kFontUi, r.x + 10, r.y + r.h / 2 + 5, shown, kWashi);
+    };
+
+    if (!licAccountTab_) {
+        licFieldKey_ = {x + 30, cy + 16, w - 60, 32};
+        field(licFieldKey_, "CLÉ DE LICENCE", licKeyText_, licFocus_ == LicField::Key, false);
+        cy += 70;
+    } else {
+        licFieldEmail_ = {x + 30, cy + 16, w - 60, 32};
+        field(licFieldEmail_, "E-MAIL", licEmailText_, licFocus_ == LicField::Email, false);
+        cy += 58;
+        licFieldPassword_ = {x + 30, cy + 16, w - 60, 32};
+        field(licFieldPassword_, "MOT DE PASSE", licPasswordText_, licFocus_ == LicField::Password, true);
+        cy += 58;
+    }
+
+    licSubmit_ = {x + 30, cy + 10, w - 60, 34};
+    drawButton(licSubmit_, licBusy_ ? "…" : (licAccountTab_ ? "Se connecter" : "Activer"), kLacquer, kKin, kKin);
+    cy += 54;
+
+    if (!licStatus_.empty()) draw_.text(kFontSmall, x + w / 2, cy, licStatus_, licBusy_ ? kMuted : kShu, 1);
+    cy += 20;
+    draw_.text(kFontSmall, x + w / 2, cy, "Pas encore de licence ? abrasion.dev — le mot de passe n'est jamais enregistré.", kMuted, 1);
+}
+
+void Editor::drawBrut() {
+    licBrutT_ += 1.f / 60.f;
+    static const char kWord[] = "TWISTED";
+    constexpr int n = 7;
+    const float px = 18.f, glyphW = 5 * px, glyphH = 7 * px, gap = px * 1.5f;
+    const float totalW = n * glyphW + (n - 1) * gap;
+    const float jx = std::sin(licBrutT_ * 7.f) * 1.2f + std::sin(licBrutT_ * 13.f) * 0.8f;
+    const float jy = std::cos(licBrutT_ * 11.f) * 1.f;
+    const float x0 = (kWidth - totalW) / 2.f + jx, y0 = (kHeight - glyphH) / 2.f - 30.f + jy;
+    for (int k = 0; k < n; ++k) {
+        const uint8_t* g = glyph5x7(kWord[k]);
+        if (!g) continue;
+        const float gx = x0 + k * (glyphW + gap);
+        for (int row = 0; row < 7; ++row)
+            for (int col = 0; col < 5; ++col)
+                if (g[row] & (1u << (4 - col))) draw_.rect(gx + col * px, y0 + row * px, px - 2, px - 2, Color{1, 1, 1, 1});
+    }
+
+    const std::string bottom = "BRUT. Pas de licence, pas d'interface. — abrasion.dev";
+    const float bw = draw_.textWidth(kFontSmall, bottom);
+    const float by = y0 + glyphH + 56;
+    licBrutBottom_ = {kWidth / 2.f - bw / 2 - 12, by - 16, bw + 24, 30};
+    const bool hot = licBrutBottom_.contains(mouseX_, mouseY_);
+    draw_.roundRectStroke(licBrutBottom_.x, licBrutBottom_.y, licBrutBottom_.w, licBrutBottom_.h, 6, 1, hot ? kKin : withAlpha(kMuted, 0.4f));
+    draw_.text(kFontSmall, kWidth / 2.f, by, bottom, hot ? kKin : kMuted, 1);
 }
 
 } // namespace tw

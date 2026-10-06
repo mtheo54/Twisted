@@ -9,6 +9,7 @@
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 
 #include <atomic>
 #include <cstdio>
@@ -16,6 +17,7 @@
 #include <vector>
 #include <chrono>
 #include <cstring>
+#include <string>
 #include <thread>
 
 namespace tw {
@@ -74,13 +76,21 @@ private:
         XVisualInfo* vi = glXGetVisualFromFBConfig(dpy, cfg);
         XSetWindowAttributes swa{};
         swa.colormap = XCreateColormap(dpy, parent_ ? parent_ : RootWindow(dpy, screen), vi->visual, AllocNone);
-        swa.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | LeaveWindowMask | StructureNotifyMask;
+        swa.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | LeaveWindowMask |
+                         StructureNotifyMask | KeyPressMask;
         int w, h;
         size(w, h);
         Window win = XCreateWindow(dpy, parent_ ? parent_ : RootWindow(dpy, screen), 0, 0, (unsigned)w, (unsigned)h, 0,
                                    vi->depth, InputOutput, vi->visual, CWColormap | CWEventMask, &swa);
         XMapWindow(dpy, win);
         XSync(dpy, False);
+
+        // Collage (Ctrl+V) : protocole ICCCM standard. On demande au propriétaire du
+        // presse-papiers de convertir son contenu en UTF-8 et de le déposer dans une
+        // propriété sur NOTRE fenêtre ; la réponse arrive plus tard comme SelectionNotify.
+        const Atom atomClipboard = XInternAtom(dpy, "CLIPBOARD", False);
+        const Atom atomUtf8 = XInternAtom(dpy, "UTF8_STRING", False);
+        const Atom atomPasteProp = XInternAtom(dpy, "TWISTED_PASTE", False);
 
         auto createCtx = (CreateContextAttribsFn)glXGetProcAddressARB((const GLubyte*)"glXCreateContextAttribsARB");
         const int ctxAttrs[] = {0x2091 /*MAJOR*/, 3, 0x2092 /*MINOR*/, 2, 0x9126 /*PROFILE*/, 1 /*CORE*/, None};
@@ -102,8 +112,10 @@ private:
                 const float s = scale_;
                 switch (ev.type) {
                 case ButtonPress:
-                    if (ev.xbutton.button == 1) editor_.mouseDown(ev.xbutton.x / s, ev.xbutton.y / s, ev.xbutton.state & ShiftMask);
-                    else if (ev.xbutton.button == 4 || ev.xbutton.button == 5)
+                    if (ev.xbutton.button == 1) {
+                        XSetInputFocus(dpy, win, RevertToParent, CurrentTime);  // sinon KeyPress n'arrive jamais ici
+                        editor_.mouseDown(ev.xbutton.x / s, ev.xbutton.y / s, ev.xbutton.state & ShiftMask);
+                    } else if (ev.xbutton.button == 4 || ev.xbutton.button == 5)
                         editor_.mouseWheel(ev.xbutton.x / s, ev.xbutton.y / s, ev.xbutton.button == 4 ? 1.f : -1.f, ev.xbutton.state & ShiftMask);
                     break;
                 case ButtonRelease:
@@ -115,6 +127,41 @@ private:
                 case LeaveNotify:
                     editor_.mouseLeave();
                     break;
+                // ---- saisie clavier pour le panneau de licence ----
+                // Pas de composition par touches mortes ici (XLookupString donne Latin-1 simple) :
+                // largement suffisant pour une clé de licence, un e-mail ou un mot de passe ASCII
+                // sur la seule plateforme qui ne sert qu'à tester la GUI, pas à la diffuser.
+                case KeyPress: {
+                    if (!editor_.wantsKeyboard()) break;
+                    char buf[8] = {};
+                    KeySym ks = NoSymbol;
+                    const int n = XLookupString(&ev.xkey, buf, sizeof(buf) - 1, &ks, nullptr);
+                    if ((ev.xkey.state & ControlMask) && (ks == XK_v || ks == XK_V)) {
+                        XConvertSelection(dpy, atomClipboard, atomUtf8, atomPasteProp, win, CurrentTime);
+                        break;
+                    }
+                    switch (ks) {
+                        case XK_BackSpace: editor_.keyCommand(Editor::KeyCmd::Backspace); break;
+                        case XK_Return: case XK_KP_Enter: editor_.keyCommand(Editor::KeyCmd::Enter); break;
+                        case XK_Escape: editor_.keyCommand(Editor::KeyCmd::Escape); break;
+                        case XK_Tab: editor_.keyCommand(Editor::KeyCmd::Tab); break;
+                        default:
+                            if (n > 0 && (unsigned char)buf[0] >= 0x20) editor_.textInput(std::string(buf, (size_t)n));
+                            break;
+                    }
+                    break;
+                }
+                case SelectionNotify: {
+                    if (!editor_.wantsKeyboard() || ev.xselection.property == None) break;
+                    Atom type; int format; unsigned long nitems, after; unsigned char* data = nullptr;
+                    if (XGetWindowProperty(dpy, win, atomPasteProp, 0, 1 << 20, False, AnyPropertyType,
+                                           &type, &format, &nitems, &after, &data) == Success && data) {
+                        editor_.textInput(std::string((const char*)data, nitems));
+                        XFree(data);
+                    }
+                    XDeleteProperty(dpy, win, atomPasteProp);
+                    break;
+                }
                 default:
                     break;
                 }

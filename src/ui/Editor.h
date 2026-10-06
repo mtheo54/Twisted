@@ -30,6 +30,14 @@ public:
     void mouseWheel(float x, float y, float dy, bool shift);
     void mouseLeave();
 
+    // Saisie clavier pour le panneau de licence, appelée par le code plateforme
+    // (Win32 : WM_CHAR + collage ; Cocoa : keyDown: + Cmd-V ; X11 : XLookupString + collage).
+    // Sans effet si aucun champ n'a le focus (ne gêne jamais les raccourcis du DAW).
+    enum class KeyCmd { Backspace, Enter, Escape, Tab };
+    void textInput(const std::string& utf8);  // un caractère tapé, ou le texte collé en entier
+    void keyCommand(KeyCmd cmd);
+    bool wantsKeyboard() const { return licFocus_ != LicField::None; }
+
 private:
     struct Knob { uint32_t id; const char* label; const char* fx; float cx, cy, r; };
     struct Rect { float x, y, w, h; bool contains(float px, float py) const { return px >= x && py >= y && px < x + w && py < y + h; } };
@@ -51,6 +59,17 @@ private:
     void applyPreset(int sourceClass);
     void toast(const std::string& text, float seconds = 4.5f);
     int knobAt(float x, float y) const;
+
+    // ---- licence : panneau d'activation, bandeau et écran BRUT ----
+    enum class LicPanel { None, Form };
+    enum class LicField { None, Key, Email, Password };
+    void licenceOpen();
+    void licenceClose();
+    void licenceSubmit();
+    std::string& focusedText();
+    void drawLicencePanel();
+    void drawBrut();
+    void drawLicencePill();  // petit bouton dans l'en-tête, toujours accessible sauf en BRUT
 
     PluginCore& core_;
     ParamHost& host_;
@@ -88,6 +107,22 @@ private:
     float inPeak_ = 0, outPeak_ = 0, lufs_ = -40;
     std::chrono::steady_clock::time_point last_;
     bool firstFrame_ = true;
+
+    // ---- licence : état du panneau et des champs ----
+    LicPanel licPanel_ = LicPanel::None;
+    LicField licFocus_ = LicField::None;
+    bool licAccountTab_ = false;  // false = onglet "clé", true = onglet "compte"
+    std::string licKeyText_, licEmailText_, licPasswordText_;
+    std::string licStatus_;    // dernier message du contrôleur (erreur ou succès) affiché dans le panneau
+    uint64_t licSeenSeq_ = 0;  // numéro de la dernière réponse vue (jamais le texte : voir tick())
+    bool licBusy_ = false;     // une activation est en cours (clé envoyée, en attente de réponse)
+    float licBusyTimeout_ = 0; // filet de sécurité : si le serveur ne répond jamais
+    float licGateTimer_ = 0;      // limite gate(Interface) à ~1 fois toutes les 2 s, pas 60×/s
+    float licBrutT_ = 0;          // temps écoulé en BRUT, pour la vibration du bloc
+    float licCaretT_ = 0;         // temps écoulé, pour le clignotement du curseur dans un champ
+    Rect licMsgBox_{}, licPill_{}, licPanelBox_{}, licTabKey_{}, licTabAccount_{};
+    Rect licFieldKey_{}, licFieldEmail_{}, licFieldPassword_{}, licSubmit_{}, licLogout_{}, licClose_{};
+    Rect licBrutBottom_{};
 };
 
 } // namespace tw

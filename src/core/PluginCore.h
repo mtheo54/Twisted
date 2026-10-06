@@ -4,6 +4,7 @@
 #include "Analyzer.h"
 #include "Engine.h"
 #include "Params.h"
+#include "../license/controller.h"
 
 #include <atomic>
 #include <memory>
@@ -40,9 +41,11 @@ public:
     // Share of the real-time budget used by the last process call (0..1).
     std::atomic<float> cpuLoad{0.f};
 
-    // Licence state seen by the GUI: the tower only exists when licensed.
-    // Placeholder until the abrasion.dev licence module (same design as RAW) is wired in.
-    std::atomic<bool> licensed{true};
+    // Licence (abrasion.dev, même conception que RAW) : un seul contrôleur de fond,
+    // partagé par les wrappers CLAP et VST3 puisqu'il vit ici. Démarré au constructeur,
+    // arrêté au destructeur. Jamais touché depuis le thread audio.
+    license::LicenseController license;
+    bool licensed() const { return license.drm() == license::Drm::Valid; }
     // Set once the tower has been fully built in this session; later GUI opens assemble it quickly.
     std::atomic<bool> towerShown{false};
 

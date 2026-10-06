@@ -38,19 +38,12 @@ int main() {
         core.params.deserialize(s);
     }
 
-    // TWISTED_PREVIEW_LICENSED=0: no licence; =N (seconds, e.g. 3): licence arrives after N s
-    if (std::getenv("TWISTED_PREVIEW_LICENSED")) core.licensed = false;
+    // TWISTED_PREVIEW_LICENSED n'existe plus : la licence est désormais un vrai contrôleur
+    // (core.license), qui lit le fichier de licence du disque et parle au serveur, exactement
+    // comme dans un vrai DAW. Pour prévisualiser "sans licence" / "avec licence", il suffit de
+    // lancer cet aperçu sans puis avec une licence activée — pas besoin de la simuler.
 
     std::atomic<bool> running{true};
-    std::thread licenceThread([&] {
-        const char* lic = std::getenv("TWISTED_PREVIEW_LICENSED");
-        const double after = lic ? std::atof(lic) : 0.0;
-        if (!lic || after <= 0.0) return;
-        const auto t0 = std::chrono::steady_clock::now();
-        while (running.load() && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() < after)
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        core.licensed = true;
-    });
     std::thread audio([&] {
         std::vector<float> L(block), R(block), oL(block), oR(block);
         long t = 0;
@@ -77,7 +70,6 @@ int main() {
     view.reset();
     running = false;
     audio.join();
-    licenceThread.join();
     core.deactivate();
     return rc;
 }
