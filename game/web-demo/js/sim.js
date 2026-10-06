@@ -391,6 +391,8 @@ class Sim {
     if (M.dash) {
       M.state = "dash"; M.intent.copy(M.dash.dir).multiplyScalar(M.dash.speed); M.run = true;
       if (!M.dash.hit && target && flat < e.radius + target.radius + 0.55) { M.dash.hit = true; this.monsterHit(e, target, M.dash.atk, to); }
+      // la morsure a pu l'interrompre (Renvoi, contre) ou le tuer : le bond n'existe plus
+      if (!M.dash || !e.alive) return;
       if (now >= M.dash.until) { M.busyUntil = now + M.dash.atk.recover; M.dash = null; }
       return;
     }
