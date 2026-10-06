@@ -1,0 +1,7 @@
+Twisted pour macOS (Apple Silicon et Intel)
+
+1. Copie Twisted.vst3 dans  /Library/Audio/Plug-Ins/VST3/
+   et Twisted.clap dans     /Library/Audio/Plug-Ins/CLAP/
+2. Le plugin n'est pas notarié par Apple. Si macOS le bloque, ouvre le Terminal et tape :
+   sudo xattr -dr com.apple.quarantine /Library/Audio/Plug-Ins/VST3/Twisted.vst3 /Library/Audio/Plug-Ins/CLAP/Twisted.clap
+3. Relance ton DAW et fais un nouveau scan des plugins.

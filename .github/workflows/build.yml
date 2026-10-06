@@ -21,7 +21,8 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        # No -G: CMake picks the newest Visual Studio on the runner (2022 or 2026)
+        run: cmake -S . -B build -A x64
 
       - name: Configure (macOS, universal arm64 + x86_64)
         if: runner.os == 'macOS'
@@ -37,8 +38,35 @@ jobs:
       - name: Tests
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # Zips ready for the abrasion.dev catalog (Twisted-windows.zip / Twisted-macos.zip)
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist/Twisted
+          cp -R build/plugins/Twisted.clap build/plugins/Twisted.vst3 dist/Twisted/
+          codesign --force --deep --sign - dist/Twisted/Twisted.clap
+          codesign --force --deep --sign - dist/Twisted/Twisted.vst3
+          lipo -info dist/Twisted/Twisted.vst3/Contents/MacOS/Twisted
+          cp packaging/LISEZMOI-macos.txt dist/Twisted/LISEZMOI.txt
+          cd dist && ditto -c -k --keepParent Twisted Twisted-macos.zip
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force dist/Twisted | Out-Null
+          Copy-Item -Recurse build/plugins/Twisted.clap, build/plugins/Twisted.vst3 dist/Twisted/
+          Copy-Item packaging/LISEZMOI-windows.txt dist/Twisted/LISEZMOI.txt
+          Compress-Archive -Path dist/Twisted -DestinationPath dist/Twisted-windows.zip
+
       - name: Upload plugins
         uses: actions/upload-artifact@v4
         with:
           name: Twisted-${{ runner.os }}
           path: build/plugins
+
+      - name: Upload site zip
+        if: runner.os != 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-${{ runner.os }}
+          path: dist/Twisted-*.zip

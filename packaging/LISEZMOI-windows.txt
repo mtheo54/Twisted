@@ -1,0 +1,5 @@
+Twisted pour Windows (64 bits)
+
+1. Copie le dossier Twisted.vst3 dans  C:\Program Files\Common Files\VST3\
+   et Twisted.clap dans                C:\Program Files\Common Files\CLAP\
+2. Relance FL Studio : Options > Manage plugins > Find more plugins.
