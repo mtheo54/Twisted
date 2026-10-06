@@ -195,11 +195,14 @@ void Editor::tick(float dt) {
     in.clipStyle = (int)p.get(kClipStyle);
     in.bypass = p.get(kBypass) >= 0.5f;
     in.cameraOnBass = p.get(kCameraBass) >= 0.5f;
+    in.licensed = core_.licensed.load();
+    in.quickBuild = core_.towerShown.load();
     if (stage_.contains(mouseX_, mouseY_) && dragKnob_ < 0) {
         in.mouseX = (mouseX_ - stage_.x) / stage_.w - 0.5f;
         in.mouseY = (mouseY_ - stage_.y) / stage_.h - 0.5f;
     }
     scene_.update(dt, in);
+    if (scene_.buildProgress() >= 1.f) core_.towerShown.store(true);
 }
 
 void Editor::render(int fbW, int fbH) {
@@ -335,6 +338,24 @@ void Editor::drawOverlays() {
         draw_.roundRectStroke(x, y, w, 30, 6, 1, withAlpha(kKin, 0.5f));
         const float lw = draw_.text(kFontUi, x + 13, y + 20, label, kKin);
         draw_.text(kFontUi, x + 13 + lw, y + 20, k.fx, kWashi);
+    }
+
+    // licence: no tower without it
+    const float build = scene_.buildProgress();
+    if (!core_.licensed.load() || build < 1.f) {
+        const bool waiting = !core_.licensed.load();
+        const std::string l1 = waiting ? "La tour attend sa licence" : "Construction de la tour…";
+        const std::string l2 = waiting ? "Active Twisted avec ta clé de licence ou ton compte abrasion.dev"
+                                       : "Licence reconnue";
+        const float w = std::max(draw_.textWidth(kFontUi, l1), draw_.textWidth(kFontSmall, l2)) + 40;
+        const float x = (kWidth - w) / 2, y = stage_.y + 214;
+        const float a = waiting ? 1.f : std::min(1.f, (1.f - build) * 4.f);
+        if (a > 0.01f) {
+            draw_.roundRect(x, y, w, 50, 8, withAlpha(kLacquer, 0.85f * a));
+            draw_.roundRectStroke(x, y, w, 50, 8, 1, withAlpha(kKin, 0.6f * a));
+            draw_.text(kFontUi, kWidth / 2.f, y + 21, l1, withAlpha(kKin, a), 1);
+            draw_.text(kFontSmall, kWidth / 2.f, y + 38, l2, withAlpha(kWashi, 0.8f * a), 1);
+        }
     }
 
     // bypass badge

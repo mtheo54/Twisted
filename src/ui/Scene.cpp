@@ -53,13 +53,14 @@ uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uHemiSky; uniform vec
 uniform vec3 uRimDir; uniform vec3 uRimColor;
 uniform vec3 uP0Pos; uniform vec4 uP0Col; uniform vec3 uP1Pos; uniform vec4 uP1Col;
 uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar; uniform vec3 uCamPos;
-uniform float uCh[6]; uniform vec3 uColorMul;
+uniform float uCh[6]; uniform vec3 uColorMul; uniform float uClipY;
 vec3 pointLight(vec3 n, vec3 pos, vec4 col) {
     vec3 d = pos - vWorld; float l = length(d);
     float att = max(1.0 - l / col.w, 0.0);
     return col.rgb * max(dot(n, d / max(l, 0.001)), 0.0) * att * att;
 }
 void main() {
+    if (vWorld.y > uClipY) discard;   // tower under construction: only what is built so far
     vec3 n = normalize(vN);
     if (dot(n, uCamPos - vWorld) < 0.0) n = -n;   // two-sided flat shading
     vec3 base = vColor * uColorMul;
@@ -485,6 +486,19 @@ void Scene::buildGeometry() {
         L.add(Vec3(std::cos(a) * std::cos(el) * 480, std::sin(el) * 480, std::sin(a) * std::cos(el) * 480), white);
     }
     endL(stars_);
+    footprint_ = beginL();
+    {   // the empty plot where the tower stands once licensed: outline, diagonals, corner stakes
+        const float w = 9.2f, y = 0.12f;
+        const Vec3 c[4] = {{w, y, w}, {-w, y, w}, {-w, y, -w}, {w, y, -w}};
+        for (int i = 0; i < 4; ++i) {
+            L.line(c[i], c[(i + 1) % 4], white);
+            L.line(c[i], c[i] + Vec3(0, 3.5f, 0), white);
+            L.line(c[i] * 1.25f, c[i] * 0.75f, white);
+        }
+        L.line(c[0], c[2], white);
+        L.line(c[1], c[3], white);
+    }
+    endL(footprint_);
 
     // ---- upload ---------------------------------------------------------------------------------
     GL.GenVertexArrays(1, &litVao_);
@@ -560,7 +574,8 @@ bool Scene::init() {
            U(litProg_, "uHemiSky"), U(litProg_, "uHemiGround"), U(litProg_, "uRimDir"), U(litProg_, "uRimColor"),
            U(litProg_, "uP0Pos"), U(litProg_, "uP0Col"), U(litProg_, "uP1Pos"), U(litProg_, "uP1Col"),
            U(litProg_, "uFogColor"), U(litProg_, "uFogNear"), U(litProg_, "uFogFar"), U(litProg_, "uCamPos"),
-           U(litProg_, "uCh"), U(litProg_, "uColorMul"), U(litProg_, "uBright"), U(litProg_, "uDesat")};
+           U(litProg_, "uCh"), U(litProg_, "uColorMul"), U(litProg_, "uBright"), U(litProg_, "uDesat"),
+           U(litProg_, "uClipY")};
     nu_ = {U(lineProg_, "uViewProj"), U(lineProg_, "uModel"), U(lineProg_, "uColor"), U(lineProg_, "uPointSize"),
            U(lineProg_, "uRound"), U(lineProg_, "uFogColor"), U(lineProg_, "uFogNear"), U(lineProg_, "uFogFar"),
            U(lineProg_, "uFogAmt"), U(lineProg_, "uCamPos"), U(lineProg_, "uBright"), U(lineProg_, "uDesat")};
@@ -598,6 +613,11 @@ void Scene::spawnWave(float s, bool echo) {
 
 void Scene::bassHit(float strength) {
     const float s = strength * (in_.bypass ? 0.45f : 1.f) * (0.55f + 0.6f * in_.elevate / 100.f);
+    buildFlash_ = std::max(buildFlash_, strength);
+    if (build_ < 0.999f) {  // no antenna yet: nothing to send waves from
+        quake_ = std::max(quake_, strength * in_.sub / 100.f);
+        return;
+    }
     spawnWave(s, false);
     const int n = (int)std::lround(in_.space / 100.f * 3.f);  // Space: echo waves
     for (int i = 1; i <= n; ++i) echoes_.push_back({time_ + i * 0.28f, s * std::pow(0.5f, (float)i)});
@@ -629,6 +649,15 @@ void Scene::update(float dt, const SceneInput& in) {
     orbPos_ = Vec3(-140 + 60 * tod_, 150 - 110 * std::sin(std::min(1.f, tod_ * 1.6f) * kPi / 2) + 100 * std::max(0.f, tod_ - 0.6f), -260);
     night_ = std::max(0.f, (tod_ - 0.35f) / 0.65f);
     steelMul_ = lerp(Vec3(1, 1, 1), Vec3(0x5a / (float)0x7d, 0x1d / (float)0x2a, 0x1c / (float)0x24), night_);
+
+    // ---- licence: the tower builds itself or comes apart ----
+    {
+        const float target = in.licensed ? 1.f : 0.f;
+        const float upRate = in.quickBuild ? 1.f / 1.5f : 1.f / 7.f, downRate = 1.f / 3.f;
+        if (build_ < target) build_ = std::min(target, build_ + dt * upRate);
+        else if (build_ > target) build_ = std::max(target, build_ - dt * downRate);
+        buildFlash_ *= std::exp(-dt * 4);
+    }
 
     // ---- knobs ----
     antScale_ = approach(antScale_, 0.7f + (in.input + 24.f) / 48.f * 0.6f, 6.f, dt);  // Entrée: antenna length
@@ -818,8 +847,8 @@ void Scene::render(int vpX, int vpY, int vpW, int vpH, float aspect) {
     GL.Uniform3f(lu_.hemiGround, hemiGround.x, hemiGround.y, hemiGround.z);
     GL.Uniform3f(lu_.rimDir, rimDir.x, rimDir.y, rimDir.z);
     GL.Uniform3f(lu_.rimColor, rimC.x, rimC.y, rimC.z);
-    const Vec3 tipL = rgb(0x8ad6df) * ((0.4f + 6 * flash_) * (0.3f + night_) * 0.35f);
-    const Vec3 deckL = rgb(0xffb066) * (2.2f * night_ * 0.6f);
+    const Vec3 tipL = rgb(0x8ad6df) * ((0.4f + 6 * flash_) * (0.3f + night_) * 0.35f * (build_ >= 1.f ? 1.f : 0.f));
+    const Vec3 deckL = rgb(0xffb066) * (2.2f * night_ * 0.6f * (build_ > 0.45f ? 1.f : 0.f));
     GL.Uniform3f(lu_.p0Pos, tipPos_.x, tipPos_.y, tipPos_.z);
     GL.Uniform4f(lu_.p0Col, tipL.x, tipL.y, tipL.z, 90.f);
     GL.Uniform3f(lu_.p1Pos, towerOffset_.x, 21, towerOffset_.z);
@@ -834,8 +863,14 @@ void Scene::render(int vpX, int vpY, int vpW, int vpH, float aspect) {
     const Vec3 one(1, 1, 1);
     drawLit(world_, Mat4::identity(), one, windowGain_);
     const Mat4 towerM = Mat4::translate(towerOffset_);
+    // construction height: everything above it is not built yet
+    buildTopY_ = tipPos_.y + 1.5f;
+    const float eased = build_ * build_ * (3 - 2 * build_);
+    const float clipY = build_ >= 1.f ? 1e6f : (build_ <= 0.f ? -1.f : eased * buildTopY_);
+    GL.Uniform1f(lu_.clipY, clipY);
     drawLit(tower_, towerM, steelMul_);
     drawLit(antenna_, towerM * Mat4::translate(Vec3(0, kAnt0, 0)) * Mat4::scale(Vec3(1, antScale_, 1)), steelMul_);
+    GL.Uniform1f(lu_.clipY, 1e6f);
 
     const float d = in_.elevate * n01, amt = in_.comp * n01 * 0.5f;
     for (auto& bd : buildings_) {
@@ -897,8 +932,24 @@ void Scene::render(int vpX, int vpY, int vpW, int vpH, float aspect) {
     // tip of the antenna, flashing on bass
     const Vec3 tipCol = lerp(rgb(0xff5a3c), rgb(0xd6fbff), std::min(1.f, flash_));
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    drawLines(tipTris_, GL_TRIANGLES, Mat4::translate(tipPos_), tipCol, 1.f);
+    if (clipY > tipPos_.y) drawLines(tipTris_, GL_TRIANGLES, Mat4::translate(tipPos_), tipCol, 1.f);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    // licence: empty plot, or the glowing construction front climbing the tower
+    if (build_ < 1.f) {
+        const Vec3 gold = rgb(0xd6b062);
+        const float pulse = 0.5f + 0.5f * std::sin(time_ * 2.2f);
+        drawLines(footprint_, GL_LINES, Mat4::translate(towerOffset_), gold, (1.f - build_) * (0.25f + 0.35f * pulse + 0.4f * buildFlash_));
+        if (build_ > 0.f) {
+            const float y = clipY;
+            float r = y < kTop ? 1.0f + 8.2f * std::pow(1 - y / kTop, 1.9f) + 1.2f : 1.6f;
+            if (std::fabs(y - 21) < 3) r = std::max(r, 7.6f);
+            if (std::fabs(y - 37) < 2.2f) r = std::max(r, 4.4f);
+            const Mat4 front = Mat4::translate(towerOffset_ + Vec3(0, y, 0));
+            drawLines(ringTris_, GL_TRIANGLES, front * Mat4::scale(Vec3(r, 2.5f, r)), gold, 0.9f);
+            drawLines(ringTris_, GL_TRIANGLES, front * Mat4::scale(Vec3(r * 1.35f, 1, r * 1.35f)), gold, 0.35f + 0.4f * buildFlash_);
+        }
+    }
 
     // Clipper: glowing ceiling grid
     if (in_.clip > 0.5f) {
@@ -910,7 +961,7 @@ void Scene::render(int vpX, int vpY, int vpW, int vpH, float aspect) {
     // waves from the antenna
     const Vec3 waveCol = lerp(rgb(0xf6e2b0), rgb(0x8ad6df), night_);
     const float sizeMul = 0.6f + in_.space * n01 * 0.8f;
-    const bool domeOn = in_.limit > 0.5f;
+    const bool domeOn = in_.limit > 0.5f && build_ >= 1.f;  // the bubble needs an antenna
     for (auto& w : waves_) {
         if (w.age > w.life) continue;
         const float kk = std::min(1.f, w.age / w.life), e = 1 - std::pow(1 - kk, 3.f), fade = std::pow(1 - kk, 1.6f);
@@ -951,7 +1002,9 @@ void Scene::render(int vpX, int vpY, int vpW, int vpH, float aspect) {
     GL.UseProgram(spriteProg_);
     GL.BindVertexArray(quadVao_);
     const float gs = (5 + 9 * flash_) * (0.8f + 0.6f * d) * 0.5f;
-    drawSprite(tipPos_, gs, gs, Vec3(1.f, 0.47f, 0.35f), 0.9f, 0);
+    if (clipY > tipPos_.y) drawSprite(tipPos_, gs, gs, Vec3(1.f, 0.47f, 0.35f), 0.9f, 0);
+    if (build_ > 0.f && build_ < 1.f)
+        drawSprite(towerOffset_ + Vec3(0, clipY, 0), 9 + 5 * buildFlash_, 4 + 2 * buildFlash_, Vec3(1.f, 0.85f, 0.5f), 0.8f, 0);
 
     GL.BindVertexArray(0);
     GL.UseProgram(0);

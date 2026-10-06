@@ -40,6 +40,12 @@ public:
     // Share of the real-time budget used by the last process call (0..1).
     std::atomic<float> cpuLoad{0.f};
 
+    // Licence state seen by the GUI: the tower only exists when licensed.
+    // Placeholder until the abrasion.dev licence module (same design as RAW) is wired in.
+    std::atomic<bool> licensed{true};
+    // Set once the tower has been fully built in this session; later GUI opens assemble it quickly.
+    std::atomic<bool> towerShown{false};
+
 private:
     std::unique_ptr<Engine> engine_;
     std::unique_ptr<Analyzer> analyzer_;
