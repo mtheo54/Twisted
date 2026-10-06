@@ -439,3 +439,29 @@ terrasse en bois.
 - **Petites jambes chromées et arrondies**, dans le style des bras.
 - Coucou après 5 s d'attente ; **après 30 s il s'allonge** au sol, mains
   derrière la tête, et se relève d'un bond dès qu'on bouge.
+
+## 12. Animation et combat (validé)
+
+**Combos** (décrits dans les données, `moves` : « next » = coup suivant) :
+- **Clic, clic, clic** : gauche, droite, puis **DROP**, le 3e coup, gros
+  coup qui **projette l'ennemi au loin** (il rebondit sur le sol et les murs).
+- **Saut + clic** : **frappe plongeante**, onde de choc à l'arrivée.
+- **Esquive + clic** : **contre-glitch**, on traverse l'ennemi en frappant.
+- Jusqu'à deux clics sont mémorisés pendant un coup, pour enchaîner sans
+  rater ; chaque coup avance vers l'ennemi proche (visée douce).
+
+**Esquive** : onde de pixels au sol, propulsion dans la direction choisie
+(ZQSD), images fantômes pixélisées, le bonhomme se « bit-crushe »
+(résolution 88 → 30 pixels). Une fois en l'air par saut. Recharge 0,7 s.
+
+**Impact frames** (seulement sur le DROP et la frappe plongeante) :
+pause d'impact, image inversée noir et blanc puis très contrastée avec
+lignes de concentration, puis **plan ciné** en contre-plongée sur le côté,
+au ralenti, avant de revenir à la caméra normale. Les coups normaux ont
+une micro-pause, une petite secousse et des étincelles.
+
+**Bonhomme souple** : coudes, genoux, mains rondes, buste séparé du
+bassin. Chaque articulation suit sa cible avec un ressort (léger
+dépassement), la tête compense la torsion du buste et traîne un peu,
+le corps s'écrase et s'étire (sauts, réceptions, coups), il anticipe
+ses coups et respire à l'arrêt.

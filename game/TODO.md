@@ -18,6 +18,10 @@ Légende : [x] fait · [ ] à faire · [~] en cours
 - [x] Double saut, wall jump (un seul, enchaînable sur les murs tagués de la ruelle), glissade le long des murs
 - [x] Jambes du bonhomme, pose allongée après 30 s
 - [x] Premier secret : vinyle doré sur le toit de la boulangerie
+- [x] Démo v3 : combos (3e coup qui projette), frappe plongeante, contre-glitch — **à tester par toi**
+- [x] Esquive en onde pixélisée, directionnelle, aussi en l'air, images fantômes
+- [x] Impact frames façon animé + plan ciné au ralenti (DROP et frappe plongeante)
+- [x] Bonhomme articulé et souple (coudes, genoux, mains, ressorts, écrasement / étirement)
 - [ ] Reporter les choix validés dans le projet Godot
 
 ## Étape 1 : la rue test
