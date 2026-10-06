@@ -621,7 +621,11 @@ pour les morts aériennes, le jonglage, l'écrasement, le changement d'arme ;
 elle baisse quand on est touché ou qu'on traîne.
 
 **Impacts au sol** (sans bouger la caméra) : fissures, débris qui
-rebondissent, onde de choc, poussière, courte pause d'impact.
+rebondissent, onde de choc, poussière, courte pause d'impact — seulement
+quand le coup est porté au sol (et pour l'écrasement). **En l'air**, les
+coups lourds ne touchent plus le sol : une gerbe de particules et un
+croissant d'étincelles partent devant, avec une onde de choc verticale qui
+file dans la direction du coup.
 
 **Monstres uniquement la nuit**, jusqu'à 9 à la fois, plus rapides et plus
 agressifs (ils viennent de loin). Au lever du jour, ils se dissolvent. Le

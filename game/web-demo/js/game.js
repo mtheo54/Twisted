@@ -562,7 +562,7 @@ function hitFeedback(ev) {
   burst(contact, ev.impact ? [0xffffff, 0xffe28a, 0xff9fc8, 0x9fe6ff] : ev.delay ? [0x8fe6ff, 0xffffff] : [0xffffff, 0xffe28a], ev.impact ? 5 : 3, ev.impact ? 24 : 10);
   if (ev.impact) {
     FX.impact = FX.impactDur; FX.impactWorld.copy(contact);
-    pixelRing(tpos, 3.2, 0.5, 0xffe28a);
+    if (P.onFloor) pixelRing(tpos, 3.2, 0.5, 0xffe28a); else attackBurst(contact, ev.direction || facing(), 0xffe28a, 1);
     tone(80, 30, 0.5, 0.45, "sine"); noiseHit(160, 0.7, 0.4, 0.4, "lowpass"); noiseHit(4200, 0.5, 0.2, 0.15, "highpass");
   } else { tone(150, 60, 0.15, 0.22, "sine"); noiseHit(380, 1, 0.1, 0.18); }
 }
@@ -580,18 +580,23 @@ function weaponMoveFx(ev) {
   const w = ev.windup;
   if (ev.move === "ms3" || ev.move === "sc3") spinBody(model, w + 0.36, ev.move === "sc3" ? 2 : 1);
   if (ev.move === "tw4") { spinBody(model, w + 0.3, 2); for (let i = 0; i < 4; i++) setTimeout(() => { hitSparks(P.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), facing().applyAxisAngle(UP, i * 1.6), 6, [0xd07bff, 0xffffff]); noiseHit(4200, 3, 0.05, 0.12); }, (w + i * 0.07) * 1000); }
-  if (ev.move === "sg3") { play(model.pose.position, [{ to: { y: -0.15 }, dur: w * 0.8 }, { to: { y: 0.6 }, dur: 0.12, ease: easeOut }, { to: { y: 0 }, dur: 0.3 }]); setTimeout(() => { groundImpact(P.pos, 1.0, 0xff9a5a); tone(60, 30, 0.4, 0.3, "sine"); }, w * 1000); }
+  if (ev.move === "sg3") { play(model.pose.position, [{ to: { y: -0.15 }, dur: w * 0.8 }, { to: { y: 0.6 }, dur: 0.12, ease: easeOut }, { to: { y: 0 }, dur: 0.3 }]); setTimeout(() => { heavyImpact(1.0, 0xff9a5a); tone(60, 30, 0.4, 0.3, "sine"); }, w * 1000); }
   if (ev.move === "df3") setTimeout(() => { pixelRing(P.pos.clone().addScaledVector(facing(), 3), 2.4, 0.5, 0x8fe6ff, 1.1); tone(440, 440, 0.6, 0.08, "sine"); tone(443, 443, 0.6, 0.06, "sine"); }, w * 1000);
   if (ev.move === "bb3") {
     play(model.pose.position, [{ to: { y: 0.4 }, dur: w * 0.6, ease: easeOut }, { to: { y: 0 }, dur: w * 0.4, ease: (t) => t * t }]);
     // l'onde des basses : une ligne d'impacts qui part devant et fend le sol
-    setTimeout(() => { if (P.dead) return; const f = facing(), o = P.pos.clone(); for (let i = 0; i < 5; i++) setTimeout(() => groundImpact(o.clone().addScaledVector(f, 1.2 + i * 1.4), 1.3 - i * 0.12, 0xff5a3a), i * 55); powerChord(); }, w * 1000);
+    setTimeout(() => {
+      if (P.dead) return; const f = facing(), o = P.pos.clone();
+      if (P.onFloor) for (let i = 0; i < 5; i++) setTimeout(() => groundImpact(o.clone().addScaledVector(f, 1.2 + i * 1.4), 1.3 - i * 0.12, 0xff5a3a), i * 55);
+      else for (let i = 0; i < 3; i++) setTimeout(() => attackBurst(P.pos.clone().add(new THREE.Vector3(0, 1.1, 0)).addScaledVector(f, 1 + i * 1.6), f, 0xff5a3a, 2 - i * 0.4), i * 60); // en l'air : l'onde part devant
+      powerChord();
+    }, w * 1000);
   }
   if (ev.move === "st4") for (let i = 0; i < 5; i++) setTimeout(() => { noiseHit(2600 + i * 250, 4, 0.04, 0.13); tone(1900, 1500, 0.03, 0.03); }, (w + i * 0.06) * 1000);
   if (ev.move === "gt3") {
     // petit bond, puis la guitare frappe le sol : onde de choc
     play(model.pose.position, [{ to: { y: 0.4 }, dur: w * 0.6, ease: easeOut }, { to: { y: 0 }, dur: w * 0.4, ease: (t) => t * t }]);
-    setTimeout(() => { if (P.dead) return; pixelRing(P.pos, 4.2, 0.55, 0xff7a5c); pixelRing(P.pos, 2.6, 0.4, 0xffe28a); puff(P.pos, 14, 3); powerChord(); }, w * 1000);
+    setTimeout(() => { if (P.dead) return; if (P.onFloor) { pixelRing(P.pos, 4.2, 0.55, 0xff7a5c); pixelRing(P.pos, 2.6, 0.4, 0xffe28a); puff(P.pos, 14, 3); } else attackBurst(P.pos.clone().add(new THREE.Vector3(0, 1.1, 0)).addScaledVector(facing(), 0.8), facing(), 0xff7a5c, 2); powerChord(); }, w * 1000);
   }
   if (P.weapon === "flail") { P.flailAt = sim.time + w * 0.55; P.flailMove = ev.move; }
 }

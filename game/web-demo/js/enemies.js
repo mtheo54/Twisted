@@ -446,7 +446,8 @@ function monsterOnDamage(ev) {
   m.lastDir = dir.clone(); m.lastImpact = !!ev.impact || !!ev.launch;
   if (!ev.dot) bloodSpray(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.55, 0)), dir, ev.amount * (ev.impact ? 1.6 : 1));
   else if (Math.random() < 0.5) bloodSpray(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.55, 0)), new THREE.Vector3(), 3, 0.5);
-  if (ev.impact) groundImpact(m.pos, 1.0, 0xff3a2a);
+  // gros coup : au sol, ça marque le sol sous le monstre ; si quelqu'un est en l'air, les particules partent devant
+  if (ev.impact && ev.source === P.id && ev.move !== "dive") { if (P.onFloor && m.grounded) groundImpact(m.pos, 1.0, 0xff3a2a); else attackBurst(m.pos.clone().add(new THREE.Vector3(0, m.top * 0.5, 0)), dir, 0xff3a2a, 1); }
   // réaction du corps
   m.twitch.z += (Math.random() < 0.5 ? -1 : 1) * 0.35; m.twitch.x -= 0.3;
   if (m.rig) startAction(m.rig, "c_hurt");

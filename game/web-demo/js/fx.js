@@ -140,14 +140,38 @@ function groundImpact(pos, power, color = 0xff7a3a) {
     const a = Math.random() * Math.PI * 2, sp = range(2, 5 + power * 3);
     DEBRIS.spawn(at.clone().add(new THREE.Vector3(Math.cos(a) * 0.4, 0.1, Math.sin(a) * 0.4)), new THREE.Vector3(Math.cos(a) * sp, range(3, 6 + power * 3), Math.sin(a) * sp), range(1.8, 3.2), range(0.06, 0.12 + power * 0.05), pick(col));
   }
-  const s = shockRings[shockIndex++ % shockRings.length]; s.t = 0; s.dur = 0.3 + power * 0.08; s.r = 2 + power * 2.2; s.m.material.color.setHex(color); s.m.position.set(at.x, y + 0.06, at.z); s.m.visible = true;
+  const s = shockRings[shockIndex++ % shockRings.length]; s.t = 0; s.dur = 0.3 + power * 0.08; s.r = 2 + power * 2.2; s.m.material.color.setHex(color); s.m.position.set(at.x, y + 0.06, at.z); s.m.rotation.set(-Math.PI / 2, 0, 0); s.vel = null; s.m.visible = true;
   pixelRing(at, 1.5 + power * 1.6, 0.45, color); puff(at, Math.round(4 + power * 4), 1 + power, 0x6a6460);
   tone(70 + 30 / power, 30, 0.3 + power * 0.1, Math.min(0.4, 0.12 + power * 0.08), "sine"); noiseHit(160, 0.7, 0.25 + power * 0.08, Math.min(0.35, 0.1 + power * 0.08), "lowpass");
   FX.freeze = Math.max(FX.freeze, Math.min(0.1, 0.02 * power));
 }
+// Coup porté en l'air : rien au sol, une gerbe de particules part devant,
+// avec une onde de choc verticale qui file dans la direction du coup.
+function attackBurst(origin, dir, color = 0xffe28a, power = 1) {
+  const d = dir.clone().setY(dir.y * 0.5).normalize(), side = new THREE.Vector3(-d.z, 0, d.x).normalize();
+  const n = Math.round(14 + power * 14), cols = [color, 0xffffff, color, 0xffe28a];
+  for (let i = 0; i < n; i++) {
+    const v = d.clone().multiplyScalar(range(8, 16 + power * 6)).addScaledVector(side, range(-4, 4)).add(new THREE.Vector3(0, range(-2.5, 3), 0));
+    SPARKS.spawn(origin.clone().addScaledVector(side, range(-0.3, 0.3)), v, range(0.18, 0.4), range(0.04, 0.08), pick(cols));
+  }
+  // arc de taillade : un croissant de particules devant le coup
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 11 - 0.5) * 2.2, p = origin.clone().addScaledVector(d, 0.6 + Math.cos(a) * 0.4).addScaledVector(side, Math.sin(a) * 1.1);
+    SPARKS.spawn(p, d.clone().multiplyScalar(range(10, 14)).addScaledVector(side, Math.sin(a) * 3), range(0.15, 0.25), 0.07, pick(cols));
+  }
+  const s = shockRings[shockIndex++ % shockRings.length]; s.t = 0; s.dur = 0.28 + power * 0.06; s.r = 0.8 + power * 0.8;
+  s.m.material.color.setHex(color); s.m.position.copy(origin); s.m.lookAt(origin.clone().add(d)); s.vel = d.clone().multiplyScalar(9 + power * 3); s.m.visible = true;
+  noiseHit(2200, 0.7, 0.18, 0.1 + power * 0.04); tone(500, 160, 0.2, 0.05 + power * 0.02, "sawtooth");
+}
+// Coup lourd du joueur : au sol, il marque le sol ; en l'air, il part devant
+function heavyImpact(power, color, groundPos) {
+  if (P.onFloor) groundImpact(groundPos || P.pos, power, color);
+  else attackBurst(P.pos.clone().add(new THREE.Vector3(0, 1.1, 0)).addScaledVector(facing(), 0.8), facing(), color, power);
+}
 function updateShocks(dt) {
   for (const s of shockRings) {
     if (!s.m.visible) continue; s.t += dt; const f = s.t / s.dur;
+    if (s.vel) s.m.position.addScaledVector(s.vel, dt);
     if (f >= 1) { s.m.visible = false; continue; }
     const r = 0.3 + s.r * easeOut(f); s.m.scale.set(r, r, 1); s.m.material.opacity = 1 - f;
   }
