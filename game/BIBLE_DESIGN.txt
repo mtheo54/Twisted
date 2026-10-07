@@ -1,0 +1,761 @@
+=====================================================================
+                    TWISTED - BIBLE DE DESIGN
+                    Style : dark fantasy
+=====================================================================
+
+SOMMAIRE
+  1. Vision et univers
+  2. Direction artistique (dark fantasy)
+  3. Le bonhomme d'abrasion (héros)
+  4. La ville : le carrefour
+  5. Décor lointain
+  6. Les armes (10)
+  7. Autels d'armes
+  8. Sorts, ondes et fusions (visuels)
+  9. Bestiaire (la nuit seulement)
+ 10. Le dragon de jade (boss final)
+ 11. PNJ
+ 12. Effets visuels
+ 13. Interface
+ 14. Checklist des assets à produire
+
+
+=====================================================================
+1. VISION ET UNIVERS
+=====================================================================
+
+Twisted est un jeu d'action en 3e personne, nerveux et violent, dans
+une ville japonaise dark fantasy de l'univers de l'abrasion. Le jour,
+on explore et on parle aux habitants ; la nuit, les monstres sortent
+et on les massacre en mouvement permanent, façon Ultrakill.
+
+- Héros : le bonhomme d'abrasion, un petit personnage de chrome
+  semi-liquide (grosse tête ronde, torse en pilule).
+- Ton : sombre, inquiétant, gore, avec l'humour du bonhomme (il fait
+  coucou, il s'allonge s'il attend trop longtemps).
+- Lieu : un carrefour de ville japonaise (rue commerçante, rue
+  résidentielle, parc), avec au loin une tour de fer rouge et noire
+  autour de laquelle tourne un dragon de jade, le boss final.
+- Références : Ultrakill (vitesse, gore, style), ville japonaise,
+  icône chromée des années 2000 (le bonhomme).
+- Plus tard : véhicules légers (skate, vélo), multijoueur, combat du
+  dragon, carte plus grande (5 à 8 km²).
+
+
+=====================================================================
+2. DIRECTION ARTISTIQUE (DARK FANTASY)
+=====================================================================
+
+Une ville japonaise ordinaire passée dans un monde sombre : pierre
+noire, brume, lune rouge, flammes, sang. Seules les lumières restent
+vives au milieu de la pénombre.
+
+Règles générales
+- Le décor est assombri et légèrement bleui ; seules les lumières
+  restent vives (fenêtres, néons, lanternes, lueurs des armes).
+- Matières : pierre sombre, ardoise, fer noir, brique noircie, chrome.
+- Végétation malade ou couleur sang : cerisiers rouge sang, ginkgos
+  mourants, troncs noirs.
+- Éléments gothiques : flèches noires sur les toits, autels de pierre
+  noire avec bougies, tour en fer noir aux anneaux rouges.
+- Atmosphère : brume épaisse, braises qui montent, cendres qui
+  tombent, corbeaux.
+- Image : peu saturée, contrastée, vignette sombre sur les bords,
+  léger grain de film.
+- Caméra : 3e personne, légèrement à droite. Elle ne tremble jamais
+  pendant les coups : la puissance passe par le sol, les particules
+  et une courte pause d'impact.
+- Chrome du héros : reflet blanc en haut à gauche, gris moyen, bord
+  clair, reflet chaud discret en bas. La nuit, il s'assombrit et
+  bleuit légèrement.
+
+Palettes selon l'heure (une journée = 7 minutes)
+
+  Moment      | Ciel haut         | Horizon             | Brume              | Astre
+  ------------+-------------------+---------------------+--------------------+--------------------------------
+  Jour        | #3E4250 ardoise   | #9A9088             | #7A726E, dense     | soleil pâle #E8D8C8
+  Crépuscule  | #2A1A2E           | #C0402A rouge sang  | #6A2A24            | #FF5A3A
+  Nuit        | #05040A encre     | #2A0C16             | #120910, très dense| lune rouge #FF7A62, halo #FF4A3A
+  Aube        | #2A2838           | #8A4A44             | #5A4448            | #D88A6A
+
+  Jour : couvert, brumeux, calme. Crépuscule : inquiétant.
+  Nuit : la chasse, les monstres. Aube : les monstres se dissolvent.
+
+Couleurs fortes
+- Rouge sang : #D4553F (interface), #B8323A (barre de vie),
+  sang #D01A1A à #5A0406.
+- Or terni : #C9A24A.
+- Violet de la Twisted Sword : #C86BFF / #D07BFF.
+- Cyan glitch : #8FE6FF.
+- Orange flamme des lanternes : #FF8A30 à #FFC080.
+- Polices : titres « Shippori Mincho » (serif japonaise), texte
+  « Zen Kaku Gothic New ».
+
+
+=====================================================================
+3. LE BONHOMME D'ABRASION (HÉROS)
+=====================================================================
+
+Une grosse tête ronde qui flotte au-dessus d'un torse en forme de
+pilule, avec des bras et des jambes en tubes épais, le tout en
+chrome (image de référence : reference/bonhomme_abrasion.png).
+
+Silhouette (hauteur totale environ 2 m, mesures en mètres)
+
+  Partie   | Forme                         | Taille                              | Remarque
+  ---------+-------------------------------+-------------------------------------+-----------------------------------------
+  Tête     | sphère parfaite               | rayon 0,23                          | centre à 1,82 m ; SÉPARÉE du torse par
+           |                               |                                     | un petit espace (4 cm), pas de cou
+  Torse    | pilule large (capsule)        | rayon 0,21, largeur x1,24,          | de 0,75 à 1,55 m ; fait de 3 pilules de
+           |                               | profondeur x0,86                    | même largeur qui se chevauchent (bassin,
+           |                               |                                     | taille, buste) : lisse mais il se PLIE
+  Épaules  | sphères                       | rayon 0,095                         | sur les bords arrondis du haut du torse
+  Bras     | 2 tubes arrondis              | rayon 0,088 puis 0,085, 0,31 m      | coude articulé, pas de main détaillée
+  Mains    | sphères                       | rayon 0,095                         | point d'accroche des armes
+  Jambes   | 2 tubes arrondis              | rayon 0,098 puis 0,092, 0,42 m      | genou articulé
+  Pieds    | sphères aplaties, allongées   | rayon 0,1, étirées x1,5             | petit chausson
+
+Matériaux : tête en chrome clair ; corps en chrome légèrement plus
+sombre. Aucune couleur, aucun visage. Les statuts le teintent :
+rouge (Distortion), orange (Saturation), violet (Renvoi), bleu (Peau
+d'oignon), doré (Quitte ou double).
+
+Corps semi-liquide (sa signature)
+- Ses membres s'allongent : le bras qui frappe s'étire jusqu'à x1,9,
+  les jambes à chaque foulée quand il fonce, les bras traînent
+  derrière lui à pleine vitesse.
+- Il s'écrase et s'étire (atterrissage, saut, chute) et s'étale dans
+  le sens de la vitesse (dash, glissade).
+- Sa tête est sur un ressort : elle traîne derrière lui et se déforme
+  un peu quand il accélère.
+- Il laisse des gouttes de chrome derrière lui quand il fonce.
+
+Animations à prévoir
+- Repos (respiration), coucou de la main après 5 s, s'allonge sur le
+  dos après 30 s (avec des « z »).
+- Course rapide, course très rapide (bras qui traînent), garde de
+  combat selon l'arme, pas de côté en garde.
+- Saut, salto au double saut, wall jump, chute, atterrissage lourd.
+- Dash (corps étalé), glissade (jambe tendue devant, buste en
+  arrière), roulade attaque (roulé en boule), écrasement (corps
+  vertical étiré).
+- Touché (encaisse en arrière), projeté au sol puis se relève d'un
+  bond, K.O.
+- Sorts : paumes en avant ; Gater (bras croisés) ; Chorus (bras
+  ouverts) ; essoufflé (mains sur les genoux).
+- Tous les combos d'armes (section 6).
+
+Double fantôme du Delay : même bonhomme, translucide cyan
+(#7FE3FF, 55 %).
+
+
+=====================================================================
+4. LA VILLE : LE CARREFOUR
+=====================================================================
+
+La zone jouable est un carré de 154 m de côté autour d'un carrefour :
+une grande rue nord-sud (10 m de large) croise une rue est-ouest
+(8 m), avec des trottoirs de 12 cm de haut. Quartier japonais
+ordinaire, passé au filtre dark fantasy.
+
+Plan (vu du dessus, nord en haut, la tour est au nord)
+
+            N  (la tour et le dragon, à 720 m)
+            ^
+  +---------------------+-----+---------------------+
+  |       Vieux Sato  o |  <> | Autel Poings sub    |
+  |                     |     |                     |
+  | Mamie Kiko (ramen) o|     |                     |
+  |                     |     |                     |
+  |  Yuna (la nuit) .....o  <> Autel Diapason (toit)|
+  |     Rin (luthière) o|     |  * Vinyle doré      |
+  |                     |     | [<>] Ruelle taguée  |
+  |  RUE COMMERÇANTE    |     |  + autel Faux       |
+  |  (ouest) konbini,   |     |  GRAND MAGASIN,     |
+  |  izakaya, sushi,    |     |  boulangerie,       |
+  |  ramen              |     |  karaoké, boutique  |
+  +---------------------+-----+---------------------+
+  |      route est-ouest      (croisement)          |
+  +---------------------+-----+---------------------+
+  |   +-------------+   |     | o Kenji             |
+  |   | PARC        |   |     |  (O) Départ         |
+  |<> | Enceinte o  |   |     |                     |
+  |   | DJ Taro o   |   |     |                     |
+  |   +-------------+   |     |    RÉSIDENTIEL      |
+  |   Café, terrasse    |     |  immeubles, maisons |
+  +---------------------+-----+---------------------+
+
+  o = personnage   <> = autel d'arme   * = secret   (O) = départ
+
+Les personnages importants sont le long de la grande rue nord-sud ;
+les autels sont répartis aux quatre coins (dont un sur un toit) pour
+pousser à explorer.
+
+Les quartiers
+- Nord, rue commerçante : boutiques des deux côtés, trottoirs pavés,
+  enseignes en japonais. Côté est, une ruelle taguée (14 x 3 m, sol
+  en tôle, grillages, tags) où l'on rebondit de mur en mur sans
+  limite jusqu'aux toits.
+- Sud-ouest, le parc : pelouse, place dallée (enceinte
+  d'entraînement, DJ Taro), allée de gravier, torii, cerisiers,
+  bancs, café avec terrasse en bois.
+- Sud-est, le résidentiel : immeubles et maisons à toit à deux pentes
+  derrière un muret.
+- Est-ouest : rue résidentielle bordée de maisons et d'immeubles,
+  poteaux électriques et fils.
+- Chaque bout de rue est fermé par un grand immeuble.
+
+Bâtiments (fenêtres 4 x 4 par étage de 3,2 m)
+
+  Type                     | Hauteur  | Ce qui le distingue                              | Où
+  -------------------------+----------+--------------------------------------------------+-------------------------
+  Konbini (supérette)      | 4,8 m    | grande vitrine éclairée, bandeau de couleur      | rue commerçante, ouest
+  Izakaya                  | 9 m      | lanternes rouges, noren (rideau) à l'entrée      | ouest
+  Boutique (« FADE »)      | 12 m     | vitrine colorée                                  | ouest et est
+  Sushi                    | 8 m      | noren, menu sur chevalet                         | ouest
+  Ramen (Mamie Kiko)       | 10,5 m   | lanternes, menu, vapeur                          | ouest
+  Grand magasin            | 24 m     | le plus haut, enseigne verticale                 | est, contre la ruelle
+  Boulangerie              | 12 m     | toit où se cache le vinyle doré                  | est, contre la ruelle
+  Karaoké                  | 15 m     | enseigne néon, autel du Diapason sur le toit     | est
+  Café                     | 7 m      | terrasse en bois surélevée (38 cm), parasols     | parc
+  Immeuble d'appartements  | 12-18 m  | balcons, linge, plaque « コーポ ひばり »          | partout
+  Maison                   | 2 niveaux| toit à deux pentes, muret devant                 | résidentiel
+
+Matériaux et couleurs
+- Pierre sombre, ardoise, brique noircie : #6A6470, #5A5662, #7A6E68,
+  #4E4A56, #746A66.
+- Fenêtres sombres le jour, beaucoup allumées en orange la nuit.
+- Enseignes et néons gardés mais moins vifs.
+- Flèches gothiques (cônes noirs à 4 faces, 2,5 à 5,5 m) aux coins de
+  certains toits.
+- Sur les toits : parapets, locaux techniques, citernes, antennes à
+  lumière rouge.
+
+Sols
+  Asphalte sombre (lignes blanches, passages piétons, plaques
+  d'égout) : chaussées
+  Dalles grises : trottoirs
+  Pavés : rue commerçante
+  Dallage clair : place du parc
+  Herbe : parc
+  Gravier : allée du parc
+  Tôle : ruelle taguée
+  Planches : terrasse du café
+
+Mobilier urbain
+- Lanternes à flamme sur poteau (5,2 m, flamme orange qui vacille,
+  vraie lumière la nuit).
+- Poteaux électriques et fils, feux tricolores, distributeurs de
+  boissons, bancs, poubelles, boîte aux lettres rouge, vélos,
+  barrières de travaux et cônes, glissières, menus, pots de plantes,
+  torii.
+
+Arbres
+- Cerisiers aux feuilles rouge sang (#A8202C).
+- Ginkgos presque morts (feuillage olive sombre #5A5A30).
+- Troncs noirs.
+
+Voitures garées (11)
+- Petites kei cars carrées japonaises (1,6 x 1,6 x 3,5 m), vitres
+  sombres, phares allumés la nuit.
+- Deux taxis noirs à bandeau jaune.
+- Couleurs : blanc cassé, bleu pétrole, rouge brique, gris, crème,
+  vert sombre.
+
+
+=====================================================================
+5. DÉCOR LOINTAIN
+=====================================================================
+
+La tour domine l'horizon au nord : c'est le repère du joueur et la
+demeure du dragon.
+
+- La tour (à 720 m au nord) : treillis métallique façon tour de
+  Tokyo, 333 m de haut, base de 64 m de large qui s'affine. Bandes
+  alternées fer noir (#24222A) et sang séché (#5A1414). Deux
+  plateformes à 125 m et 223 m. Au sommet, une balise qui clignote
+  rouge la nuit.
+- Les anneaux : trois anneaux lumineux rouges (#FF4A3A) horizontaux
+  autour du sommet (rayons 22, 36 et 52 m, à 318, 305 et 292 m) qui
+  tournent lentement, et une grande sphère en fil de fer rouge
+  transparente (rayon 78 m) autour de la pointe.
+- Ville lointaine : environ 500 immeubles gris violacé (8 à 60 m),
+  plus hauts près de la tour, fenêtres allumées la nuit.
+- Montagnes : 26 pics à 4 faces, gris bleuté, 220 à 480 m de haut,
+  à 1,2-1,5 km, tout autour.
+- Ciel : dégradé selon l'heure (section 2), étoiles la nuit, lune
+  rouge avec cratères et grand halo rouge, soleil pâle le jour.
+- Nuages : 18 grands nuages doux qui dérivent à 230-400 m, gris clair
+  le jour, sombres la nuit.
+- Corbeaux : silhouettes noires qui tournent au-dessus de la ville et
+  autour de la tour (le jour).
+- Braises et cendres : petites braises orange qui montent et cendres
+  grises qui tombent autour du joueur, plus visibles la nuit.
+
+
+=====================================================================
+6. LES ARMES (10)
+=====================================================================
+
+Aucune arme à feu. Chaque arme a un combo dont le dernier coup est le
+gros. Elles sont tenues dans la main du bonhomme et penchées vers
+l'avant. Matières assombries la nuit, sauf les lueurs qui brillent
+dans le noir.
+
+TWISTED SWORD (arme de départ)
+  Modèle  : poignée noire (24 cm), garde dorée (26 cm), pommeau rond ;
+            lame TORSADÉE de 1,2 m faite d'un ruban qui tourne sur
+            lui-même (16 lamelles), pointe en losange, fin cœur
+            lumineux au centre.
+  Couleurs: lame acier sombre #5A5468, or terni, lueur violette #D07BFF.
+  Combo   : taillade, taillade inverse, estoc qui fonce.
+  Final   : TWIST! - tourne 2 fois sur lui-même, 4 coups tout autour,
+            projette.
+
+POINGS
+  Modèle  : les mains du bonhomme.
+  Combo   : jab gauche, jab droit.
+  Final   : DROP! - gros coup qui projette loin.
+
+BAGUETTES (données par Kenji)
+  Modèle  : deux baguettes (46 cm), bout ovale.
+  Couleurs: bois clair #E0A868, bout crème.
+  Combo   : 3 frappes très rapides.
+  Final   : ROULEMENT! - 5 frappes en 0,3 s puis projette.
+
+PIED DE MICRO (donné par DJ Taro)
+  Modèle  : bâton de 1,8 m tenu au tiers ; une tête ronde et une pince
+            d'un côté, un trépied plié de l'autre.
+  Couleurs: acier, noir.
+  Combo   : balayage large, estoc.
+  Final   : MOULINET! - tour complet, 3 coups tout autour.
+
+GUITARE-HACHE (donnée par Rin)
+  Modèle  : le manche (80 cm) sert de poignée ; corps en V qui fait la
+            lame, plaque blanche, bord en acier.
+  Couleurs: rouge #E0453A, blanc, acier.
+  Combo   : 2 grands coups lents en diagonale.
+  Final   : POWER CHORD! - petit bond, frappe le sol, onde de choc.
+
+MICRO-FLÉAU (donné par Yuna)
+  Modèle  : poignée noire à bague dorée ; câble de 0,75 m (jusqu'à 5 m
+            pendant les coups) ; tête ronde grillagée à anneau doré.
+  Couleurs: noir, or, grille argent, lueur violette.
+  Combo   : 2 coups de câble (portée 5 m).
+  Final   : LARSEN-CROCHET! - ramène l'ennemi et l'étourdit.
+
+BOOM BOX (autel du parc)
+  Modèle  : boîtier tenu par sa poignée (62 x 34 x 20 cm), 2 disques
+            ronds en façade, petite lumière rouge, antenne.
+  Couleurs: noir, acier, rouge lumineux.
+  Combo   : 2 grands coups lourds.
+  Final   : DROP THE BASS! - une onde qui part loin devant (fend le
+            sol si on est au sol).
+
+FAUX À CORDES (autel de la ruelle)
+  Modèle  : manche de 1,95 m ; lame courbe faite de 9 segments ;
+            3 fils dorés tendus ; fil lumineux le long de la lame.
+  Couleurs: bois sombre, acier, or, lueur violette.
+  Combo   : 2 balayages à 240°.
+  Final   : MOISSON! - 2 tours, ramène tout le monde vers soi.
+
+DIAPASON (autel sur le toit du karaoké)
+  Modèle  : longue tige d'acier (1,7 m) terminée par une fourche à
+            2 branches (50 cm), bouts lumineux.
+  Couleurs: acier, lueur cyan #8FE6FF.
+  Combo   : 2 estocs rapides qui foncent.
+  Final   : RÉSONANCE! - la cible vibre et reste étourdie 1,6 s.
+
+POINGS SUB (autel au nord)
+  Modèle  : gros gants cylindriques autour des poings (22 x 26 cm),
+            disque creux sur les phalanges, anneau rouge lumineux.
+  Couleurs: noir, acier, rouge lumineux.
+  Combo   : 2 coups lourds.
+  Final   : INFRA-UPPERCUT! - envoie l'ennemi en l'air.
+
+Pour toutes les armes : la roulade (attaque pendant une glissade), le
+contre-glitch (attaque juste après un dash) et l'écrasement (en
+l'air). Chaque arme a sa garde de combat (épée tenue devant, guitare
+posée sur l'épaule, bâtons tenus en travers, etc.).
+
+
+=====================================================================
+7. AUTELS D'ARMES
+=====================================================================
+
+Quatre armes reposent sur des autels de pierre noire cachés dans la
+ville ; on les prend en touchant l'autel.
+
+- Forme : socle large (1,3 x 0,25 x 1,3 m), pilier
+  (0,8 x 0,75 x 0,8 m), plateau (1,0 x 0,12 x 1,0 m), pierre
+  gris-violet sombre (#2A2730) rugueuse.
+- Quatre bougies aux coins du plateau (cire crème #D8CFC0), flamme
+  orange qui vacille.
+- L'arme flotte à 1,9 m au-dessus, tourne lentement et monte/descend ;
+  halo de la couleur de l'arme derrière elle.
+- Une fois prise : l'arme et le halo disparaissent, les bougies
+  restent allumées.
+
+  Boom Box       : au fond du parc, entre les cerisiers
+  Faux à cordes  : au milieu de la ruelle taguée
+  Diapason       : sur le toit du karaoké (15 m, il faut grimper)
+  Poings sub     : tout au bout de la rue, au nord, face à la tour
+
+
+=====================================================================
+8. SORTS, ONDES ET FUSIONS (VISUELS)
+=====================================================================
+
+7 sorts de base, 3 ondes de visée et 18 fusions, chacun avec sa
+couleur. Les effets sont faits de petits cubes lumineux (style
+glitch).
+
+Sorts de base
+  Bitcrush (dash)  cyan #9FE6FF       anneau de pixels au sol, éclats
+                                      cyan/rose, le bonhomme se brouille
+                                      et laisse 2 images fantômes
+  Gater (contre)   blanc #F4F0EA      12 lamelles verticales noires et
+                                      blanches qui tournent autour de
+                                      lui en clignotant
+  Reverb           lilas #B9A6FF      anneaux d'écho autour du joueur
+                                      et des cibles
+  Delay            cyan #8FE6FF       double fantôme cyan translucide
+                                      qui rejoue les coups
+  Distortion       orange-rouge       le chrome devient rouge, l'image
+                   #FF7A5C            du bonhomme grésille
+  Chorus (soin)    vert #8FF0B0       3 orbes verts qui tournent autour
+                                      de lui, bras ouverts
+  Saturation       orange #FFB35C     chrome orange, traînée d'images
+                                      fantômes ; puis souffle blanc
+                                      (essoufflé)
+
+Ondes de visée
+  Sinus            cyan #8FE6FF       5 chaînes de petites sphères qui
+                                      ondulent, en éventail
+  Carré            blanc              rayon instantané en créneaux
+  Triangle         rose #FF9FC8       petit cône à 3 faces qui tourne
+                                      et suit la cible
+  PWM (fusion)     cyan               rayon large et épais en créneaux
+  Onde douce       vert d'eau #A8FFD0 4 orbes lents avec halo
+  Dent de scie     orange #FFB35C     rafale de 8 lames fines inclinées
+
+Fusions (dorées #FFD27A dans l'interface)
+  Saut glitch, Peau d'oignon, Triple glitch, Distorsion glitch,
+  Déphasage, Surchauffe glitch, Écho infini, Distorsion douce, Chœur
+  lointain, Saturation douce, Crescendo, Super saut, Tempo, Renvoi,
+  Quitte ou double, PWM, Onde douce, Dent de scie.
+  Chacune mélange les couleurs des deux sorts d'origine ; au
+  lancement : anneau doré et éclats doré/rose/cyan.
+
+Projectiles ennemis
+  Onde de larsen : sphère rouge-orange + anneau.
+  Étincelle du Câblé : losange jaune + halo cyan, clignote.
+  Infrabasse de l'Ombre sub : sphère noire, anneau violet, halo violet.
+
+
+=====================================================================
+9. BESTIAIRE (LA NUIT SEULEMENT)
+=====================================================================
+
+Quatre monstres, tous de sortie uniquement la nuit, avec des membres
+en câbles électriques fins et des mouvements nerveux (sursauts, tête
+qui se penche). Avant chaque attaque, une étoile apparaît au-dessus
+d'eux : JAUNE = on peut l'interrompre, ROUGE = il est lancé, il faut
+esquiver. Ils explosent en morceaux sanglants quand ils meurent.
+
+GRÉSILLON - petit parasite (40 PV, hauteur 0,9 m)
+- Corps : petite coque ovale gris foncé métallisé (#2C2B31), un dôme
+  argenté à l'avant cerclé de cuivre, une pièce noire à l'arrière.
+- Yeux : 2 petites LED, ambre le jour, ROUGES la nuit.
+- 6 pattes en fil de cuivre (#C87533) à 2 segments, genoux hauts
+  comme une araignée, qui marchent en alternance.
+- Mandibules : 2 petits crocs crème sous le dôme ; une antenne en
+  cuivre terminée par une fiche.
+- Attaques : morsure ; bond sur toi (il s'accroupit en grésillant,
+  puis saute). Arrive souvent par deux.
+
+CÂBLÉ - humanoïde de câbles (95 PV, hauteur 2 m)
+- Corps : humain trop maigre et trop grand, en caoutchouc noir
+  (#1E1D24), voûté, genoux pliés.
+- Tête : une fiche jack dressée (corps noir, manchon argenté, bague
+  noire, pointe ronde), 2 petits yeux sur le manchon (cyan le jour,
+  rouges la nuit).
+- Câbles de couleur sombre enroulés autour des bras, des cuisses, du
+  buste (rouge brique, ocre, bleu nuit, gris).
+- Un long fouet de câble (2,9 m) qui pend de la main droite, d'autres
+  câbles qui pendent du dos et de la main gauche.
+- Attaques : fouet de câble (portée 3,6 m), griffe, étincelle lancée
+  de loin (les deux mains en avant).
+
+GUEULE-ENCEINTE - l'enceinte affamée (200 PV, hauteur 2,7 m)
+- Corps : un caisson noir (95 x 125 x 70 cm, revêtement #141317) aux
+  coins métalliques, penché en avant comme une tête.
+- La gueule : la membrane ronde en façade est une bouche : bord en
+  caoutchouc, cône sombre, GORGE ROUGE qui rougeoie, et DEUX MÂCHOIRES
+  DE DENTS jaunâtres (9 dents chacune, grandes et petites alternées)
+  qui s'écartent. Une langue en câble rouge sombre pend de la bouche.
+- Yeux : 2 petits dômes en haut ; l'un ROUGE VIF, l'autre presque
+  éteint qui clignote parfois. Un trou rond en bas.
+- 4 longues pattes en câble (2,5 m dépliées, genoux hauts d'araignée,
+  articulations en boules de métal, fil de cuivre enroulé le long).
+- 2 bras maigres en câble terminés par 3 griffes crème ; au repos ils
+  traînent par terre devant lui.
+- Câbles qui traînent derrière lui ; halo rouge devant la gueule, bien
+  visible la nuit.
+- Attaques : morsure en bond (projette au sol, ne peut pas être
+  interrompue), griffes, cri en cône (ne peut pas être interrompu).
+
+OMBRE SUB - la créature qui flotte (120 PV, flotte à 1,5 m)
+- Corps : une sphère noire brillante (rayon 0,55 m) avec un grand cône
+  creux à l'avant et un cœur violet lumineux (#9A4DFF) au centre ; fin
+  anneau violet sombre autour du cône.
+- Yeux : 3 petits points blanc-violet en triangle.
+- Aura d'ombre : nappes sombres qui tournent autour d'elle.
+- 7 tentacules en câble (1,7 m) qui pendent et traînent au sol, violet
+  très sombre.
+- Attaques : pulsation autour d'elle (elle gonfle puis lâche une onde
+  violette), projectile chercheur, fondu (disparaît et réapparaît près
+  de toi).
+
+ENCEINTE D'ENTRAÎNEMENT (place du parc)
+- Grand caisson noir (0,9 x 1,5 x 0,7 m) sur un socle gris, liseré
+  orange en haut, 2 disques orange qui s'allument.
+- Elle recule et s'envole sous les coups, puis revient à sa place.
+  Quand on la frappe, elle riposte : projectile, ou « boom » (anneau
+  rouge au sol).
+
+
+=====================================================================
+10. LE DRAGON DE JADE (BOSS FINAL)
+=====================================================================
+
+Un immense dragon serpentin turquoise aux détails dorés, de style
+dragon chinois, long de plus de 400 m, qui tourne la nuit autour de
+la tour. Pas encore combattable.
+
+- Corps : un long serpent fait d'anneaux qui se suivent
+  (70 segments), épais près du cou (rayon environ 8 m), qui s'affine
+  doucement jusqu'à la queue. Il ondule de côté et de haut en bas.
+- Écailles : turquoise #2FC9B0, chaque écaille en demi-cercle plus
+  clair (#7FF2DC) au centre et plus foncé (#0F6B5E) au bord, liseré
+  doré. Légère lueur propre pour rester visible la nuit.
+- Ventre : plaques doré pâle (#E8D29A) tout le long du dessous.
+- Épines dorsales : cônes dorés (#F3CF6D, métal brillant) inclinés
+  vers la queue, plus grands près de la tête.
+- Crinière : longues mèches turquoise pâle (#9FF7E4) sur le cou et
+  derrière la tête, qui flottent.
+- Tête : crâne rond, long museau, narines sombres, mâchoire inférieure
+  doré pâle qui s'ouvre de temps en temps, crocs blancs, yeux ambre
+  lumineux (#FFC23A).
+- Cornes : 2 grandes cornes dorées vers l'arrière, avec une
+  ramification de chaque côté.
+- Moustaches : 2 longs filaments dorés qui partent du museau et
+  ondulent.
+- 4 pattes courtes (sous le cou et au milieu du corps) terminées par
+  3 griffes dorées, qui pédalent dans le vide.
+- Comportement : apparaît à la tombée de la nuit en montant de
+  derrière la tour, tourne à 140 m de la tour entre 185 et 285 m de
+  haut, rugit au loin.
+- À imaginer : son combat (phases, attaques, comment on l'atteint).
+
+
+=====================================================================
+11. PNJ
+=====================================================================
+
+Les habitants sont des bonshommes aux proportions humaines (1,85 m),
+aux couleurs mates, avec une tête ronde sans visage, habillés. Ils
+sont là le jour et se barricadent la nuit (sauf Yuna).
+
+Passants (12)
+- Manteau, pantalon et peau de couleurs variées (manteaux bleu nuit,
+  bordeaux, kaki, camel, noir, gris, beige, prune, pétrole, crème ;
+  peaux du rose clair au brun).
+- Certains ont des cheveux (calotte sombre, châtain, gris), un sac à
+  dos.
+- Ils marchent sur les trottoirs, s'arrêtent pour regarder leur
+  téléphone et FUIENT EN COURANT, BRAS EN L'AIR, quand un monstre
+  approche.
+
+Personnages importants (losange doré au-dessus d'eux quand ils ont du
+nouveau ; touche F pour parler ; ils se tournent vers le joueur et le
+suivent du regard)
+
+KENJI - au carrefour
+  Apparence : haut noir, jean, peau dorée, bandeau rouge ; tient des
+              baguettes ; pad d'entraînement sur pied devant lui.
+  Pose      : tape en rythme sur son pad.
+  Donne     : les Baguettes + conseils de combat.
+
+DJ TARO - place du parc
+  Apparence : sweat prune, pantalon noir, peau brune, casque sur les
+              oreilles (écouteurs rouges), casquette jaune ; table avec
+              2 plateaux qui tournent et 2 caissons.
+  Pose      : hoche la tête, une main sur le casque.
+  Donne     : le Pied de micro après 3 monstres.
+
+RIN - luthière, rue commerçante
+  Apparence : chemise verte, tablier marron, cheveux noirs en chignon,
+              guitare dans le dos.
+  Pose      : bras croisés.
+  Donne     : la Guitare-hache contre le vinyle doré.
+
+YUNA - devant le karaoké, LA NUIT SEULEMENT
+  Apparence : robe violette brillante, cheveux longs violet sombre,
+              micro à la main, halo violet autour d'elle.
+  Pose      : se balance doucement.
+  Donne     : le Micro-fléau après une Gueule-enceinte.
+
+VIEUX SATO - au bout de la rue, au nord
+  Apparence : kimono gris, barbe blanche en pointe, cheveux blancs,
+              canne, plus petit (x0,93), voûté.
+  Pose      : regarde la tour, appuyé sur sa canne.
+  Donne     : l'histoire du dragon.
+
+MAMIE KIKO - les ramen
+  Apparence : kimono rouge, tablier blanc, chignon blanc en haut de la
+              tête, petite (x0,86).
+  Pose      : essuie son comptoir.
+  Donne     : un bol de ramen qui soigne tout (toutes les 45 s).
+
+
+=====================================================================
+12. EFFETS VISUELS
+=====================================================================
+
+La violence et la puissance passent par les particules, le sol et une
+courte pause d'impact, jamais par la caméra.
+
+- Sang : chaque coup sur un monstre ; gerbe de petits cubes rouges
+  (#D01A1A à #5A0406) projetée dans le sens du coup, qui retombe et
+  laisse des taches.
+- Taches de sang : éclaboussures rouge sombre au sol (rond central +
+  gouttes autour), 3 formes, s'effacent après 45 s.
+- Monstre en morceaux : à sa mort, il explose ; ses pièces volent,
+  tournent, rebondissent, saignent en vol, puis rétrécissent après 5 à
+  8 s.
+- Impact au sol (coups lourds au sol, écrasement, roulade) : fissure
+  noire en étoile, débris de pierre/asphalte/herbe qui rebondissent,
+  onde de choc orange au sol, anneau de pixels, poussière.
+- Coup en l'air (coups lourds en l'air) : rien au sol ; gerbe
+  d'étincelles vers l'avant, croissant de particules devant l'arme,
+  anneau de choc vertical qui file devant.
+- Étincelles : glissade, coups ; petits traits orange/jaunes étirés.
+- Gouttes de chrome : quand le bonhomme fonce ; petites billes
+  chromées qui tombent et s'aplatissent.
+- Images fantômes : dash, Saturation ; copies brouillées cyan et rose
+  du bonhomme.
+- Impact frame : gros coups finaux ; l'écran passe une fraction de
+  seconde en négatif noir et blanc très contrasté, avec des lignes
+  noires rayonnantes (façon animé).
+- Lignes de vitesse : au-delà de 13 m/s, traits clairs rayonnant
+  depuis le centre de l'écran.
+- Annonce d'attaque : étoile à 8 branches jaune ou rouge au-dessus de
+  la tête des monstres, yeux qui s'allument.
+- Étourdissement : 3 petites étoiles dorées qui tournent au-dessus.
+- Apparition d'un monstre : anneau de pixels rouge et fumée sombre.
+- Flammes : lanternes, bougies des autels ; halo orange qui vacille.
+
+
+=====================================================================
+13. INTERFACE
+=====================================================================
+
+Discrète, dans les coins, sur des panneaux presque noirs (#0E0A10,
+82 %) au liseré fin, texte ivoire (#ECE4DC).
+
+- Haut gauche : titre « TWISTED » (serif), compteur de secrets (or),
+  horloge avec soleil ou lune.
+- Bas gauche : barre de vie rouge sang ; dessous, 3 barres
+  d'endurance cyan (charges de dash) ; au-dessus, les statuts actifs
+  en petites pastilles (vert = bonus, rouge = malus, temps restant).
+- Bas centre : barre d'action, cases carrées arrondies (52 x 56 px) :
+  arme (X), dash (Maj), 2 sorts (A, E), 2 fusions (R, T, bord doré),
+  3 ondes (1, 2, 3). Recharge en camembert sombre + secondes.
+- Droite : jauge de style : grande lettre (D, C, B, A, S, SS, SSS,
+  TWISTED), son nom en petites capitales (Détraqué, Cruel, Brutal,
+  Atroce, Sanguinaire, Sadique, Sans pitié), une barre, et la liste
+  des derniers exploits (« + MORT AÉRIENNE », « + JONGLAGE »...).
+  Couleur qui monte du gris au cyan, vert, jaune, orange, rouge,
+  violet.
+- Haut droite : l'aide des touches (touche H).
+- Au-dessus des monstres : nom + petite barre de vie (rouge la nuit).
+  Au-dessus des PNJ : nom, losange doré si nouveau, « F parler ».
+- Chiffres flottants : dégâts (jaune), gros coups en lettres serif
+  (« DROP! »), soins (vert), dégâts reçus (rouge).
+- Dialogues : panneau en bas au centre, nom en or serif + rôle, texte,
+  « F ou clic : suite ».
+- Fenêtre Tab : choisir ses 2 sorts, 2 fusions, son arme (armes non
+  trouvées en pointillé avec un indice), voir les ondes.
+- Viseur (clic droit) : rond blanc avec le nom de l'onde dessous.
+- Effets d'écran : vignette sombre, grain, lignes de vitesse, impact
+  frames.
+
+
+=====================================================================
+14. CHECKLIST DES ASSETS À PRODUIRE
+=====================================================================
+
+Commence par le bonhomme, la Twisted Sword et un monstre : ce sont eux
+qu'on voit le plus.
+
+Conseils pour qu'on puisse les brancher facilement
+- Format 3D : .glb (glTF), 1 unité = 1 m, personnage tourné vers -Z
+  (vers l'avant), pieds à 0.
+- Personnages articulés : soit en morceaux séparés nommés comme les
+  articulations (bassin, taille, buste, tête, épaule, coude, main,
+  hanche, genou, pied, côtés R et L), soit avec un squelette portant
+  ces noms.
+- Armes : la poignée à l'origine, l'objet qui part vers -Z.
+- Images : .png ; textures qui se répètent sans couture pour les sols
+  et les murs.
+
+Personnages
+[ ] Bonhomme d'abrasion (tête, torse-pilule en 3 parties, bras,
+    jambes, pieds)
+[ ] Passant type (+ variantes de couleurs, cheveux, sac)
+[ ] Kenji, DJ Taro, Rin, Yuna, Vieux Sato, Mamie Kiko (+ accessoires
+    et décor de Kenji et Taro)
+
+Armes
+[ ] Twisted Sword
+[ ] Baguettes
+[ ] Pied de micro
+[ ] Guitare-hache
+[ ] Micro-fléau (poignée + tête)
+[ ] Boom Box
+[ ] Faux à cordes
+[ ] Diapason
+[ ] Poings sub
+
+Monstres et boss
+[ ] Grésillon
+[ ] Câblé
+[ ] Gueule-enceinte
+[ ] Ombre sub
+[ ] Enceinte d'entraînement
+[ ] Dragon de jade (segment de corps, tête, corne, patte, épine)
+
+Ville
+[ ] Façades : konbini, izakaya, boutique, sushi, ramen, grand
+    magasin, boulangerie, karaoké, café, immeuble, maison
+[ ] Toits : parapet, local technique, citerne, antenne, flèche
+    gothique
+[ ] Mobilier : lanterne à flamme, poteau électrique, feu tricolore,
+    distributeur, banc, poubelle, boîte aux lettres, vélo, barrière,
+    cône, glissière, menu, pot de plante, torii
+[ ] Arbres : cerisier rouge sang, ginkgo mourant
+[ ] Voitures : kei car, taxi
+[ ] Autel d'arme
+[ ] Vinyle doré (secret)
+
+Décor lointain
+[ ] Tour (treillis, plateformes, anneaux, sphère, balise)
+[ ] Immeubles lointains, montagnes, lune, nuages, corbeau
+
+Textures
+[ ] Sols : asphalte, dalles, pavés, dallage, herbe, gravier, tôle,
+    bois, plaque d'égout
+[ ] Fenêtres (jour) + fenêtres allumées (nuit), enseignes, noren,
+    menus, intérieurs de vitrines, tags, grillage
+[ ] Écailles du dragon, taches de sang (3), fissure, reflet chrome
