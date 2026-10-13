@@ -133,6 +133,7 @@ public:
 	static constexpr int kF0HoldHops = 10;          // keep the last f0 through short YIN dropouts
 	static constexpr double kSynthSmoothing = 0.5;  // per-hop smoothing of the synthesised harmonics
 	static constexpr double kBudgetSmoothing = 0.3; // per-hop smoothing of the energy to redistribute
+	static constexpr double kBudgetHeadroom = 1.5;  // smoothed budget <= +1.8 dB over this frame's
 
 	static constexpr int getLatencySamples () noexcept { return kFFTSize; }
 
@@ -621,12 +622,16 @@ private:
 		// (leakage with its negative-frequency image: a 33 Hz 808 varies by about 1 dB from
 		// frame to frame). Smoothed over ~3 hops, the budget no longer amplitude-modulates the
 		// partials it raises (a rough, rubbery sound around the harmonics).
-		budgetState += kBudgetSmoothing * (extracted - budgetState);
+		// Never more than +1.8 dB above what this frame really extracted (the frame-to-frame
+		// fluctuation is about 1 dB): when the slave stops (end of a note), the budget drops
+		// with it instead of injecting the energy of the previous frames into a quiet signal.
+		auto smoothBudget = [] (double& state, double now) {
+			state += kBudgetSmoothing * (now - state);
+			state = std::min (state, kBudgetHeadroom * now);
+		};
+		smoothBudget (budgetState, extracted);
 		for (int ch = 0; ch < kMaxChannels; ++ch)
-		{
-			auto& b = budgetStateCh[static_cast<size_t> (ch)];
-			b += kBudgetSmoothing * (extractedCh[static_cast<size_t> (ch)] - b);
-		}
+			smoothBudget (budgetStateCh[static_cast<size_t> (ch)], extractedCh[static_cast<size_t> (ch)]);
 		stats.budgetBase = budgetState;
 		const double budget = eta * budgetState;
 		const float maxGainSq = std::pow (10.f, kMaxPartialGainDb / 10.f);
@@ -920,6 +925,10 @@ private:
 					const double dE = eta * weight * budgetStateCh[static_cast<size_t> (ch)];
 					const double targetScale = dE > 0.0 ? std::sqrt (dE / unit) : 0.0;
 					sc += kSynthSmoothing * (targetScale - sc);
+					// bounded by the frame's own (capped) budget, not by this harmonic's target,
+					// which toggles with the masking check: a note-off fades the lobe at once,
+					// a masked target still fades smoothly
+					sc = std::min (sc, std::sqrt (0.5 * eta * budgetStateCh[static_cast<size_t> (ch)] / unit));
 					if (targetScale <= 0.0 && sc < 1e-6) // faded out (about -120 dB)
 					{
 						sc = 0.0;

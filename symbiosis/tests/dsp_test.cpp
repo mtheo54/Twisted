@@ -672,6 +672,41 @@ void testLow808 ()
 	std::snprintf (msg, sizeof msg, "33 Hz 808: harmonics steady between kicks (%.2f dB/frame, input %.2f)", wOut, wIn);
 	check (wOut < wIn + 0.25, msg, wOut);
 }
+
+/** A note that stops under the kick: the smoothed budget must not burst into the quiet tail. */
+void testNoteOff ()
+{
+	const int len = 2 * 48000;
+	std::vector<float> slave (static_cast<size_t> (len)), kick (static_cast<size_t> (len), 0.f);
+	for (int i = 0; i < len; ++i)
+	{
+		const double amp = i < 60000 ? 0.5 : 0.5 * std::pow (10.0, -30.0 / 20.0); // note off at 1.25 s
+		slave[static_cast<size_t> (i)] = static_cast<float> (amp * std::tanh (2.0 * std::sin (2.0 * kPi * 40.0 * i / kRate)));
+	}
+	for (int hit = 0; hit < len; hit += 11025)
+		for (int i = 0; i < 6000 && hit + i < len; ++i)
+			kick[static_cast<size_t> (hit + i)] = static_cast<float> (0.9 * std::exp (-i / 2000.0) * std::sin (2.0 * kPi * 55.0 * i / kRate));
+	SpectralEngine engine;
+	engine.prepare (kRate);
+	EngineParams p;
+	p.pull = 0.8f;
+	p.harmonics = 1.f;
+	p.targetMode = TargetMode::HarmonicSeries;
+	engine.setParams (p);
+	std::vector<float> out (static_cast<size_t> (len));
+	double worst = 0.0;
+	for (int s = 0; s < len; s += 512)
+	{
+		const float* in[1] = {slave.data () + s};
+		const float* m[1] = {kick.data () + s};
+		float* o[1] = {out.data () + s};
+		engine.process (in, m, 1, o, 1, std::min (512, len - s));
+		const auto& st = engine.getLastFrameStats ();
+		if (st.energyIn > 0.0)
+			worst = std::max (worst, st.injected / st.energyIn);
+	}
+	check (worst <= 1.0, "note off under a kick: never injects more than the frame's own energy (ratio)", worst);
+}
 } // namespace
 
 int main ()
@@ -688,6 +723,7 @@ int main ()
 	testRobustness ();
 	testArtefacts ();
 	testLow808 ();
+	testNoteOff ();
 	std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
 	return failures ? 1 : 0;
 }
