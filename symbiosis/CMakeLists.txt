@@ -130,3 +130,17 @@ elseif(SMTG_WIN)
     target_sources(Symbiosis PRIVATE resource/win32resource.rc)
     target_compile_options(Symbiosis PRIVATE /utf-8)
 endif()
+
+# ---- Same layout as Twisted: <build>/plugins/Symbiosis.vst3 and `cmake --install` -----------
+# The SDK builds the bundle in <build>/VST3/<config>/. Once it is complete (resources,
+# moduleinfo, validator), a copy goes to <build>/plugins/, and
+#   cmake --install build --config Release --prefix "C:/Program Files/Common Files"
+# installs it into <prefix>/VST3/ (macOS: --prefix ~/Library/Audio/Plug-Ins).
+add_custom_target(SymbiosisPlugins ALL
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}/plugins/Symbiosis.vst3"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_BINARY_DIR}/VST3/$<CONFIG>/Symbiosis.vst3"
+                                               "${CMAKE_BINARY_DIR}/plugins/Symbiosis.vst3"
+    COMMENT "Copying Symbiosis.vst3 to ${CMAKE_BINARY_DIR}/plugins"
+    VERBATIM)
+add_dependencies(SymbiosisPlugins Symbiosis)
+install(DIRECTORY "${CMAKE_BINARY_DIR}/plugins/Symbiosis.vst3" DESTINATION VST3)

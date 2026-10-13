@@ -39,24 +39,39 @@ automatiquement à la configuration (tag `v3.8.1_build_84`). Pour utiliser un SD
 local, passer `-DVST3_SDK_ROOT=/chemin/vers/vst3sdk` ou le placer dans
 `symbiosis/vst3sdk`.
 
-Windows, depuis « Developer PowerShell for VS », à la racine du dépôt :
+Windows : **Visual Studio 2026** (Community suffit) avec la charge de travail
+« Développement Desktop en C++ ». Dans « Developer PowerShell for VS 2026 » :
 
 ```powershell
-cmake -S symbiosis -B build-symbiosis -A x64
+cd $HOME
+git clone -b claude/determined-wright-6vzgq5 https://github.com/mtheo54/Twisted.git
+cd Twisted
+cmake -S symbiosis -B build-symbiosis -G "Visual Studio 18 2026" -A x64
 cmake --build build-symbiosis --config Release
 ```
+
+Si CMake répond « could not create named generator », remplace
+`-G "Visual Studio 18 2026" -A x64` par `-G Ninja -DCMAKE_BUILD_TYPE=Release`.
+Supprime le dossier `build-symbiosis` avant de relancer.
+
+Résultat dans `build-symbiosis\plugins\` : `Symbiosis.vst3\` (un dossier, à copier en
+entier). Installation, depuis un terminal lancé en administrateur :
+
+```powershell
+cmake --install build-symbiosis --config Release --prefix "C:/Program Files/Common Files"
+```
+
+La commande copie `Symbiosis.vst3` dans `C:\Program Files\Common Files\VST3\`.
 
 macOS (binaire universel Apple Silicon + Intel) :
 
 ```bash
 cmake -S symbiosis -B build-symbiosis -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
 cmake --build build-symbiosis --parallel
+cmake --install build-symbiosis --prefix ~/Library/Audio/Plug-Ins
 ```
 
-Le plugin est produit dans `build-symbiosis/VST3/Release/Symbiosis.vst3`. Copier ce
-dossier en entier dans `C:\Program Files\Common Files\VST3\` (Windows) ou
-`~/Library/Audio/Plug-Ins/VST3/` (macOS). Après chaque compilation, le **validateur
-Steinberg** tourne tout seul sur le plugin.
+Après chaque compilation, le **validateur Steinberg** tourne tout seul sur le plugin.
 
 Linux (test uniquement) : le SDK demande les paquets de développement xcb, xkbcommon,
 cairo, pango, fontconfig, freetype et gtkmm-3.0 (voir `.github/workflows/build.yml`).
