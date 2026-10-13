@@ -1,9 +1,9 @@
 //------------------------------------------------------------------------
 // SYMBIOSIS — symbiosis_editor.h
-// Native VSTGUI4 editor, drawn in code (no .uidesc, no bitmap assets):
-// crimson nebula, gold art-nouveau frame, astrolabe Orbit visualizer with
-// zodiac ring and gears, ruby knobs and sliders, LED buttons, menus,
-// level meters and scopes. Authored on an 860 x 560 canvas, shown at 120 %.
+// Native VSTGUI4 editor, drawn in code with pre-rendered PNG textures (no .uidesc):
+// ivory ink-marbled paper, gunmetal astrolabe Orbit visualizer with zodiac
+// ring and gears, smoky crystal and steel knobs, ruby sliders, LED buttons,
+// menus, level meters and scopes. Authored on an 860 x 560 canvas, shown at 120 %.
 //------------------------------------------------------------------------
 #pragma once
 

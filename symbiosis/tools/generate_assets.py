@@ -5,18 +5,19 @@ SYMBIOSIS - offline texture generator for the VSTGUI editor.
 Renders, per pixel and with supersampling, the textures that vector drawing in
 CDrawContext cannot do well (per-pixel lighting, bevels, blur, bloom):
 
-  nebula.png          crimson / bordeaux nebula + star dust + radial darkening
-  astrolabe_ring.png  aged, brushed, bevelled brass ring, toothed crown, dark
-                      bronze band with dense raised runes, zodiac and planetary
-                      glyphs, graduations, soft drop shadow
-  knob_bezel.png      knurled gold bezel of the ruby knobs (with shadow)
-  knob_gem_ruby.png   faceted ruby cabochon (PULL): vertical filmstrip, 16 frames of
+  background.png      ivory paper, marbled grey ink smoke, black ink specks, slight
+                      radial darkening, calm zones behind faders and labels
+  astrolabe_ring.png  brushed, bevelled gunmetal ring, toothed crown, light enamel
+                      band with dense raised black runes, zodiac and planetary
+                      glyphs, degree scale, soft drop shadow
+  knob_bezel.png      knurled dark steel bezel with a chrome lip (with shadow)
+  knob_gem_smoke.png  faceted smoky crystal (PULL): vertical filmstrip, 16 frames of
                       the stone turning through one 45-degree period of its cut,
                       each lit under the same fixed light
-  knob_gem_garnet.png same for the garnet (HARMONICS)
+  knob_cap.png        glossy black steel dome with turning rings (HARMONICS), 1 frame
   knob_gloss.png      fixed-light gloss: window reflection, specular, rim light
-  plasma_a.png        wispy plasma annulus for the Orbit visualizer
-  plasma_b.png        second plasma, cross-faded with the first
+  plasma_a.png        ink-smoke wisps for the Orbit visualizer
+  plasma_b.png        red mist, cross-faded with the ink smoke
 
 Coordinates are in editor canvas units (860 x 560 canvas, see symbiosis_editor.h);
 each texture is written at a fixed pixel density (scale) that the editor declares
@@ -36,7 +37,7 @@ from PIL import Image, ImageDraw
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "resource", "textures")
 
 # pixel densities (pixels per canvas unit); must match kAssetScale* in symbiosis_editor.cpp
-SCALE_NEBULA = 2.0
+SCALE_BACKGROUND = 2.0
 SCALE_RING = 2.4
 SCALE_KNOB = 3.0
 SCALE_PLASMA = 2.0
@@ -160,98 +161,63 @@ def save_rgb(path, rgb):
 
 
 # --------------------------------------------------------------------------------------
-# 1. Nebula background
-def make_nebula():
-    s = SCALE_NEBULA
+# 1. Background: ivory paper, marbled grey ink smoke, black ink specks
+def make_background():
+    s = SCALE_BACKGROUND
     w, h = int(CANVAS_W * s), int(CANVAS_H * s)
     rng = np.random.default_rng(5359)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     cx, cy = xx / s, yy / s  # canvas coordinates
 
-    # domain warping
-    wx = (fbm(h, w, 5, 4, rng) - 0.5) * 220.0 * s
-    wy = (fbm(h, w, 5, 4, rng) - 0.5) * 220.0 * s
-    base = fbm(h, w, 4, 7, rng)
-    dens = sample(base, xx + wx, yy + wy)
-    ridge_src = fbm(h, w, 9, 5, rng)
-    ridge = 1.0 - np.abs(2.0 * sample(ridge_src, xx + 1.6 * wx, yy + 1.6 * wy) - 1.0)
-    ridge = ridge ** 7
-    lanes = smoothstep(0.52, 0.75, sample(fbm(h, w, 7, 5, rng), xx - wy, yy + wx))  # dark dust lanes
-    fine = fbm(h, w, 40, 3, rng)
+    # domain-warped smoke, with thin marble veins
+    wx = (fbm(h, w, 5, 4, rng) - 0.5) * 240.0 * s
+    wy = (fbm(h, w, 5, 4, rng) - 0.5) * 240.0 * s
+    dens = sample(fbm(h, w, 4, 7, rng), xx + wx, yy + wy)
+    veins = (1.0 - np.abs(2.0 * sample(fbm(h, w, 8, 5, rng), xx + 1.7 * wx, yy + 1.7 * wy) - 1.0)) ** 10
+    fine = fbm(h, w, 60, 3, rng)
 
-    # where the gas is: big soft masses, reaching the edges so they keep relief
-    blobs = [(290, 40, 210, 1.0), (110, 140, 150, 0.55), (705, 270, 190, 1.0), (610, 430, 170, 0.7),
-             (820, 60, 160, 0.65), (40, 380, 170, 0.5), (430, 540, 230, 0.55), (480, 70, 160, 0.6),
-             (190, 470, 150, 0.55), (850, 470, 140, 0.55), (20, 60, 130, 0.45), (330, 330, 150, 0.5),
-             (560, 360, 140, 0.45), (120, 540, 140, 0.45), (720, 540, 140, 0.45)]
-    mask = np.full((h, w), 0.20, np.float32)
+    # where the smoke is: soft masses that reach the edges (relief everywhere)
+    blobs = [(300, 30, 190, 1.0), (720, 250, 190, 1.0), (860, 140, 160, 0.9), (40, 300, 170, 0.8),
+             (560, 520, 190, 0.7), (200, 470, 160, 0.6), (470, 40, 170, 0.7), (880, 470, 170, 0.8),
+             (0, 560, 180, 0.7), (120, 120, 140, 0.5), (330, 330, 160, 0.5), (620, 380, 150, 0.5)]
+    mask = np.full((h, w), 0.18, np.float32)
     for bx, by, br, bw in blobs:
         mask += bw * np.exp(-((cx - bx) ** 2 + (cy - by) ** 2) / (br * br))
-    mask = np.minimum(mask, 1.2)
+    mask = np.minimum(mask, 1.1)
+    smoke = np.clip(smoothstep(0.38, 0.85, dens) * mask, 0, 1)
+    smoke = blur(smoke, 1.2 * s) * (0.85 + 0.3 * fine)
+    ink = np.clip(0.48 * smoke + 0.5 * veins * smoothstep(0.1, 0.6, smoke), 0, 1)
 
-    d = smoothstep(0.30, 0.82, dens) * mask
-    d *= 1.0 - 0.55 * lanes * smoothstep(0.1, 0.5, d)
-    d = np.clip(d * (0.88 + 0.24 * fine), 0, 1.3)
+    paper = np.array([0.948, 0.944, 0.936])
+    rgb = paper * (1.0 - 0.012 * (fine[..., None] - 0.5))  # paper grain
+    smoke_col = np.array([0.38, 0.38, 0.40])
+    rgb = rgb * (1 - ink[..., None]) + smoke_col * ink[..., None]
 
-    rgb = ramp(d / 1.3, [(0.00, hex_rgb("#060103")), (0.15, hex_rgb("#1a030a")), (0.32, hex_rgb("#3d0612")),
-                         (0.52, hex_rgb("#7a0b1f")), (0.72, hex_rgb("#b5162f")), (0.88, hex_rgb("#e0384a")),
-                         (1.00, hex_rgb("#ff8a8a"))])
-    # violet depth in the thin parts, bright incandescent filaments in the dense parts
-    rgb += np.array([0.10, 0.0, 0.10]) * (smoothstep(0.05, 0.25, d) * (1 - smoothstep(0.25, 0.6, d)))[..., None] * 0.5
-    fil = ridge * smoothstep(0.15, 0.7, d)
-    rgb += np.array([1.0, 0.35, 0.38]) * (0.55 * fil)[..., None]
-    # bloom of the bright gas
-    lum = rgb.mean(axis=-1)
-    bloom = blur(np.clip(lum - 0.35, 0, 1), 18 * s)
-    rgb += np.array([0.9, 0.18, 0.25]) * (0.6 * bloom)[..., None]
-
-    # star dust
-    stars = np.zeros((h, w), np.float32)
-    tint = np.zeros((h, w, 3), np.float32)
-    n_small = 14000
+    # black ink specks and splatter
+    specks = np.zeros((h, w), np.float32)
+    n_small = 9000
     sx = rng.integers(0, w, n_small)
     sy = rng.integers(0, h, n_small)
-    mag = rng.power(6.0, n_small) ** 6 * 0.9 + 0.05
-    stars[sy, sx] = np.maximum(stars[sy, sx], mag)
-    tint_choice = rng.random(n_small)
-    colors = np.where(tint_choice[:, None] < 0.55, np.array([1.0, 0.92, 0.9]),
-                      np.where(tint_choice[:, None] < 0.85, np.array([1.0, 0.6, 0.66]), np.array([1.0, 0.85, 0.6])))
-    tint[sy, sx] = colors
-    halo = blur(stars, 1.2 * s) * 3.0
-    star_rgb = tint * stars[..., None] + np.array([1.0, 0.5, 0.55]) * halo[..., None] * 0.5
-
-    # brighter stars with glow and diffraction spikes
+    specks[sy, sx] = rng.power(5.0, n_small) ** 5 * 0.9 + 0.1
     big = np.zeros((h, w), np.float32)
-    for _ in range(140):
+    for _ in range(260):
         x0, y0 = int(rng.integers(0, w)), int(rng.integers(0, h))
-        big[y0, x0] = 0.5 + 0.5 * rng.random()
-    glow = blur(big, 3.0 * s) * 40.0 + blur(big, 10.0 * s) * 60.0
-    spikes = np.zeros((h, w), np.float32)
-    for _ in range(18):
-        x0, y0 = int(rng.integers(20, w - 20)), int(rng.integers(20, h - 20))
-        L = int((10 + 22 * rng.random()) * s)
-        a = 0.6 + 0.4 * rng.random()
-        for k in range(-L, L + 1):
-            fall = a * (1 - abs(k) / L) ** 2
-            spikes[y0, np.clip(x0 + k, 0, w - 1)] += fall
-            spikes[np.clip(y0 + k, 0, h - 1), x0] += fall
         big[y0, x0] = 1.0
-    spikes = blur(spikes, 0.6 * s)
-    star_rgb += np.array([1.0, 0.45, 0.5]) * np.clip(glow, 0, 1.2)[..., None] * 0.6
-    star_rgb += np.array([1.0, 0.85, 0.85]) * np.clip(spikes + big, 0, 1)[..., None]
-    rgb = 1.0 - (1.0 - np.clip(rgb, 0, 1)) * (1.0 - np.clip(star_rgb, 0, 1))  # screen blend
+    dots = np.clip(specks + blur(big, 0.9 * s) * 14.0 + blur(big, 2.2 * s) * 6.0, 0, 1)
+    rgb *= (1.0 - 0.92 * dots)[..., None]
 
-    # radial darkening at the periphery, plus calm zones behind faders and labels
+    # periphery slightly darkened (radial), calm zones behind controls and labels
     nx = (cx - CANVAS_W * 0.5) / (CANVAS_W * 0.5)
     ny = (cy - CANVAS_H * 0.46) / (CANVAS_H * 0.5)
     r = np.sqrt(nx * nx + ny * ny)
-    vignette = 1.0 - 0.62 * smoothstep(0.55, 1.25, r)
-    calm = np.ones((h, w), np.float32)
-    for (x0, y0, x1, y1) in [(28, 255, 240, 505), (620, 255, 832, 505), (12, 50, 180, 108), (680, 50, 848, 108)]:
-        inside = smoothstep(-24, 0, np.minimum.reduce([cx - x0, x1 - cx, cy - y0, y1 - cy]))
-        calm *= 1.0 - 0.32 * inside
-    rgb *= (vignette * calm)[..., None]
-    save_rgb(os.path.join(OUT, "nebula.png"), rgb)
+    vignette = 1.0 - 0.16 * smoothstep(0.6, 1.3, r)
+    rgb *= vignette[..., None]
+    calm = np.zeros((h, w), np.float32)
+    for (x0, y0, x1, y1) in [(40, 270, 230, 500), (630, 270, 820, 500)]:
+        calm = np.maximum(calm, smoothstep(-70, 30, np.minimum.reduce([cx - x0, x1 - cx, cy - y0, y1 - cy])))
+    calm = blur(calm, 20 * s)
+    rgb = rgb * (1 - 0.3 * calm[..., None]) + paper * 0.3 * calm[..., None]
+    save_rgb(os.path.join(OUT, "background.png"), rgb)
 
 
 # --------------------------------------------------------------------------------------
@@ -399,7 +365,7 @@ def make_ring():
     scale_len = np.where(tick5, 4.2, 2.4)
     scale_ticks = fine_tick & (r > R_BAND_IN + 1.8) & (r < R_BAND_IN + 1.8 + scale_len)
     hgt += 0.5 * scale_ticks * pl
-    gold = np.maximum(gold, scale_ticks * pl)
+    scale_ink = scale_ticks.astype(np.float32) * pl
 
     # dense raised glyphs: runes, zodiac, planets, stars
     glyph_mask = Image.new("L", (size, size), 0)
@@ -442,7 +408,7 @@ def make_ring():
     gm = np.asarray(glyph_mask, np.float32) / 255.0
     gm_soft = blur(gm, 0.35 * sc)
     hgt += 1.1 * gm_soft * pl
-    gold = np.maximum(gold, np.clip(gm * 1.3, 0, 1) * pl)
+    glyph = np.clip(gm * 1.3, 0, 1) * pl  # black ink relief on the light band
 
     # brushing: concentric micro-grooves (anisotropic), plus aged surface
     rr_lines = np.interp(r * 22.0, np.arange(0, R_IMAGE * 22.0 + 2), rng.random(int(R_IMAGE * 22.0) + 2)).astype(np.float32)
@@ -457,26 +423,32 @@ def make_ring():
     _, spec_wide = shade(n, 8.0)
     ao = np.clip(1.0 - 1.6 * np.clip(blur(hgt, 1.2 * sc) - hgt, 0, None), 0.35, 1.0)
 
-    gold_rgb = ramp(diff * (0.82 + 0.25 * age), [(0.0, hex_rgb("#1e1206")), (0.25, hex_rgb("#4a2f10")),
-                                                  (0.5, hex_rgb("#8c6326")), (0.72, hex_rgb("#c69a4e")),
-                                                  (0.88, hex_rgb("#ebcd88")), (1.0, hex_rgb("#fff0c4"))])
-    gold_rgb += (np.array([1.0, 0.93, 0.75]) * (0.85 * spec + 0.18 * spec_wide)[..., None])
-    gold_rgb *= (ao * (1.0 - 0.35 * pits))[..., None]
-    gold_rgb *= (0.86 + 0.14 * age)[..., None]  # tarnish
+    # gunmetal / dark steel
+    metal_rgb = ramp(diff * (0.85 + 0.2 * age), [(0.0, hex_rgb("#070708")), (0.35, hex_rgb("#151618")),
+                                                 (0.6, hex_rgb("#2c2d31")), (0.8, hex_rgb("#4f5157")),
+                                                 (0.93, hex_rgb("#80838a")), (1.0, hex_rgb("#c4c7cc"))])
+    metal_rgb += np.array([0.95, 0.97, 1.0]) * (0.55 * spec + 0.06 * spec_wide)[..., None]
+    metal_rgb *= (ao * (1.0 - 0.3 * pits))[..., None]
+    metal_rgb *= (0.9 + 0.1 * age)[..., None]
 
-    plate_rgb = np.array([0.075, 0.03, 0.022]) + np.array([0.20, 0.10, 0.06]) * diff[..., None]
-    plate_rgb += np.array([0.35, 0.25, 0.15]) * (0.25 * spec)[..., None]
-    plate_rgb *= (0.75 + 0.35 * age)[..., None] * ao[..., None]
+    # light enamelled band, slightly aged, with black raised glyphs and degree scale
+    band_rgb = np.array([0.90, 0.895, 0.885]) * (0.82 + 0.2 * diff)[..., None]
+    band_rgb += np.array([1.0, 1.0, 1.0]) * (0.12 * spec)[..., None]
+    band_rgb *= (0.94 + 0.06 * age)[..., None] * ao[..., None]
+    ink_rgb = np.array([0.07, 0.07, 0.075]) + np.array([0.35, 0.35, 0.37]) * (0.5 * spec)[..., None] \
+        + np.array([0.10, 0.10, 0.11]) * diff[..., None]
+    dark = np.clip(np.maximum(glyph, scale_ink), 0, 1)[..., None]
+    band_rgb = band_rgb * (1 - dark) + ink_rgb * dark
 
     g = np.clip(gold, 0, 1)[..., None]
-    rgb = plate_rgb * (1 - g) + gold_rgb * g
-    alpha = np.clip(np.maximum(gold, plate * 0.96), 0, 1)
+    rgb = band_rgb * (1 - g) + metal_rgb * g
+    alpha = np.clip(np.maximum(gold, plate), 0, 1)
 
     # soft drop shadow under the metal (offset down-right)
     sh = blur(alpha, 2.5 * sc)
     off = int(round(2.5 * sc))
     sh = np.pad(sh, ((off, 0), (off, 0)))[:size, :size]
-    sh_a = 0.55 * sh * (1 - alpha)
+    sh_a = 0.35 * sh * (1 - alpha)
     out_a = alpha + sh_a
     rgb = (rgb * alpha[..., None]) / np.maximum(out_a, 1e-6)[..., None]
     save_rgba(os.path.join(OUT, "astrolabe_ring.png"), rgb, out_a, SUPERSAMPLE)
@@ -514,15 +486,15 @@ def make_bezel():
     hgt *= body
     n = normals_from_height(hgt, 1.0 / sc)
     diff, spec = shade(n, 60.0)
-    rgb = ramp(diff, [(0.0, hex_rgb("#22140a")), (0.3, hex_rgb("#5e3f16")), (0.6, hex_rgb("#b48a42")),
-                      (0.85, hex_rgb("#efd08a")), (1.0, hex_rgb("#fff4cf"))])
-    rgb += np.array([1.0, 0.95, 0.8]) * (0.9 * spec)[..., None]
+    rgb = ramp(diff, [(0.0, hex_rgb("#060607")), (0.4, hex_rgb("#17181b")), (0.7, hex_rgb("#33353a")),
+                      (0.9, hex_rgb("#6c6f76")), (1.0, hex_rgb("#b9bcc2"))])
+    rgb += np.array([0.95, 0.97, 1.0]) * (0.6 * spec)[..., None]
     alpha = body
     sh = blur(alpha, 2.0 * sc)
     off = int(round(2.0 * sc))
     sh = np.pad(sh, ((off, 0), (off, 0)))[:size, :size]
     # shadow also falls inside, onto the gem edge
-    sh_a = 0.6 * sh * (1 - alpha)
+    sh_a = 0.45 * sh * (1 - alpha)
     out_a = alpha + sh_a
     rgb = (rgb * alpha[..., None]) / np.maximum(out_a, 1e-6)[..., None]
     save_rgba(os.path.join(OUT, "knob_bezel.png"), rgb, out_a, SUPERSAMPLE)
@@ -584,8 +556,8 @@ def gem_frame(palette, rotation, sc, size, dx, dy, r, ang):
     lum = np.clip(internal * (0.78 + 0.3 * diff), 0, 1.2)
     rgb = ramp(lum / 1.2, palette)
     edge_light = 0.35 + 0.65 * np.clip(diff, 0, 1)
-    rgb += np.array([1.0, 0.72, 0.78]) * (0.55 * edge * edge_light)[..., None]
-    rgb += np.array([1.0, 0.92, 0.95]) * (0.9 * spec)[..., None]
+    rgb += np.array(EDGE_TINT) * (0.55 * edge * edge_light)[..., None]
+    rgb += np.array([1.0, 0.97, 0.97]) * (0.9 * spec)[..., None]
     rgb *= (1.0 - 0.55 * smoothstep(0.86, 1.0, rn))[..., None]  # fresnel darkening at the girdle
     return rgb, inside
 
@@ -606,6 +578,27 @@ def make_gem(name, palette):
     path = os.path.join(OUT, name)
     strip.save(path, optimize=True)
     print(f"  {name:22s} {strip.width}x{strip.height} ({GEM_FRAMES} frames)  {os.path.getsize(path) / 1024:.0f} KiB")
+
+
+def make_cap(name):
+    """Glossy black steel dome with fine concentric turning rings (HARMONICS), one frame."""
+    sc, size, dx, dy, r, ang = knob_grid()
+    rng = np.random.default_rng(77)
+    R = GEM_R + 0.6
+    aa = 1.0 / sc
+    inside = 1 - smoothstep(R - aa, R + aa, r)
+    rn = np.clip(r / R, 0, 1)
+    hgt = 7.0 * np.sqrt(np.clip(1 - rn ** 2, 0, 1)) ** 0.5
+    rings = np.interp(r * 6.0, np.arange(0, KNOB_HALF * 6 + 2), rng.random(int(KNOB_HALF * 6) + 2)).astype(np.float32)
+    hgt += 0.06 * (rings - 0.5) + 0.25 * np.exp(-((rn - 0.84) / 0.025) ** 2)  # turned ring near the edge
+    n = normals_from_height(hgt * inside, 1.0 / sc)
+    diff, spec = shade(n, 90.0)
+    _, wide = shade(n, 10.0)
+    rgb = ramp(diff * 0.9, [(0.0, hex_rgb("#030304")), (0.5, hex_rgb("#141518")), (0.8, hex_rgb("#34363b")),
+                           (1.0, hex_rgb("#6d7077"))])
+    rgb += np.array([0.95, 0.97, 1.0]) * (0.8 * spec + 0.10 * wide)[..., None]
+    rgb *= (1.0 - 0.5 * smoothstep(0.9, 1.0, rn))[..., None]
+    save_rgba(os.path.join(OUT, name), rgb, inside, SUPERSAMPLE)
 
 
 def make_gloss():
@@ -631,7 +624,7 @@ def make_gloss():
     a_dark = np.clip(dark_rim * 0.45, 0, 1)
     # composite white highlights, pink rim light and dark fresnel into one premult-free RGBA
     alpha = 1 - (1 - a_white) * (1 - a_rim) * (1 - a_dark)
-    col = (np.array([1, 1, 1]) * a_white[..., None] + np.array([1.0, 0.55, 0.62]) * a_rim[..., None]
+    col = (np.array([1, 1, 1]) * a_white[..., None] + np.array([0.85, 0.86, 0.9]) * a_rim[..., None]
            + np.array([0.05, 0.0, 0.01]) * a_dark[..., None]) / np.maximum(a_white + a_rim + a_dark, 1e-6)[..., None]
     rgb = col
     save_rgba(os.path.join(OUT, "knob_gloss.png"), rgb, alpha * inside, SUPERSAMPLE)
@@ -654,25 +647,27 @@ def make_plasma(name, seed):
     ridge = (1 - np.abs(2 * sample(fbm(size, size, 12, 4, rng), xx + 1.5 * wx, yy + 1.5 * wy) - 1)) ** 6
     ann = smoothstep(70, 92, r) * (1 - smoothstep(140, 158, r))
     dens = np.clip(smoothstep(0.35, 0.8, wisps) * 0.8 + ridge * 0.7, 0, 1) * ann
-    rgb = ramp(dens, [(0.0, hex_rgb("#5a0614")), (0.4, hex_rgb("#b0142e")), (0.75, hex_rgb("#ff4d4a")),
-                      (1.0, hex_rgb("#ffd2a0"))])
-    alpha = np.clip(dens * 0.85 + blur(dens, 6 * s) * 0.4, 0, 1)
+    rgb = ramp(dens, PLASMA_COLORS[seed % 2])
+    alpha = np.clip(dens * 0.75 + blur(dens, 6 * s) * 0.35, 0, 1)
     save_rgba(os.path.join(OUT, name), rgb, alpha)
 
 
-RUBY = [(0.0, hex_rgb("#2a000a")), (0.25, hex_rgb("#6e0218")), (0.5, hex_rgb("#c00c30")),
-        (0.72, hex_rgb("#f03050")), (0.88, hex_rgb("#ff7d92")), (1.0, hex_rgb("#ffd6de"))]
-GARNET = [(0.0, hex_rgb("#160006")), (0.28, hex_rgb("#4a0212")), (0.55, hex_rgb("#900a26")),
-          (0.78, hex_rgb("#d22a46")), (0.92, hex_rgb("#f2788a")), (1.0, hex_rgb("#ffc8d0"))]
+SMOKY = [(0.0, hex_rgb("#050505")), (0.25, hex_rgb("#17151a")), (0.5, hex_rgb("#352f35")),
+         (0.72, hex_rgb("#62585e")), (0.88, hex_rgb("#a39aa0")), (1.0, hex_rgb("#f2eef0"))]
+EDGE_TINT = [0.95, 0.92, 0.95]
+PLASMA_COLORS = [
+    [(0.0, hex_rgb("#a4a4a8")), (0.5, hex_rgb("#5a5a5e")), (1.0, hex_rgb("#1c1c1f"))],  # ink smoke
+    [(0.0, hex_rgb("#d9a0a4")), (0.5, hex_rgb("#c4303c")), (1.0, hex_rgb("#7a0a14"))],  # red mist
+]
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     print("SYMBIOSIS textures ->", os.path.abspath(OUT))
-    make_nebula()
+    make_background()
     make_ring()
     make_bezel()
-    make_gem("knob_gem_ruby.png", RUBY)
-    make_gem("knob_gem_garnet.png", GARNET)
+    make_gem("knob_gem_smoke.png", SMOKY)
+    make_cap("knob_cap.png")
     make_gloss()
     make_plasma("plasma_a.png", 808)
-    make_plasma("plasma_b.png", 1606)
+    make_plasma("plasma_b.png", 1607)

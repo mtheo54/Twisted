@@ -54,25 +54,26 @@ const CPoint kOrbit (430, 245); // centre of the astrolabe
 // radii of the astrolabe (canvas units)
 constexpr double kWaveMin = 96.0;   // waves: level 0
 constexpr double kWaveSpan = 52.0;  // waves: level 1 at 148
-constexpr double kDiscR = 155.0;    // dark inner disc
-constexpr double kRingIn = 158.0;   // thick gold ring
+constexpr double kDiscR = 155.0;    // light inner disc
+constexpr double kRingIn = 158.0;   // thick gunmetal ring
 constexpr double kRingOut = 183.0;
-constexpr double kTeethOut = 192.0; // toothed ring
-constexpr double kZodiacIn = 200.0; // zodiac band
-constexpr double kZodiacOut = 229.0;
 
 //------------------------------------------------------------------------
+// Ivory & ink: paper, charcoal ink, gunmetal, black chrome, red accents
 namespace Pal {
-const CColor text (0xEA, 0xDC, 0xC4, 0xFF);
-const CColor gold (0xD8, 0xB0, 0x6A, 0xFF);
-const CColor goldLight (0xF6, 0xDE, 0x9C, 0xFF);
-const CColor goldLine (0xB8, 0x8E, 0x4E, 0xFF);
-const CColor red (0xFF, 0x3A, 0x55, 0xFF);
-const CColor redGlow (0xE0, 0x10, 0x38, 0xFF);
-const CColor orange (0xFF, 0xA8, 0x4A, 0xFF);
-const CColor orangeGlow (0xFF, 0x62, 0x0E, 0xFF);
-const CColor ledRed (0xFF, 0x55, 0x55, 0xFF);
-const CColor ledGold (0xFF, 0xC8, 0x5A, 0xFF);
+const CColor ink (0x24, 0x24, 0x26, 0xFF);      // text and line art
+const CColor inkSoft (0x55, 0x55, 0x59, 0xFF);
+const CColor paper (0xF1, 0xF0, 0xEE, 0xFF);
+const CColor paperShade (0xDC, 0xDB, 0xD8, 0xFF);
+const CColor steel (0x8E, 0x90, 0x95, 0xFF);
+const CColor steelLight (0xE4, 0xE5, 0xE8, 0xFF);
+const CColor steelDark (0x2B, 0x2C, 0x2F, 0xFF);
+const CColor red (0xD8, 0x1C, 0x2A, 0xFF);      // accent
+const CColor redGlow (0xE0, 0x14, 0x24, 0xFF);
+const CColor redDeep (0x8A, 0x08, 0x12, 0xFF);
+const CColor ledRed (0xFF, 0x3C, 0x3C, 0xFF);
+const CColor ledWhite (0xF4, 0xF6, 0xFA, 0xFF);
+const CColor white (0xFF, 0xFF, 0xFF, 0xFF);
 const CColor black (0x00, 0x00, 0x00, 0xFF);
 } // namespace Pal
 
@@ -168,45 +169,63 @@ void glow (CDrawContext* ctx, const CPoint& c, double r, const CColor& color, do
 	}
 }
 
-/** Brushed gold: diagonal gradient over the bounds of the path. */
-void fillGold (CDrawContext* ctx, CGraphicsPath* path, const CRect& bounds, bool evenOdd = false, double bright = 1.0)
+enum class Metal
+{
+	Gunmetal, // dark steel: ring, gears, frames of the controls
+	Silver    // brushed aluminium: panel rim, bottom plate
+};
+
+/** Brushed metal: diagonal gradient over the bounds of the path. */
+void fillMetal (CDrawContext* ctx, CGraphicsPath* path, const CRect& bounds, bool evenOdd = false,
+                Metal metal = Metal::Gunmetal)
 {
 	GradientColorStopMap stops;
-	stops.emplace (0.00, mix (Pal::black, CColor (0x5A, 0x3C, 0x16, 0xFF), bright));
-	stops.emplace (0.18, mix (Pal::black, CColor (0xEC, 0xCC, 0x84, 0xFF), bright));
-	stops.emplace (0.34, mix (Pal::black, CColor (0x9A, 0x6C, 0x2E, 0xFF), bright));
-	stops.emplace (0.50, mix (Pal::black, CColor (0x6A, 0x47, 0x1A, 0xFF), bright));
-	stops.emplace (0.66, mix (Pal::black, CColor (0xD6, 0xAE, 0x62, 0xFF), bright));
-	stops.emplace (0.84, mix (Pal::black, CColor (0x5E, 0x3E, 0x16, 0xFF), bright));
-	stops.emplace (1.00, mix (Pal::black, CColor (0xB8, 0x8C, 0x48, 0xFF), bright));
+	if (metal == Metal::Gunmetal)
+	{
+		stops.emplace (0.00, CColor (0x26, 0x27, 0x2A, 0xFF));
+		stops.emplace (0.18, CColor (0x9A, 0x9D, 0xA3, 0xFF));
+		stops.emplace (0.34, CColor (0x45, 0x47, 0x4C, 0xFF));
+		stops.emplace (0.50, CColor (0x18, 0x19, 0x1B, 0xFF));
+		stops.emplace (0.66, CColor (0x7C, 0x7F, 0x85, 0xFF));
+		stops.emplace (0.84, CColor (0x22, 0x23, 0x26, 0xFF));
+		stops.emplace (1.00, CColor (0x5C, 0x5E, 0x63, 0xFF));
+	}
+	else
+	{
+		stops.emplace (0.00, CColor (0x9C, 0x9E, 0xA2, 0xFF));
+		stops.emplace (0.20, CColor (0xF6, 0xF6, 0xF7, 0xFF));
+		stops.emplace (0.45, CColor (0xC4, 0xC6, 0xCA, 0xFF));
+		stops.emplace (0.65, CColor (0xE9, 0xEA, 0xEC, 0xFF));
+		stops.emplace (1.00, CColor (0xA6, 0xA8, 0xAC, 0xFF));
+	}
 	if (auto g = VSTGUI::owned (CGradient::create (stops)))
 		ctx->fillLinearGradient (path, *g, bounds.getTopLeft (), bounds.getBottomRight (), evenOdd);
 }
 
-void goldAnnulus (CDrawContext* ctx, const CPoint& c, double rIn, double rOut, double bright = 1.0)
+void metalAnnulus (CDrawContext* ctx, const CPoint& c, double rIn, double rOut)
 {
 	if (auto p = newPath (ctx))
 	{
 		p->addEllipse (circleRect (c, rOut));
 		p->addEllipse (circleRect (c, rIn));
-		fillGold (ctx, p, circleRect (c, rOut), true, bright);
+		fillMetal (ctx, p, circleRect (c, rOut), true);
 	}
-	strokeCircle (ctx, c, rOut, CColor (0x2A, 0x18, 0x08, 0xC0), 0.8);
-	strokeCircle (ctx, c, rIn, CColor (0x2A, 0x18, 0x08, 0xC0), 0.8);
+	strokeCircle (ctx, c, rOut, CColor (0x08, 0x08, 0x09, 0xC0), 0.8);
+	strokeCircle (ctx, c, rIn, CColor (0x08, 0x08, 0x09, 0xC0), 0.8);
 }
 
-/** Polished gold sphere (rivets, ornaments). */
-void goldSphere (CDrawContext* ctx, const CPoint& c, double r)
+/** Black chrome sphere (rivets, ornaments, screws). */
+void metalSphere (CDrawContext* ctx, const CPoint& c, double r)
 {
-	fillCircle (ctx, CPoint (c.x + r * 0.15, c.y + r * 0.25), r * 1.08, CColor (0, 0, 0, 0x90));
+	fillCircle (ctx, CPoint (c.x + r * 0.15, c.y + r * 0.25), r * 1.1, CColor (0, 0, 0, 0x60));
 	if (auto p = newPath (ctx))
 	{
 		p->addEllipse (circleRect (c, r));
 		GradientColorStopMap stops;
-		stops.emplace (0.0, CColor (0xFF, 0xF4, 0xC8, 0xFF));
-		stops.emplace (0.3, CColor (0xE6, 0xC2, 0x7A, 0xFF));
-		stops.emplace (0.75, CColor (0x8A, 0x61, 0x28, 0xFF));
-		stops.emplace (1.0, CColor (0x3A, 0x26, 0x0E, 0xFF));
+		stops.emplace (0.0, CColor (0xF4, 0xF6, 0xF8, 0xFF));
+		stops.emplace (0.25, CColor (0x9A, 0x9D, 0xA3, 0xFF));
+		stops.emplace (0.6, CColor (0x2B, 0x2D, 0x31, 0xFF));
+		stops.emplace (1.0, CColor (0x0A, 0x0A, 0x0B, 0xFF));
 		if (auto g = VSTGUI::owned (CGradient::create (stops)))
 			ctx->fillRadialGradient (p, *g, CPoint (c.x - r * 0.35, c.y - r * 0.4), r * 1.6);
 	}
@@ -230,17 +249,16 @@ struct UiFonts
  * Textures rendered offline by tools/generate_assets.py, shipped in <bundle>/Resources.
  * Each PNG has a fixed pixel density (pixels per canvas unit), declared to VSTGUI so the
  * bitmaps draw at their canvas size and stay sharp at 120 % zoom and on HiDPI screens.
- * A missing texture falls back to the vector drawing.
+ * A missing texture falls back to a plain vector drawing.
  */
-constexpr double kAssetScaleNebula = 2.0;
+constexpr double kAssetScaleBackground = 2.0;
 constexpr double kAssetScaleRing = 2.4;
 constexpr double kAssetScaleKnob = 3.0;
 constexpr double kAssetScalePlasma = 2.0;
 constexpr double kRingImageRadius = 245.0;  // half size of astrolabe_ring.png, canvas units
 constexpr double kKnobImageRadius = 52.0;   // half size of the knob textures
 constexpr double kPlasmaImageRadius = 160.0;
-constexpr int kGemFrames = 16;          // filmstrip frames of the gem textures
-constexpr double kGemPeriod = 45.0;     // degrees: the cut repeats every 45 degrees
+constexpr double kGemPeriod = 45.0;         // degrees: the cut repeats every 45 degrees
 
 SharedPointer<CBitmap> loadTexture (const char* name, double scale)
 {
@@ -254,14 +272,14 @@ SharedPointer<CBitmap> loadTexture (const char* name, double scale)
 
 struct UiTextures
 {
-	SharedPointer<CBitmap> nebula = loadTexture ("nebula.png", kAssetScaleNebula);
+	SharedPointer<CBitmap> background = loadTexture ("background.png", kAssetScaleBackground);
 	SharedPointer<CBitmap> ring = loadTexture ("astrolabe_ring.png", kAssetScaleRing);
 	SharedPointer<CBitmap> bezel = loadTexture ("knob_bezel.png", kAssetScaleKnob);
-	SharedPointer<CBitmap> ruby = loadTexture ("knob_gem_ruby.png", kAssetScaleKnob);
-	SharedPointer<CBitmap> garnet = loadTexture ("knob_gem_garnet.png", kAssetScaleKnob);
+	SharedPointer<CBitmap> crystal = loadTexture ("knob_gem_smoke.png", kAssetScaleKnob); // filmstrip
+	SharedPointer<CBitmap> cap = loadTexture ("knob_cap.png", kAssetScaleKnob);
 	SharedPointer<CBitmap> gloss = loadTexture ("knob_gloss.png", kAssetScaleKnob);
-	SharedPointer<CBitmap> plasmaA = loadTexture ("plasma_a.png", kAssetScalePlasma);
-	SharedPointer<CBitmap> plasmaB = loadTexture ("plasma_b.png", kAssetScalePlasma);
+	SharedPointer<CBitmap> plasmaA = loadTexture ("plasma_a.png", kAssetScalePlasma); // ink smoke
+	SharedPointer<CBitmap> plasmaB = loadTexture ("plasma_b.png", kAssetScalePlasma); // red mist
 };
 
 UiFonts* fontsInstance = nullptr;
@@ -286,6 +304,13 @@ void releaseFonts ()
 	}
 }
 UiTextures& textures () { return *texturesInstance; }
+UiFonts& fonts () { return *fontsInstance; }
+
+/** Number of square cells of a vertical filmstrip. */
+int filmstripFrames (const CBitmap* bitmap)
+{
+	return std::max (1, static_cast<int> (std::lround (bitmap->getHeight () / bitmap->getWidth ())));
+}
 
 /**
  * Draws a texture centred on c (no rotation: VSTGUI's Cairo backend clips rotated bitmaps
@@ -298,8 +323,6 @@ void drawTexture (CDrawContext* ctx, CBitmap* bitmap, const CPoint& c, double ha
 	ctx->setBitmapInterpolationQuality (BitmapInterpolationQuality::kHigh);
 	bitmap->draw (ctx, circleRect (c, halfSize), CPoint (0, frame * 2.0 * halfSize), opacity);
 }
-
-UiFonts& fonts () { return *fontsInstance; }
 
 void drawCentered (CDrawContext* ctx, const std::string& s, CCoord cx, CCoord baseline)
 {
@@ -319,12 +342,13 @@ void drawTracked (CDrawContext* ctx, const std::string& s, CPoint origin, CCoord
 	}
 }
 
+/** Charcoal label, lightly embossed into the paper. */
 void drawLabel (CDrawContext* ctx, const std::string& s, CCoord cx, CCoord baseline)
 {
 	ctx->setFont (fonts ().label);
-	ctx->setFontColor (CColor (0, 0, 0, 0xB0));
-	drawCentered (ctx, s, cx + 0.6, baseline + 0.8);
-	ctx->setFontColor (Pal::text);
+	ctx->setFontColor (CColor (0xFF, 0xFF, 0xFF, 0xC0));
+	drawCentered (ctx, s, cx + 0.4, baseline + 0.8);
+	ctx->setFontColor (Pal::ink);
 	drawCentered (ctx, s, cx, baseline);
 }
 
@@ -368,8 +392,7 @@ SharedPointer<CBitmap> renderToCache (CFrame* frame, const CPoint& size, Paint&&
 	return off->getBitmap ();
 }
 
-//------------------------------------------------------------------------
-// Procedural crimson nebula (domain-warped value noise), rendered once into a bitmap.
+/** Smooth value noise (halftone field of the orbit). */
 float hash2 (int x, int y)
 {
 	uint32_t h = static_cast<uint32_t> (x) * 374761393u + static_cast<uint32_t> (y) * 668265263u;
@@ -387,201 +410,7 @@ float valueNoise (float x, float y)
 	return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-float fbm (float x, float y, int octaves)
-{
-	float sum = 0.f, amp = 0.5f, norm = 0.f;
-	for (int o = 0; o < octaves; ++o)
-	{
-		sum += amp * valueNoise (x, y);
-		norm += amp;
-		x = x * 2.03f + 17.1f;
-		y = y * 2.03f + 9.3f;
-		amp *= 0.5f;
-	}
-	return sum / norm;
-}
-
-SharedPointer<CBitmap> makeNebula (double scale)
-{
-	const double bitmapScale = std::max (0.5, scale * 0.5); // the nebula is soft: half resolution
-	auto bitmap = makeOwned<CBitmap> (CPoint (kW, kH), bitmapScale);
-	auto access = VSTGUI::owned (CBitmapPixelAccess::create (bitmap, true));
-	if (!access)
-		return nullptr;
-	const uint32_t pw = access->getBitmapWidth (), ph = access->getBitmapHeight ();
-
-	struct Blob
-	{
-		float x, y, r, w;
-	};
-	static const Blob blobs[] = {{290, 30, 190, 1.0f},  {120, 130, 110, 0.4f},  {705, 270, 170, 1.0f},
-	                             {610, 420, 150, 0.7f}, {800, 70, 120, 0.5f},  {80, 360, 140, 0.35f},
-	                             {430, 520, 200, 0.5f}, {470, 60, 140, 0.6f},  {200, 470, 120, 0.35f}};
-	auto smooth = [] (float e0, float e1, float x) {
-		const float t = std::clamp ((x - e0) / (e1 - e0), 0.f, 1.f);
-		return t * t * (3.f - 2.f * t);
-	};
-	for (uint32_t py = 0; py < ph; ++py)
-	{
-		for (uint32_t px = 0; px < pw; ++px)
-		{
-			const float x = static_cast<float> (px) * static_cast<float> (kW) / static_cast<float> (pw);
-			const float y = static_cast<float> (py) * static_cast<float> (kH) / static_cast<float> (ph);
-			const float qx = fbm (x * 0.006f, y * 0.006f, 4);
-			const float qy = fbm (x * 0.006f + 5.2f, y * 0.006f + 1.3f, 4);
-			const float n = fbm (x * 0.0045f + 1.8f * qx, y * 0.0045f + 1.8f * qy, 6);
-			const float ridgeBase = fbm (x * 0.014f + 3.f * qx, y * 0.014f + 3.f * qy, 4);
-			const float ridge = std::pow (1.f - std::abs (2.f * ridgeBase - 1.f), 9.f);
-
-			float mask = 0.08f;
-			for (const auto& b : blobs)
-			{
-				const float dx = x - b.x, dy = y - b.y;
-				mask += b.w * std::exp (-(dx * dx + dy * dy) / (b.r * b.r));
-			}
-			mask = std::min (mask, 1.15f);
-
-			const float d = smooth (0.30f, 0.80f, n) * mask;
-			float r = 9.f + 62.f * d + 105.f * d * d;
-			float g = 2.f + 4.f * d + 10.f * d * d;
-			float bl = 4.f + 12.f * d + 24.f * d * d;
-			r += 110.f * ridge * d;
-			g += 22.f * ridge * d;
-			bl += 40.f * ridge * d;
-
-			// vignette
-			const float vx = (x / static_cast<float> (kW) - 0.5f) * 2.f, vy = (y / static_cast<float> (kH) - 0.45f) * 2.f;
-			const float vig = std::clamp (1.1f - 0.55f * (vx * vx + vy * vy), 0.35f, 1.f);
-			access->setPosition (px, py);
-			access->setColor (CColor (static_cast<uint8_t> (std::clamp (r * vig, 0.f, 255.f)),
-			                          static_cast<uint8_t> (std::clamp (g * vig, 0.f, 255.f)),
-			                          static_cast<uint8_t> (std::clamp (bl * vig, 0.f, 255.f)), 255));
-		}
-	}
-	return bitmap;
-}
-
-//------------------------------------------------------------------------
-// Zodiac glyphs, drawn as strokes in a 10 x 10 box centred on (0, 0).
-void zodiacGlyph (CGraphicsPath* p, int sign)
-{
-	auto arc = [p] (double cx, double cy, double r, double a0, double a1) {
-		const int steps = 10;
-		for (int i = 0; i <= steps; ++i)
-		{
-			const CPoint q = polar (CPoint (cx, cy), r, a0 + (a1 - a0) * i / steps);
-			i == 0 ? p->beginSubpath (q) : p->addLine (q);
-		}
-	};
-	switch (sign)
-	{
-		case 0: // aries
-			p->beginSubpath (0, 4.5);
-			p->addLine (0, -1);
-			arc (-2.2, -1.5, 2.2, 0, -200);
-			p->beginSubpath (0, -1);
-			arc (2.2, -1.5, 2.2, 180, 380);
-			break;
-		case 1: // taurus
-			p->addEllipse (CRect (-2.8, -0.8, 2.8, 4.8));
-			arc (0, -5.2, 4.2, 150, 30);
-			break;
-		case 2: // gemini
-			p->beginSubpath (-2, -3.5);
-			p->addLine (-2, 3.5);
-			p->beginSubpath (2, -3.5);
-			p->addLine (2, 3.5);
-			p->beginSubpath (-4, -4.5);
-			p->addBezierCurve (-1.5, -3.2, 1.5, -3.2, 4, -4.5);
-			p->beginSubpath (-4, 4.5);
-			p->addBezierCurve (-1.5, 3.2, 1.5, 3.2, 4, 4.5);
-			break;
-		case 3: // cancer
-			p->addEllipse (CRect (-4, -3.5, -1.4, -0.9));
-			p->addEllipse (CRect (1.4, 0.9, 4, 3.5));
-			arc (0, 1, 4.5, 200, 330);
-			arc (0, -1, 4.5, 20, 150);
-			break;
-		case 4: // leo
-			p->addEllipse (CRect (-4.2, 0, -1.2, 3));
-			p->beginSubpath (-1.6, 0.6);
-			p->addBezierCurve (-2.5, -4.5, 3.5, -5, 1.5, -0.5);
-			p->addBezierCurve (0.2, 2.2, 2, 4.8, 4.2, 3);
-			break;
-		case 5: // virgo
-			p->beginSubpath (-4, -3);
-			p->addLine (-4, 3.5);
-			p->beginSubpath (-4, -2);
-			p->addBezierCurve (-3, -4, -1.5, -4, -1.5, -2);
-			p->addLine (-1.5, 3.5);
-			p->beginSubpath (-1.5, -2);
-			p->addBezierCurve (-0.5, -4, 1, -4, 1, -2);
-			p->addLine (1, 2.5);
-			p->addBezierCurve (1, 5, 4.5, 4, 3.5, 1);
-			p->addLine (1, 4.8);
-			break;
-		case 6: // libra
-			p->beginSubpath (-4.5, 3.5);
-			p->addLine (4.5, 3.5);
-			p->beginSubpath (-4.5, 1);
-			p->addLine (-1.8, 1);
-			p->addBezierCurve (-3.2, -3.5, 3.2, -3.5, 1.8, 1);
-			p->addLine (4.5, 1);
-			break;
-		case 7: // scorpio
-			p->beginSubpath (-4.5, -3);
-			p->addLine (-4.5, 3.5);
-			p->beginSubpath (-4.5, -2);
-			p->addBezierCurve (-3.5, -4, -2, -4, -2, -2);
-			p->addLine (-2, 3.5);
-			p->beginSubpath (-2, -2);
-			p->addBezierCurve (-1, -4, 0.5, -4, 0.5, -2);
-			p->addLine (0.5, 3);
-			p->addLine (2.5, 4.5);
-			p->addLine (4.5, 2.5);
-			p->beginSubpath (2.3, 2.5);
-			p->addLine (4.5, 2.5);
-			p->addLine (4.5, 4.7);
-			break;
-		case 8: // sagittarius
-			p->beginSubpath (-4, 4);
-			p->addLine (4, -4);
-			p->beginSubpath (0.5, -4);
-			p->addLine (4, -4);
-			p->addLine (4, -0.5);
-			p->beginSubpath (-3, -1);
-			p->addLine (1, 3);
-			break;
-		case 9: // capricorn
-			p->beginSubpath (-4.5, -3);
-			p->addLine (-2.5, 3);
-			p->addLine (-0.5, -3);
-			p->addBezierCurve (0.5, 2, 1, 4.5, 3, 3.5);
-			p->addBezierCurve (5, 2.5, 3.5, -0.5, 1.5, 1);
-			p->addBezierCurve (0.5, 2.5, -0.5, 4.5, -2, 4.8);
-			break;
-		case 10: // aquarius
-			p->beginSubpath (-4.5, -0.5);
-			p->addLine (-2.2, -2.5);
-			p->addLine (0, -0.5);
-			p->addLine (2.2, -2.5);
-			p->addLine (4.5, -0.5);
-			p->beginSubpath (-4.5, 3);
-			p->addLine (-2.2, 1);
-			p->addLine (0, 3);
-			p->addLine (2.2, 1);
-			p->addLine (4.5, 3);
-			break;
-		default: // pisces
-			arc (-6.5, 0, 4.5, -45, 45);
-			arc (6.5, 0, 4.5, 135, 225);
-			p->beginSubpath (-3.5, 0);
-			p->addLine (3.5, 0);
-			break;
-	}
-}
-
-/** Four-pointed sparkle. */
+/** Four-pointed star. */
 void sparkle (CDrawContext* ctx, const CPoint& c, double r, const CColor& color)
 {
 	if (auto p = newPath (ctx))
@@ -601,10 +430,10 @@ void sparkle (CDrawContext* ctx, const CPoint& c, double r, const CColor& color)
 	}
 }
 
-/** Toothed gold gear with spokes. */
+/** Toothed gunmetal gear with spokes. */
 void gear (CDrawContext* ctx, const CPoint& c, double r, int teeth, double rotation)
 {
-	fillCircle (ctx, CPoint (c.x + 2, c.y + 3), r + 1, CColor (0, 0, 0, 0x80));
+	fillCircle (ctx, CPoint (c.x + 2, c.y + 3), r + 1, CColor (0, 0, 0, 0x40));
 	if (auto p = newPath (ctx))
 	{
 		const double root = r - 4.0;
@@ -620,10 +449,10 @@ void gear (CDrawContext* ctx, const CPoint& c, double r, int teeth, double rotat
 		}
 		p->closeSubpath ();
 		p->addEllipse (circleRect (c, r * 0.72));
-		fillGold (ctx, p, circleRect (c, r), true);
+		fillMetal (ctx, p, circleRect (c, r), true);
 	}
 	// spokes and hub inside the open ring
-	fillCircle (ctx, c, r * 0.72, CColor (0x1A, 0x08, 0x06, 0xD8));
+	fillCircle (ctx, c, r * 0.72, CColor (0xE4, 0xE3, 0xE1, 0xD8));
 	for (int s = 0; s < 5; ++s)
 	{
 		const double a = rotation + 72.0 * s;
@@ -634,11 +463,11 @@ void gear (CDrawContext* ctx, const CPoint& c, double r, int teeth, double rotat
 			p->addLine (polar (c, r * 0.74, a + 5));
 			p->addLine (polar (c, r * 0.2, a + 14));
 			p->closeSubpath ();
-			fillGold (ctx, p, circleRect (c, r), false, 0.85);
+			fillMetal (ctx, p, circleRect (c, r));
 		}
 	}
-	goldAnnulus (ctx, c, r * 0.6, r * 0.74, 0.9);
-	goldSphere (ctx, c, r * 0.24);
+	metalAnnulus (ctx, c, r * 0.6, r * 0.74);
+	metalSphere (ctx, c, r * 0.24);
 }
 
 //------------------------------------------------------------------------
@@ -662,100 +491,57 @@ public:
 	void draw (CDrawContext* ctx) override
 	{
 		if (!cache)
-		{
-			const double scale = getFrame () ? getFrame ()->getScaleFactor () * getFrame ()->getZoom () : 1.0;
-			if (auto off = COffscreenContext::create (CPoint (kW, kH), scale))
-			{
-				off->beginDraw ();
-				{
-					// the offscreen surface is in pixels: draw the canvas through the scale
-					CDrawContext::Transform t (*off, CGraphicsTransform ().scale (scale, scale));
-					paint (off, scale);
-				}
-				off->endDraw ();
-				cache = off->getBitmap ();
-			}
-		}
+			cache = renderToCache (getFrame (), CPoint (kW, kH), [this] (CDrawContext* c) { paint (c); });
 		if (cache)
 			cache->draw (ctx, getViewSize ());
 		else
-			paint (ctx, 1.0);
+			paint (ctx);
 	}
 
 	CLASS_METHODS_NOCOPY (BackgroundView, CView)
 
 private:
-	void paint (CDrawContext* ctx, double scale)
+	void paint (CDrawContext* ctx)
 	{
 		ctx->setDrawMode (kAntiAliasing | kNonIntegralMode);
-		ctx->setFillColor (CColor (0x0C, 0x03, 0x05, 0xFF));
+		ctx->setFillColor (Pal::paper);
 		ctx->drawRect (CRect (0, 0, kW, kH), kDrawFilled);
-		if (auto* nebula = textures ().nebula.get ())
-			nebula->draw (ctx, CRect (0, 0, kW, kH)); // nebula, star dust and periphery darkening
-		else if (auto procedural = makeNebula (scale))
-			procedural->draw (ctx, CRect (0, 0, kW, kH));
+		if (auto* background = textures ().background.get ())
+			background->draw (ctx, CRect (0, 0, kW, kH)); // paper, ink smoke, specks, darkened periphery
 
-		paintStars (ctx, textures ().nebula == nullptr);
+		paintConstellations (ctx);
 		paintOrnaments (ctx);
 		paintAstrolabe (ctx);
 		paintPanel (ctx);
 		paintLabels (ctx);
 	}
 
-	void paintStars (CDrawContext* ctx, bool starDust)
+	void paintConstellations (CDrawContext* ctx)
 	{
-		std::mt19937 rng (0x5359u);
-		std::uniform_real_distribution<double> u (0.0, 1.0);
-		for (int i = 0; i < (starDust ? 420 : 0); ++i)
-		{
-			const CPoint p (u (rng) * kW, u (rng) * 505);
-			const double a = 0.25 + 0.7 * u (rng) * u (rng);
-			const double r = 0.35 + 0.55 * u (rng);
-			fillCircle (ctx, p, r,
-			            alpha (mix (CColor (0xFF, 0x9A, 0xA8, 0xFF), CColor (0xFF, 0xF0, 0xE6, 0xFF), u (rng)), a));
-		}
-		for (int i = 0; i < (starDust ? 34 : 0); ++i)
-		{
-			const CPoint p (u (rng) * kW, u (rng) * 500);
-			const double r = 2.0 + 5.0 * u (rng);
-			glow (ctx, p, r * 2.5, Pal::redGlow, 0.55);
-			fillCircle (ctx, p, r * 0.25, CColor (0xFF, 0xC8, 0xC8, 0xE0));
-		}
-		// a few flares
-		const CPoint flares[] = {{205, 117}, {172, 360}, {742, 252}, {520, 300}, {300, 150}};
-		for (const auto& f : flares)
-		{
-			glow (ctx, f, 14, Pal::redGlow, 0.6);
-			sparkle (ctx, f, 7, CColor (0xFF, 0xB0, 0xB8, 0xE0));
-			fillCircle (ctx, f, 1.4, CColor (0xFF, 0xF0, 0xF0, 0xFF));
-		}
-
-		// constellations
-		auto constellation = [&] (std::initializer_list<CPoint> pts, const CColor& col) {
+		auto constellation = [&] (std::initializer_list<CPoint> pts) {
 			const CPoint* prev = nullptr;
 			for (const auto& p : pts)
 			{
 				if (prev)
-					drawLine (ctx, *prev, p, alpha (col, 0.45), 0.7);
+					drawLine (ctx, *prev, p, alpha (Pal::ink, 0.7), 0.6);
 				prev = &p;
 			}
 			for (const auto& p : pts)
-			{
-				glow (ctx, p, 4.5, col, 0.55);
-				fillCircle (ctx, p, 1.3, CColor (0xFF, 0xE8, 0xD0, 0xFF));
-			}
+				fillCircle (ctx, p, 1.5, Pal::ink);
 		};
-		const CColor starRed (0xFF, 0x4A, 0x5A, 0xFF), starGold (0xFF, 0xD2, 0x8A, 0xFF);
-		constellation ({{180, 107}, {193, 103}, {205, 117}, {214, 130}, {196, 133}}, starRed);
-		constellation ({{171, 339}, {178, 360}, {186, 377}, {176, 394}}, starGold);
-		constellation ({{676, 195}, {690, 183}, {704, 211}, {695, 236}, {716, 255}, {712, 270}}, starRed);
-		constellation ({{738, 287}, {752, 296}, {766, 322}, {745, 349}, {770, 362}}, starGold);
-		constellation ({{646, 330}, {660, 318}, {668, 342}}, starGold);
+		constellation ({{180, 107}, {193, 103}, {205, 117}, {214, 130}, {196, 133}});
+		constellation ({{171, 339}, {178, 360}, {186, 377}, {176, 394}});
+		constellation ({{676, 195}, {690, 183}, {704, 211}, {695, 236}, {716, 255}, {712, 270}});
+		constellation ({{738, 287}, {752, 296}, {766, 322}, {745, 349}, {770, 362}});
+		constellation ({{646, 330}, {660, 318}, {668, 342}});
+		// red ink haze around the PULL knob, as a splash on the paper
+		glow (ctx, CPoint (148, 132), 34, Pal::redGlow, 0.10);
+		glow (ctx, CPoint (60, 210), 26, Pal::redGlow, 0.08);
 	}
 
 	void paintOrnaments (CDrawContext* ctx)
 	{
-		const CColor line = alpha (Pal::goldLine, 0.85);
+		const CColor line = alpha (Pal::ink, 0.8);
 		auto curve = [&] (CPoint a, CPoint c1, CPoint c2, CPoint b, CCoord width, bool mirror) {
 			for (int side = 0; side < (mirror ? 2 : 1); ++side)
 			{
@@ -786,111 +572,54 @@ private:
 		curve ({836, 330}, {818, 360}, {822, 410}, {836, 430}, 0.7, false);
 		curve ({14, 300}, {30, 340}, {30, 400}, {14, 440}, 0.7, false);
 
-		// crescent moons
+		// crescent moons in their rings
 		for (const CPoint& m : {CPoint (300, 466), CPoint (560, 466)})
 		{
+			strokeCircle (ctx, m, 10, alpha (Pal::ink, 0.85), 0.9);
 			if (auto p = newPath (ctx))
 			{
-				p->addEllipse (circleRect (m, 7));
-				p->addEllipse (circleRect (CPoint (m.x + (m.x < 430 ? 3.5 : -3.5), m.y - 2.5), 6));
-				fillGold (ctx, p, circleRect (m, 7), true);
+				p->addEllipse (circleRect (m, 6.5));
+				p->addEllipse (circleRect (CPoint (m.x + (m.x < 430 ? 3.2 : -3.2), m.y - 2.4), 5.6));
+				ctx->setFillColor (Pal::ink);
+				ctx->drawGraphicsPath (p, CDrawContext::kPathFilledEvenOdd);
 			}
 		}
-		// small sparkles around the astrolabe
+		// small ink stars around the astrolabe
 		for (const CPoint& s : {CPoint (418, 435), CPoint (595, 425), CPoint (265, 150), CPoint (618, 140), CPoint (241, 260)})
-			sparkle (ctx, s, 5, alpha (Pal::goldLight, 0.85));
+			sparkle (ctx, s, 5, alpha (Pal::ink, 0.9));
 	}
 
 	void paintAstrolabe (CDrawContext* ctx)
 	{
 		const CPoint c = kOrbit;
 
-		// Brass ring, toothed crown, rune band: the bevelled, brushed texture when present,
-		// vector drawing otherwise.
-		CBitmap* ringTexture = textures ().ring.get ();
-		if (!ringTexture)
-		{
-			// outermost hairline and zodiac band
-			strokeCircle (ctx, c, 238, alpha (Pal::goldLine, 0.55), 0.9);
-			strokeCircle (ctx, c, 196, alpha (Pal::gold, 0.6), 0.8);
-			if (auto p = newPath (ctx))
-			{
-				p->addEllipse (circleRect (c, kZodiacOut));
-				p->addEllipse (circleRect (c, kZodiacIn));
-				ctx->setFillColor (CColor (0x12, 0x03, 0x05, 0xB8));
-				ctx->drawGraphicsPath (p, CDrawContext::kPathFilledEvenOdd);
-			}
-			strokeCircle (ctx, c, kZodiacOut, alpha (Pal::gold, 0.8), 1.2);
-			strokeCircle (ctx, c, kZodiacIn, alpha (Pal::gold, 0.8), 1.0);
-			int glyph = 0;
-			for (int i = 0; i < 28; ++i)
-			{
-				const double a = -90.0 + 360.0 / 28.0 * i;
-				const CPoint g = polar (c, (kZodiacIn + kZodiacOut) * 0.5, a);
-				if (i == 0)
-					continue; // crown ornament
-				if (i % 7 == 3)
-				{
-					if (i % 14 == 3)
-						sparkle (ctx, g, 3.8, alpha (Pal::goldLight, 0.9));
-					else
-					{
-						strokeCircle (ctx, g, 2.8, alpha (Pal::goldLight, 0.85), 0.9);
-						fillCircle (ctx, g, 0.9, alpha (Pal::goldLight, 0.85));
-					}
-					continue;
-				}
-				CDrawContext::Transform t (*ctx, CGraphicsTransform ().scale (1.6, 1.6).rotate (a + 90.0).translate (g.x, g.y));
-				if (auto p = newPath (ctx))
-				{
-					zodiacGlyph (p, glyph++ % 12);
-					strokePath (ctx, p, CColor (0xF4, 0xE2, 0xC0, 0xF4), 0.75);
-				}
-			}
-
-			// toothed ring
-			for (int i = 0; i < 160; ++i)
-			{
-				if (auto p = newPath (ctx))
-				{
-					const double a = 360.0 * i / 160.0;
-					p->beginSubpath (polar (c, kRingOut - 0.5, a - 0.7));
-					p->addLine (polar (c, kTeethOut, a - 0.55));
-					p->addLine (polar (c, kTeethOut, a + 0.55));
-					p->addLine (polar (c, kRingOut - 0.5, a + 0.7));
-					p->closeSubpath ();
-					fillGold (ctx, p, circleRect (c, kTeethOut), false, 0.75);
-				}
-			}
-		}
-
-		// dark inner disc, halftone field and level rings
+		// light inner disc, halftone field, red level rings
 		if (auto p = newPath (ctx))
 		{
 			p->addEllipse (circleRect (c, kDiscR + 3));
-			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0x2A, 0x06, 0x0A, 0xD0), CColor (0x10, 0x02, 0x04, 0xE8))))
+			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0xF7, 0xF6, 0xF4, 0xF2), CColor (0xD9, 0xD8, 0xD5, 0xF8))))
 				ctx->fillRadialGradient (p, *g, c, kDiscR + 3);
 		}
 		std::mt19937 rng (77u);
 		std::uniform_real_distribution<double> u (0.0, 1.0);
-		for (double y = -kDiscR; y <= kDiscR; y += 3.6)
+		for (double y = -kDiscR; y <= kDiscR; y += 3.4)
 		{
-			for (double x = -kDiscR; x <= kDiscR; x += 3.6)
+			for (double x = -kDiscR; x <= kDiscR; x += 3.4)
 			{
 				const double r = std::sqrt (x * x + y * y);
 				if (r < 86 || r > kDiscR - 4)
 					continue;
 				const double n = valueNoise (static_cast<float> (x * 0.03 + 4), static_cast<float> (y * 0.03 + 9));
-				const double a = std::clamp ((n - 0.35) * 0.5, 0.0, 0.3) * (0.6 + 0.4 * u (rng));
+				const double a = std::clamp ((n - 0.32) * 0.6, 0.0, 0.32) * (0.6 + 0.4 * u (rng));
 				if (a > 0.02)
-					fillCircle (ctx, CPoint (c.x + x, c.y + y), 0.65, alpha (CColor (0xFF, 0x80, 0x70, 0xFF), a));
+					fillCircle (ctx, CPoint (c.x + x, c.y + y), 0.6, alpha (Pal::ink, a));
 			}
 		}
-		for (int i = 0; i < 90; ++i)
+		for (int i = 0; i < 70; ++i)
 		{
 			const CPoint s (c.x + (u (rng) - 0.5) * 300, c.y + (u (rng) - 0.5) * 300);
-			const double r = 0.5 + 0.6 * u (rng);
-			fillCircle (ctx, s, r, alpha (CColor (0xFF, 0xB0, 0xB0, 0xFF), 0.3 + 0.5 * u (rng)));
+			const double r = 0.5 + 0.7 * u (rng);
+			fillCircle (ctx, s, r, alpha (i % 4 == 0 ? Pal::red : Pal::ink, 0.35 + 0.45 * u (rng)));
 		}
 
 		ctx->setFont (fonts ().tiny);
@@ -899,40 +628,33 @@ private:
 		for (int k = 0; k < 3; ++k)
 		{
 			const double r = kWaveMin + kWaveSpan * levels[k];
-			for (int d = 0; d < 180; ++d)
-				fillCircle (ctx, polar (c, r, d * 2.0), 0.45, alpha (Pal::text, 0.18));
+			strokeCircle (ctx, c, r, alpha (Pal::red, 0.45), 0.6);
 			char buf[8];
 			std::snprintf (buf, sizeof buf, "%.1f", levels[k]);
 			for (double a : labelAngles[k])
 			{
 				const CPoint q = polar (c, r, a);
-				ctx->setFontColor (alpha (Pal::text, 0.55));
+				ctx->setFontColor (alpha (Pal::ink, 0.7));
 				drawCentered (ctx, buf, q.x, q.y - 2.5);
 			}
 		}
-		strokeCircle (ctx, c, kDiscR - 2, alpha (Pal::gold, 0.55), 0.8);
+		strokeCircle (ctx, c, kDiscR - 2, alpha (Pal::ink, 0.6), 0.8);
 
 		// crosshair
-		const CColor cross = alpha (Pal::gold, 0.35);
-		drawLine (ctx, CPoint (c.x - kDiscR + 2, c.y), CPoint (c.x - 72, c.y), cross, 0.8);
-		drawLine (ctx, CPoint (c.x + 72, c.y), CPoint (c.x + kDiscR - 2, c.y), cross, 0.8);
-		drawLine (ctx, CPoint (c.x, c.y - kDiscR + 2), CPoint (c.x, c.y - 72), cross, 0.8);
-		drawLine (ctx, CPoint (c.x, c.y + 72), CPoint (c.x, c.y + kDiscR - 2), cross, 0.8);
-		sparkle (ctx, CPoint (c.x, c.y - kDiscR + 8), 3.5, alpha (Pal::goldLight, 0.9));
+		const CColor cross = alpha (Pal::ink, 0.45);
+		drawLine (ctx, CPoint (c.x - kDiscR + 2, c.y), CPoint (c.x - 72, c.y), cross, 0.7);
+		drawLine (ctx, CPoint (c.x + 72, c.y), CPoint (c.x + kDiscR - 2, c.y), cross, 0.7);
+		drawLine (ctx, CPoint (c.x, c.y - kDiscR + 2), CPoint (c.x, c.y - 72), cross, 0.7);
+		drawLine (ctx, CPoint (c.x, c.y + 72), CPoint (c.x, c.y + kDiscR - 2), cross, 0.7);
+		sparkle (ctx, CPoint (c.x, c.y - kDiscR + 8), 3.5, Pal::ink);
 
-		if (ringTexture)
-			drawTexture (ctx, ringTexture, c, kRingImageRadius);
+		// gunmetal ring, toothed crown, rune band (texture; plain rings otherwise)
+		if (auto* ring = textures ().ring.get ())
+			drawTexture (ctx, ring, c, kRingImageRadius);
 		else
 		{
-			// thick gold ring, engraved
-			goldAnnulus (ctx, c, kRingIn, kRingOut, 0.9);
-			strokeCircle (ctx, c, kRingIn + 5, CColor (0x2E, 0x1C, 0x08, 0xB0), 1.0);
-			strokeCircle (ctx, c, kRingIn + 6, CColor (0xFF, 0xE8, 0xB0, 0x40), 0.6);
-			strokeCircle (ctx, c, kRingOut - 6, CColor (0x2E, 0x1C, 0x08, 0xB0), 1.0);
-			strokeCircle (ctx, c, kRingOut - 5, CColor (0xFF, 0xE8, 0xB0, 0x40), 0.6);
-			for (int i = 0; i < 72; ++i)
-				drawLine (ctx, polar (c, kRingIn + 1.5, i * 5.0), polar (c, kRingIn + (i % 2 ? 3.5 : 5.5), i * 5.0),
-				          CColor (0x3A, 0x24, 0x0C, 0xA0), 0.6);
+			metalAnnulus (ctx, c, kRingIn, kRingOut);
+			strokeCircle (ctx, c, 214, alpha (Pal::ink, 0.8), 28.0);
 		}
 
 		// ORBIT VISUALIZER plate just inside the ring, at the bottom
@@ -947,13 +669,13 @@ private:
 			for (int i = 30; i >= 0; --i)
 				p->addLine (polar (c, plateIn, 62.0 + 56.0 * i / 30));
 			p->closeSubpath ();
-			ctx->setFillColor (CColor (0x1A, 0x06, 0x07, 0xF0));
+			ctx->setFillColor (CColor (0xEC, 0xEB, 0xE8, 0xF4));
 			ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
 		}
-		strokeArc (ctx, c, plateIn, 62.0, 118.0, alpha (Pal::gold, 0.8), 1.0);
+		strokeArc (ctx, c, plateIn, 62.0, 118.0, alpha (Pal::ink, 0.8), 0.9);
 		{
 			ctx->setFont (fonts ().caption);
-			ctx->setFontColor (Pal::text);
+			ctx->setFontColor (Pal::ink);
 			const std::string label = "ORBIT VISUALIZER";
 			const double radius = kRingIn - 3.2; // baseline; glyphs rise toward the centre
 			double total = 0.0;
@@ -976,48 +698,51 @@ private:
 		for (double a : {180.0, 0.0})
 		{
 			const CPoint r = polar (c, 233, a);
-			goldAnnulus (ctx, r, 8.0, 10.5, 0.8);
-			goldSphere (ctx, r, 7.0);
+			metalAnnulus (ctx, r, 8.0, 10.5);
+			metalSphere (ctx, r, 7.0);
 		}
 
 		// rivets on the ring and the crown ornament
 		for (double a : {180.0, 0.0, 228.0, 312.0})
-			goldSphere (ctx, polar (c, (kRingIn + kRingOut) * 0.5, a), 5.5);
-		drawLine (ctx, CPoint (c.x, c.y - 236), CPoint (c.x, c.y - 172), alpha (Pal::goldLight, 0.9), 1.2);
-		goldAnnulus (ctx, CPoint (c.x, c.y - 203), 13, 16.5);
-		goldSphere (ctx, CPoint (c.x, c.y - 203), 12.5);
+			metalSphere (ctx, polar (c, (kRingIn + kRingOut) * 0.5, a), 5.5);
+		drawLine (ctx, CPoint (c.x, c.y - 236), CPoint (c.x, c.y - 172), Pal::ink, 1.2);
+		metalAnnulus (ctx, CPoint (c.x, c.y - 203), 13, 16.5);
+		metalSphere (ctx, CPoint (c.x, c.y - 203), 12.5);
 
 		// gears
 		gear (ctx, CPoint (583, 116), 30, 22, 8.0);
 		gear (ctx, CPoint (556, 92), 15, 12, 4.0);
-		goldSphere (ctx, CPoint (585, 96), 7.5);
-		strokeCircle (ctx, CPoint (520, 72), 4.5, alpha (Pal::goldLight, 0.8), 1.0);
-		fillCircle (ctx, CPoint (520, 72), 1.5, alpha (Pal::goldLight, 0.8));
+		metalSphere (ctx, CPoint (585, 96), 7.5);
+		strokeCircle (ctx, CPoint (520, 72), 4.5, Pal::ink, 1.0);
+		fillCircle (ctx, CPoint (520, 72), 1.5, Pal::ink);
 		gear (ctx, CPoint (283, 374), 36, 26, 3.0);
 		gear (ctx, CPoint (312, 400), 16, 12, 10.0);
-		goldSphere (ctx, CPoint (272, 392), 8.0);
+		metalSphere (ctx, CPoint (272, 392), 8.0);
 	}
 
 	void paintPanel (CDrawContext* ctx)
 	{
-		// bottom grille
-		const CRect grille (4, 510, kW - 4, kH - 2);
+		// brushed aluminium bottom plate
+		const CRect plate (4, 510, kW - 4, kH - 2);
 		if (auto p = newPath (ctx))
 		{
-			p->addRect (grille);
-			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0x3A, 0x0E, 0x12, 0xFF), CColor (0x10, 0x03, 0x05, 0xFF))))
-				ctx->fillLinearGradient (p, *g, grille.getTopLeft (), grille.getBottomLeft ());
+			p->addRect (plate);
+			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0xE2, 0xE3, 0xE5, 0xFF), CColor (0xB2, 0xB4, 0xB8, 0xFF))))
+				ctx->fillLinearGradient (p, *g, plate.getTopLeft (), plate.getBottomLeft ());
 		}
-		int row = 0;
-		for (CCoord y = grille.top + 5; y < grille.bottom - 2; y += 5.2, ++row)
+		std::mt19937 rng (0xA1u);
+		std::uniform_real_distribution<double> u (0.0, 1.0);
+		for (int i = 0; i < 220; ++i)
 		{
-			for (CCoord x = grille.left + 6 + (row % 2) * 2.8; x < grille.right - 4; x += 5.6)
-			{
-				fillCircle (ctx, CPoint (x + 0.5, y + 0.6), 1.6, CColor (0x6A, 0x22, 0x26, 0x70));
-				fillCircle (ctx, CPoint (x, y), 1.55, CColor (0x04, 0x01, 0x01, 0xFF));
-			}
+			const CCoord y = plate.top + 1 + u (rng) * (plate.getHeight () - 2);
+			const CCoord x0 = plate.left + u (rng) * plate.getWidth ();
+			const CCoord len = 40 + 260 * u (rng);
+			const bool light = u (rng) > 0.5;
+			drawLine (ctx, CPoint (x0, y), CPoint (std::min (plate.right, x0 + len), y),
+			          light ? CColor (0xFF, 0xFF, 0xFF, 0x50) : CColor (0x70, 0x72, 0x76, 0x30), 0.5);
 		}
-		const CColor deco = alpha (Pal::goldLine, 0.7);
+		drawLine (ctx, CPoint (plate.left, plate.top + 0.5), CPoint (plate.right, plate.top + 0.5), CColor (0xFF, 0xFF, 0xFF, 0xB0), 1.0);
+		const CColor deco = alpha (Pal::ink, 0.75);
 		auto mirrorLine = [&] (CPoint a, CPoint b) {
 			drawLine (ctx, a, b, deco, 0.8);
 			drawLine (ctx, CPoint (kW - a.x, a.y), CPoint (kW - b.x, b.y), deco, 0.8);
@@ -1030,7 +755,7 @@ private:
 		mirrorLine ({410, 511}, {430, 528});
 		mirrorLine ({385, 556}, {430, 546});
 
-		// panel frame (double line) and corner screws
+		// silver panel rim and corner screws
 		auto frameLine = [&] (CRect r, CCoord radius, const CColor& col, CCoord w) {
 			if (auto p = newPath (ctx))
 			{
@@ -1038,28 +763,28 @@ private:
 				strokePath (ctx, p, col, w);
 			}
 		};
-		frameLine (CRect (2, 2, kW - 2, kH - 2), 14, CColor (0x5A, 0x40, 0x22, 0xFF), 2.0);
-		frameLine (CRect (6, 6, kW - 6, 508), 11, alpha (Pal::gold, 0.75), 1.2);
-		frameLine (CRect (10, 10, kW - 10, 504), 9, alpha (Pal::goldLine, 0.35), 0.7);
-		drawLine (ctx, CPoint (6, 509), CPoint (kW - 6, 509), alpha (Pal::gold, 0.8), 1.2);
+		frameLine (CRect (2, 2, kW - 2, kH - 2), 14, CColor (0x8A, 0x8C, 0x90, 0xFF), 2.0);
+		frameLine (CRect (4, 4, kW - 4, kH - 4), 13, CColor (0xFF, 0xFF, 0xFF, 0xC0), 1.2);
+		frameLine (CRect (6, 6, kW - 6, 508), 11, CColor (0x6E, 0x70, 0x75, 0xFF), 1.0);
+		frameLine (CRect (7.2, 7.2, kW - 7.2, 506.8), 10, CColor (0xFF, 0xFF, 0xFF, 0x90), 0.8);
+		drawLine (ctx, CPoint (6, 509), CPoint (kW - 6, 509), CColor (0x6E, 0x70, 0x75, 0xFF), 1.2);
 		for (const CPoint& s : {CPoint (16, 497), CPoint (kW - 16, 497), CPoint (16, 545), CPoint (kW - 16, 545)})
 		{
-			goldAnnulus (ctx, s, 3.5, 6.0, 0.7);
-			fillCircle (ctx, s, 3.5, CColor (0x14, 0x08, 0x06, 0xFF));
-			drawLine (ctx, CPoint (s.x - 2.5, s.y - 2.5), CPoint (s.x + 2.5, s.y + 2.5), alpha (Pal::gold, 0.7), 0.9);
+			fillCircle (ctx, CPoint (s.x + 0.6, s.y + 0.8), 5.6, CColor (0xFF, 0xFF, 0xFF, 0x90));
+			metalSphere (ctx, s, 5.0);
 		}
 
 		// logo and title
 		const CPoint logo (31, 24);
-		strokeArc (ctx, logo, 10.5, 140, 400, alpha (Pal::text, 0.85), 1.6);
-		strokeArc (ctx, CPoint (logo.x - 2.5, logo.y - 2), 5.5, 200, 380, alpha (Pal::text, 0.85), 1.6);
-		strokeArc (ctx, CPoint (logo.x + 2.5, logo.y + 2), 5.5, 20, 200, alpha (Pal::text, 0.85), 1.6);
+		strokeArc (ctx, logo, 10.5, 140, 400, Pal::ink, 1.7);
+		strokeArc (ctx, CPoint (logo.x - 2.5, logo.y - 2), 5.5, 200, 380, Pal::ink, 1.7);
+		strokeArc (ctx, CPoint (logo.x + 2.5, logo.y + 2), 5.5, 20, 200, Pal::ink, 1.7);
 		ctx->setFont (fonts ().title);
-		ctx->setFontColor (CColor (0, 0, 0, 0xA0));
-		drawTracked (ctx, "SYMBIOSIS", CPoint (51, 32.5), 1.6);
-		ctx->setFontColor (CColor (0xDC, 0xCB, 0xAE, 0xFF));
+		ctx->setFontColor (CColor (0xFF, 0xFF, 0xFF, 0xD0));
+		drawTracked (ctx, "SYMBIOSIS", CPoint (50.5, 32.5), 1.6);
+		ctx->setFontColor (CColor (0x2E, 0x2E, 0x31, 0xFF));
 		drawTracked (ctx, "SYMBIOSIS", CPoint (50, 31.5), 1.6);
-		drawLine (ctx, CPoint (546, 47), CPoint (kW - 14, 47), alpha (Pal::goldLine, 0.62), 1.0);
+		drawLine (ctx, CPoint (546, 47), CPoint (kW - 14, 47), alpha (Pal::ink, 0.8), 1.0);
 
 		// scope frames and their bracket
 		for (const CRect& r : {kScopeTop, kScopeBottom})
@@ -1067,13 +792,13 @@ private:
 			if (auto p = newPath (ctx))
 			{
 				p->addRoundRect (r, 3);
-				ctx->setFillColor (CColor (0x12, 0x04, 0x05, 0xF0));
-				ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
-				strokePath (ctx, p, alpha (Pal::gold, 0.85), 1.2);
+				if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0xD8, 0xD8, 0xD6, 0xFF), CColor (0xF6, 0xF6, 0xF5, 0xFF))))
+					ctx->fillLinearGradient (p, *g, r.getTopLeft (), r.getBottomLeft ());
+				strokePath (ctx, p, CColor (0x1E, 0x1E, 0x20, 0xFF), 1.4);
 			}
-			drawLine (ctx, CPoint (r.left + 4, r.getCenter ().y), CPoint (r.right - 4, r.getCenter ().y), alpha (Pal::text, 0.08), 0.6);
+			drawLine (ctx, CPoint (r.left + 4, r.getCenter ().y), CPoint (r.right - 4, r.getCenter ().y), alpha (Pal::ink, 0.15), 0.6);
 		}
-		const CColor br = alpha (Pal::gold, 0.8);
+		const CColor br = alpha (Pal::ink, 0.85);
 		drawLine (ctx, CPoint (334, kScopeTop.getCenter ().y), CPoint (348, kScopeTop.getCenter ().y), br, 1.0);
 		drawLine (ctx, CPoint (334, kScopeBottom.getCenter ().y), CPoint (348, kScopeBottom.getCenter ().y), br, 1.0);
 		drawLine (ctx, CPoint (334, kScopeTop.getCenter ().y), CPoint (334, kScopeBottom.getCenter ().y), br, 1.0);
@@ -1106,12 +831,22 @@ private:
 };
 
 //------------------------------------------------------------------------
-/** Ruby knob in a gold bezel with an illuminated tick ring. */
-class RubyKnob : public CKnobBase
+/**
+ * Gem knob: PULL is a faceted smoky crystal (filmstrip turning with the value, red tick
+ * ring), HARMONICS a glossy black steel cap (charcoal tick ring). Fixed gloss and dark
+ * knurled bezel on top.
+ */
+class GemKnob : public CKnobBase
 {
 public:
-	RubyKnob (const CPoint& centre, IControlListener* listener, int32_t tag, bool goldTicks)
-	: CKnobBase (circleRect (centre, 66), listener, tag, nullptr), c (centre), gold (goldTicks)
+	enum class Style
+	{
+		Crystal,
+		Cap
+	};
+
+	GemKnob (const CPoint& centre, IControlListener* listener, int32_t tag, Style s)
+	: CKnobBase (circleRect (centre, 66), listener, tag, nullptr), c (centre), style (s)
 	{
 	}
 
@@ -1134,9 +869,14 @@ public:
 	{
 		ctx->setDrawMode (kAntiAliasing | kNonIntegralMode);
 		const double v = getValueNormalized ();
-		const CColor accent = gold ? Pal::ledGold : CColor (0xFF, 0x3A, 0x4E, 0xFF);
+		const bool red = style == Style::Crystal;
+		const CColor lit = red ? Pal::red : Pal::ink;
+		const CColor unlit = red ? CColor (0x9C, 0x8E, 0x90, 0xC0) : CColor (0xA4, 0xA5, 0xA8, 0xC0);
 
-		glow (ctx, c, 64, gold ? Pal::orangeGlow : Pal::redGlow, 0.30);
+		if (red)
+			glow (ctx, c, 64, Pal::redGlow, 0.16);
+		else
+			glow (ctx, c, 60, Pal::ink, 0.10);
 
 		// tick ring
 		const int ticks = 41;
@@ -1144,117 +884,65 @@ public:
 		{
 			const double t = static_cast<double> (i) / (ticks - 1);
 			const double a = 135.0 + 270.0 * t;
-			const bool lit = t <= v + 1e-6;
+			const bool on = t <= v + 1e-6;
 			const bool major = i % 5 == 0;
 			const CPoint p0 = polar (c, 50, a), p1 = polar (c, major ? 59 : 56, a);
-			if (lit)
-				drawLine (ctx, p0, p1, alpha (accent, 0.35), 3.4);
-			drawLine (ctx, p0, p1, lit ? accent : CColor (0x5E, 0x34, 0x26, 0xC0), major ? 1.5 : 1.1);
+			if (on && red)
+				drawLine (ctx, p0, p1, alpha (lit, 0.25), 3.4);
+			drawLine (ctx, p0, p1, on ? lit : unlit, major ? 1.5 : 1.1);
 		}
 		for (double a : {-90.0, 180.0, 0.0})
 		{
 			const CPoint s = polar (c, 64, a);
-			glow (ctx, s, 9, gold ? Pal::orangeGlow : Pal::redGlow, 0.7);
-			sparkle (ctx, s, a == -90.0 ? 6.5 : 5.0, alpha (gold ? Pal::goldLight : CColor (0xFF, 0x9A, 0xA8, 0xFF), 0.95));
+			if (red)
+			{
+				glow (ctx, s, 10, Pal::redGlow, 0.45);
+				sparkle (ctx, s, a == -90.0 ? 6.5 : 5.0, Pal::red);
+			}
+			else
+				sparkle (ctx, s, a == -90.0 ? 5.5 : 4.5, Pal::ink);
 		}
-		strokeArc (ctx, c, 61.5, 120, 420, alpha (Pal::goldLine, 0.35), 0.7);
+		strokeArc (ctx, c, 61.5, 120, 420, alpha (Pal::ink, 0.3), 0.7);
 
-		// Faceted cabochon: the gem filmstrip turns the stone with the value (each frame lit
-		// offline under the same fixed light), while the gloss (window reflection, specular,
-		// rim light) and the bezel stay put. Vector fallback without the textures.
 		auto& tex = textures ();
-		CBitmap* gem = gold ? tex.garnet.get () : tex.ruby.get ();
-		if (gem && tex.gloss && tex.bezel)
+		CBitmap* body = red ? tex.crystal.get () : tex.cap.get ();
+		if (body && tex.gloss && tex.bezel)
 		{
+			// the crystal filmstrip turns the stone with the value (each frame lit offline
+			// under the same fixed light); a single-frame texture simply stays put
+			const int frames = filmstripFrames (body);
 			const double turn = std::fmod (270.0 * v, kGemPeriod);
-			const int frame = static_cast<int> (std::lround (turn / kGemPeriod * kGemFrames)) % kGemFrames;
-			drawTexture (ctx, gem, c, kKnobImageRadius, 1.f, frame);
+			const int frame = frames > 1 ? static_cast<int> (std::lround (turn / kGemPeriod * frames)) % frames : 0;
+			drawTexture (ctx, body, c, kKnobImageRadius, 1.f, frame);
 			drawTexture (ctx, tex.gloss, c, kKnobImageRadius);
 			drawTexture (ctx, tex.bezel, c, kKnobImageRadius);
 		}
 		else
 		{
-			// knurled bezel
-			fillCircle (ctx, CPoint (c.x + 2, c.y + 3), 48, CColor (0, 0, 0, 0xA0));
-			goldAnnulus (ctx, c, 39, 47);
-			for (int i = 0; i < 72; ++i)
-				drawLine (ctx, polar (c, 42.5, i * 5.0), polar (c, 46.5, i * 5.0), CColor (0x3A, 0x22, 0x0A, 0x90), 0.8);
-			strokeCircle (ctx, c, 40, CColor (0xFF, 0xF0, 0xC8, 0x80), 0.8);
-
-			// gem
-			const double r = 38.0;
-			if (auto p = newPath (ctx))
-			{
-				p->addEllipse (circleRect (c, r));
-				GradientColorStopMap stops;
-				if (gold)
-				{
-					stops.emplace (0.0, CColor (0xE8, 0x5A, 0x70, 0xFF));
-					stops.emplace (0.35, CColor (0xA8, 0x10, 0x2C, 0xFF));
-					stops.emplace (0.75, CColor (0x5E, 0x05, 0x14, 0xFF));
-					stops.emplace (1.0, CColor (0x26, 0x02, 0x08, 0xFF));
-				}
-				else
-				{
-					stops.emplace (0.0, CColor (0xFF, 0x9C, 0xB0, 0xFF));
-					stops.emplace (0.28, CColor (0xF0, 0x34, 0x5C, 0xFF));
-					stops.emplace (0.65, CColor (0xB0, 0x0E, 0x2E, 0xFF));
-					stops.emplace (1.0, CColor (0x48, 0x03, 0x10, 0xFF));
-				}
-				if (auto g = VSTGUI::owned (CGradient::create (stops)))
-					ctx->fillRadialGradient (p, *g, CPoint (c.x - 11, c.y - 13), r * 1.55);
-			}
-			// facets
-			const double inner = 15.0;
-			for (int i = 0; i < 16; ++i)
-			{
-				const double a0 = 360.0 * i / 16.0, a1 = 360.0 * (i + 1) / 16.0;
-				if (auto p = newPath (ctx))
-				{
-					p->beginSubpath (polar (c, inner, a0 - (i % 2 ? 0 : 11.25)));
-					p->addLine (polar (c, r - 1, a0));
-					p->addLine (polar (c, r - 1, a1));
-					p->closeSubpath ();
-					ctx->setFillColor (i % 2 ? CColor (0xFF, 0xFF, 0xFF, 0x12) : CColor (0x30, 0x00, 0x08, 0x26));
-					ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
-					strokePath (ctx, p, CColor (0xFF, 0xC0, 0xCC, 0x30), 0.5);
-				}
-			}
-			if (auto p = newPath (ctx))
-			{
-				for (int i = 0; i < 8; ++i)
-				{
-					const CPoint q = polar (c, inner, i * 45.0 + 22.5);
-					i == 0 ? p->beginSubpath (q) : p->addLine (q);
-				}
-				p->closeSubpath ();
-				strokePath (ctx, p, CColor (0xFF, 0xD0, 0xD8, 0x40), 0.6);
-			}
-			glow (ctx, CPoint (c.x - 13, c.y - 15), 16, CColor (0xFF, 0xFF, 0xFF, 0xFF), 0.30);
-			if (gold)
-				glow (ctx, CPoint (c.x + 6, c.y + 22), 14, CColor (0xFF, 0x80, 0x90, 0xFF), 0.25);
-			strokeCircle (ctx, c, r, CColor (0x30, 0x02, 0x08, 0xC0), 1.0);
+			metalAnnulus (ctx, c, 38, 47);
+			fillCircle (ctx, c, 38, CColor (0x14, 0x14, 0x16, 0xFF));
+			glow (ctx, CPoint (c.x - 12, c.y - 14), 16, Pal::white, 0.3);
 		}
 
 		// value
 		char buf[16];
 		std::snprintf (buf, sizeof buf, "%d%%", static_cast<int> (std::lround (v * 100.0)));
 		ctx->setFont (fonts ().knob);
-		ctx->setFontColor (CColor (0x30, 0x00, 0x06, 0xB0));
+		ctx->setFontColor (CColor (0x00, 0x00, 0x00, 0xB0));
 		drawCentered (ctx, buf, c.x + 0.8, c.y + 7.0);
-		ctx->setFontColor (CColor (0xFF, 0xF4, 0xF0, 0xFF));
+		ctx->setFontColor (CColor (0xF4, 0xF4, 0xF6, 0xFF));
 		drawCentered (ctx, buf, c.x, c.y + 6.2);
 	}
 
-	CLASS_METHODS_NOCOPY (RubyKnob, CKnobBase)
+	CLASS_METHODS_NOCOPY (GemKnob, CKnobBase)
 
 private:
 	CPoint c;
-	bool gold;
+	Style style;
 };
 
 //------------------------------------------------------------------------
-/** Vertical slider: glowing slot, ruby thumb in a gold frame. */
+/** Vertical slider: black slot glowing red or white, ruby thumb in a gunmetal frame. */
 class RubySlider : public CControl
 {
 public:
@@ -1337,47 +1025,47 @@ public:
 		// dashes at 100 %, the thumb and 0 %
 		for (CCoord y : {kSliderTop + 8, ty + 15, kSliderBottom - 8})
 		{
-			drawLine (ctx, CPoint (cx - 15, y), CPoint (cx - 9, y), alpha (Pal::text, 0.45), 0.9);
-			drawLine (ctx, CPoint (cx + 9, y), CPoint (cx + 15, y), alpha (Pal::text, 0.45), 0.9);
+			drawLine (ctx, CPoint (cx - 15, y), CPoint (cx - 9, y), alpha (Pal::ink, 0.7), 0.9);
+			drawLine (ctx, CPoint (cx + 9, y), CPoint (cx + 15, y), alpha (Pal::ink, 0.7), 0.9);
 		}
 
-		// slot
+		// black slot with a silver lip
 		const CRect slot (cx - 4.5, kSliderTop, cx + 4.5, kSliderBottom);
 		if (auto p = newPath (ctx))
 		{
 			p->addRoundRect (slot, 4.5);
-			ctx->setFillColor (CColor (0x08, 0x01, 0x02, 0xFF));
+			ctx->setFillColor (CColor (0x0C, 0x0C, 0x0D, 0xFF));
 			ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
-			strokePath (ctx, p, CColor (0x9A, 0x70, 0x38, 0xFF), 1.1);
+			strokePath (ctx, p, CColor (0x5A, 0x5C, 0x61, 0xFF), 1.1);
 		}
 		const CPoint lo (cx, kSliderBottom - 4), hi (cx, kSliderTop + 4), mid (cx, ty + 15);
-		drawLine (ctx, hi, mid, alpha (color, 0.28), 2.0);
+		drawLine (ctx, hi, mid, alpha (color, 0.18), 2.0);
 		drawLine (ctx, mid, lo, alpha (color, 0.35), 7.0);
 		drawLine (ctx, mid, lo, color, 2.4);
-		drawLine (ctx, mid, lo, CColor (0xFF, 0xF0, 0xE0, 0xC0), 0.8);
+		drawLine (ctx, mid, lo, CColor (0xFF, 0xF4, 0xF4, 0xB0), 0.8);
 
 		// thumb
 		const CRect frameRect (cx - 10.5, ty, cx + 10.5, ty + 30);
-		fillCircle (ctx, CPoint (cx, ty + 17), 16, CColor (0, 0, 0, 0x50));
+		fillCircle (ctx, CPoint (cx + 1, ty + 18), 15, CColor (0, 0, 0, 0x35));
 		if (auto p = newPath (ctx))
 		{
 			p->addRoundRect (frameRect, 3.0);
 			CRect in (frameRect);
 			in.inset (3, 3);
 			p->addRoundRect (in, 2.0);
-			fillGold (ctx, p, frameRect, true);
+			fillMetal (ctx, p, frameRect, true);
 		}
-		drawLine (ctx, CPoint (cx, ty - 4), CPoint (cx, ty), Pal::goldLight, 1.2);
+		drawLine (ctx, CPoint (cx, ty - 4), CPoint (cx, ty), Pal::ink, 1.2);
 		CRect gem (frameRect);
 		gem.inset (3, 3);
 		if (auto p = newPath (ctx))
 		{
 			p->addRoundRect (gem, 2.0);
 			GradientColorStopMap stops;
-			stops.emplace (0.0, CColor (0xFF, 0xA0, 0xB0, 0xFF));
-			stops.emplace (0.3, CColor (0xF0, 0x30, 0x55, 0xFF));
-			stops.emplace (0.7, CColor (0xA0, 0x0A, 0x28, 0xFF));
-			stops.emplace (1.0, CColor (0x40, 0x02, 0x0C, 0xFF));
+			stops.emplace (0.0, CColor (0xFF, 0xA0, 0xA8, 0xFF));
+			stops.emplace (0.3, CColor (0xE8, 0x26, 0x3A, 0xFF));
+			stops.emplace (0.7, CColor (0x96, 0x08, 0x1C, 0xFF));
+			stops.emplace (1.0, CColor (0x38, 0x02, 0x08, 0xFF));
 			if (auto g = VSTGUI::owned (CGradient::create (stops)))
 				ctx->fillRadialGradient (p, *g, CPoint (gem.left + 4, gem.top + 5), gem.getHeight ());
 		}
@@ -1388,7 +1076,7 @@ public:
 		drawLine (ctx, gem.getBottomLeft (), gc, facet, 0.5);
 		drawLine (ctx, gem.getBottomRight (), gc, facet, 0.5);
 		drawLine (ctx, CPoint (gem.left, gc.y), CPoint (gem.right, gc.y), CColor (0x40, 0x00, 0x08, 0x50), 0.5);
-		glow (ctx, CPoint (gc.x - 2, gem.top + 6), 6, CColor (0xFF, 0xFF, 0xFF, 0xFF), 0.45);
+		glow (ctx, CPoint (gc.x - 2, gem.top + 6), 6, Pal::white, 0.45);
 	}
 
 	CLASS_METHODS_NOCOPY (RubySlider, CControl)
@@ -1402,7 +1090,7 @@ private:
 };
 
 //------------------------------------------------------------------------
-/** Rectangular gold-framed button with a glowing LED. */
+/** Black button in a gunmetal frame with a red or white LED. */
 class LedButton : public CView
 {
 public:
@@ -1435,31 +1123,38 @@ public:
 		const bool on = isOn && isOn ();
 		if (auto p = newPath (ctx))
 		{
+			CRect shadow (r);
+			shadow.offset (0.6, 1.2);
+			p->addRoundRect (shadow, 3.5);
+			ctx->setFillColor (CColor (0, 0, 0, 0x35));
+			ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
+		}
+		if (auto p = newPath (ctx))
+		{
 			p->addRoundRect (r, 3.5);
 			CRect in (r);
-			in.inset (2.2, 2.2);
+			in.inset (2.0, 2.0);
 			p->addRoundRect (in, 2.0);
-			fillGold (ctx, p, r, true, 0.85);
+			fillMetal (ctx, p, r, true);
 		}
 		CRect body (r);
-		body.inset (2.2, 2.2);
+		body.inset (2.0, 2.0);
 		if (auto p = newPath (ctx))
 		{
 			p->addRoundRect (body, 2.0);
-			const CColor top = on ? CColor (0x62, 0x14, 0x1A, 0xFF) : CColor (0x46, 0x0E, 0x13, 0xFF);
-			const CColor bottom = on ? CColor (0x2C, 0x06, 0x0A, 0xFF) : CColor (0x1A, 0x04, 0x06, 0xFF);
+			const CColor top = CColor (0x34, 0x35, 0x38, 0xFF);
+			const CColor bottom = CColor (0x0B, 0x0B, 0x0C, 0xFF);
 			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, top, bottom)))
 				ctx->fillLinearGradient (p, *g, body.getTopLeft (), body.getBottomLeft ());
 		}
-		drawLine (ctx, CPoint (body.left + 2, body.top + 0.8), CPoint (body.right - 2, body.top + 0.8),
-		          CColor (0xFF, 0xC0, 0xA0, 0x30), 0.8);
+		drawLine (ctx, CPoint (body.left + 2, body.top + 0.8), CPoint (body.right - 2, body.top + 0.8), CColor (0xFF, 0xFF, 0xFF, 0x30), 0.8);
 
 		const CPoint c = body.getCenter ();
-		const CColor led = on ? ledColor : mix (ledColor, CColor (0x40, 0x10, 0x12, 0xFF), 0.78);
+		const CColor led = on ? ledColor : mix (ledColor, CColor (0x2A, 0x2A, 0x2C, 0xFF), 0.82);
 		if (style == Style::Bar)
 		{
 			if (on)
-				glow (ctx, c, 13, ledColor, 0.55);
+				glow (ctx, c, 13, ledColor, 0.5);
 			const CRect bar (c.x - 7, c.y - 1.6, c.x + 7, c.y + 1.6);
 			if (auto p = newPath (ctx))
 			{
@@ -1468,24 +1163,24 @@ public:
 				ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
 			}
 			if (on)
-				drawLine (ctx, CPoint (c.x - 5, c.y), CPoint (c.x + 5, c.y), CColor (0xFF, 0xF4, 0xE8, 0xE0), 0.9);
+				drawLine (ctx, CPoint (c.x - 5, c.y), CPoint (c.x + 5, c.y), CColor (0xFF, 0xFF, 0xFF, 0xE0), 0.9);
 		}
 		else
 		{
-			drawLine (ctx, CPoint (body.left + 3, c.y), CPoint (c.x - 7, c.y), alpha (Pal::gold, 0.6), 0.8);
-			drawLine (ctx, CPoint (c.x + 7, c.y), CPoint (body.right - 3, c.y), alpha (Pal::gold, 0.6), 0.8);
+			drawLine (ctx, CPoint (body.left + 3, c.y), CPoint (c.x - 7, c.y), alpha (Pal::steel, 0.6), 0.8);
+			drawLine (ctx, CPoint (c.x + 7, c.y), CPoint (body.right - 3, c.y), alpha (Pal::steel, 0.6), 0.8);
 			if (on)
-				glow (ctx, c, 11, ledColor, 0.55);
+				glow (ctx, c, 11, ledColor, 0.5);
 			if (auto p = newPath (ctx))
 			{
 				p->addEllipse (CRect (c.x - 3.6, c.y - 6.5, c.x + 3.6, c.y + 6.5));
-				fillGold (ctx, p, CRect (c.x - 5, c.y - 8, c.x + 5, c.y + 8));
+				fillMetal (ctx, p, CRect (c.x - 5, c.y - 8, c.x + 5, c.y + 8), false, Metal::Silver);
 			}
 			if (auto p = newPath (ctx))
 			{
 				p->addEllipse (CRect (c.x - 2.5, c.y - 5.2, c.x + 2.5, c.y + 5.2));
-				const CColor hi = on ? CColor (0xFF, 0xB8, 0xC0, 0xFF) : CColor (0x9A, 0x30, 0x40, 0xFF);
-				const CColor lo = on ? CColor (0xC8, 0x10, 0x30, 0xFF) : CColor (0x40, 0x06, 0x10, 0xFF);
+				const CColor hi = on ? CColor (0xFF, 0xB8, 0xC0, 0xFF) : CColor (0x7A, 0x30, 0x38, 0xFF);
+				const CColor lo = on ? CColor (0xC8, 0x10, 0x24, 0xFF) : CColor (0x30, 0x06, 0x0C, 0xFF);
 				if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, hi, lo)))
 					ctx->fillRadialGradient (p, *g, CPoint (c.x - 0.8, c.y - 2.5), 6.0);
 			}
@@ -1502,7 +1197,7 @@ private:
 };
 
 //------------------------------------------------------------------------
-/** Menu field with a down arrow; the menu itself is built on click. */
+/** Light menu field with a charcoal frame and arrow; the menu is built on click. */
 class DropdownView : public CView
 {
 public:
@@ -1526,16 +1221,13 @@ public:
 		const CRect r = getViewSize ();
 		if (auto p = newPath (ctx))
 		{
-			p->addRect (r);
-			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0x2C, 0x0C, 0x0E, 0xF0), CColor (0x16, 0x05, 0x06, 0xF0))))
+			p->addRoundRect (r, 2.5);
+			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0xF8, 0xF8, 0xF7, 0xF4), CColor (0xDE, 0xDE, 0xDC, 0xF4))))
 				ctx->fillLinearGradient (p, *g, r.getTopLeft (), r.getBottomLeft ());
+			strokePath (ctx, p, CColor (0x3A, 0x3A, 0x3D, 0xFF), 1.0);
 		}
-		ctx->setLineStyle (kLineSolid);
-		ctx->setLineWidth (1.0);
-		ctx->setFrameColor (CColor (0x96, 0x72, 0x42, 0xFF));
-		ctx->drawRect (r, kDrawStroked);
 		ctx->setFont (fonts ().menu);
-		ctx->setFontColor (CColor (0xE8, 0xD8, 0xBC, 0xFF));
+		ctx->setFontColor (Pal::ink);
 		drawCentered (ctx, text ? text () : std::string (), r.getCenter ().x - 5, r.getCenter ().y + 3.6);
 		if (auto p = newPath (ctx))
 		{
@@ -1544,7 +1236,7 @@ public:
 			p->addLine (a.x + 7, a.y);
 			p->addLine (a.x + 3.5, a.y + 3.8);
 			p->closeSubpath ();
-			ctx->setFillColor (CColor (0xD8, 0xC4, 0xA0, 0xFF));
+			ctx->setFillColor (Pal::ink);
 			ctx->drawGraphicsPath (p, CDrawContext::kPathFilled);
 		}
 	}
@@ -1603,7 +1295,6 @@ public:
 		ctx->setDrawMode (kAntiAliasing | kNonIntegralMode);
 		const CRect r = getViewSize ();
 		const CPoint c = r.getCenter ();
-		const CColor ink (0xE2, 0xD2, 0xB8, 0xFF);
 		if (kind == Kind::Gear)
 		{
 			if (auto p = newPath (ctx))
@@ -1619,21 +1310,20 @@ public:
 				}
 				p->closeSubpath ();
 				p->addEllipse (circleRect (c, 2.8));
-				ctx->setFillColor (ink);
+				ctx->setFillColor (Pal::ink);
 				ctx->drawGraphicsPath (p, CDrawContext::kPathFilledEvenOdd);
 			}
 			return;
 		}
-		const bool active = !(isOn && isOn ()); // lit while the plug-in is not bypassed
-		ctx->setFillColor (CColor (0x24, 0x08, 0x0A, 0xFF));
-		ctx->drawRect (r, kDrawFilled);
-		ctx->setLineStyle (kLineSolid);
-		ctx->setLineWidth (1.0);
-		ctx->setFrameColor (CColor (0x96, 0x72, 0x42, 0xFF));
-		ctx->drawRect (r, kDrawStroked);
-		const CColor col = active ? CColor (0xFF, 0x6A, 0x5A, 0xFF) : alpha (ink, 0.45);
-		if (active)
-			glow (ctx, c, 10, Pal::redGlow, 0.45);
+		const bool bypassed = isOn && isOn ();
+		if (auto p = newPath (ctx))
+		{
+			p->addRoundRect (r, 2.5);
+			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0xF0, 0xF0, 0xEF, 0xFF), CColor (0xC8, 0xC9, 0xCB, 0xFF))))
+				ctx->fillLinearGradient (p, *g, r.getTopLeft (), r.getBottomLeft ());
+			strokePath (ctx, p, CColor (0x3A, 0x3A, 0x3D, 0xFF), 1.0);
+		}
+		const CColor col = bypassed ? Pal::red : Pal::ink; // red while bypassed
 		strokeArc (ctx, c, 5.0, -50, 230, col, 1.5);
 		drawLine (ctx, CPoint (c.x, c.y - 7), CPoint (c.x, c.y - 1), col, 1.5);
 	}
@@ -1671,7 +1361,7 @@ private:
 		char buf[16];
 		std::snprintf (buf, sizeof buf, "%d", static_cast<int> (std::lround (shown)));
 		ctx->setFont (fonts ().small);
-		ctx->setFontColor (CColor (0xD8, 0xC6, 0xA8, 0xFF));
+		ctx->setFontColor (Pal::ink);
 		ctx->drawString (buf, CPoint (r.left + 15 - ctx->getStringWidth (buf), y + 6.5));
 		ctx->drawString ("dB", CPoint (r.right - 13, y + 6.5));
 
@@ -1682,12 +1372,12 @@ private:
 		for (int i = 0; i < segments; ++i)
 		{
 			const CRect s (x0 + i * seg, y, x0 + (i + 1) * seg - 0.9, y + 7);
-			CColor col (0x48, 0x10, 0x16, 0xFF);
+			CColor col (0xC6, 0xC6, 0xC8, 0xFF);
 			if (i < lit)
 			{
-				col = CColor (0xD8, 0x2A, 0x3C, 0xFF);
+				col = CColor (0x33, 0x33, 0x36, 0xFF);
 				if (i >= lit - 3)
-					col = mix (CColor (0xFF, 0x8A, 0x4A, 0xFF), CColor (0xFF, 0xE0, 0xA0, 0xFF), (i - (lit - 3)) / 3.0);
+					col = mix (CColor (0x8A, 0x10, 0x1C, 0xFF), Pal::red, (i - (lit - 3)) / 3.0);
 			}
 			ctx->setFillColor (col);
 			ctx->drawRect (s, kDrawFilled);
@@ -1698,7 +1388,7 @@ private:
 };
 
 //------------------------------------------------------------------------
-/** Small oscilloscope (slave output or master). */
+/** Small oscilloscope on light glass (slave output in red, master in ink). */
 class ScopeView : public CView
 {
 public:
@@ -1716,7 +1406,7 @@ public:
 		float peak = 0.05f;
 		for (float v : wave)
 			peak = std::max (peak, std::abs (v));
-		const CColor col = master ? CColor (0xE8, 0xAE, 0x4C, 0xFF) : CColor (0xFF, 0x4A, 0x62, 0xFF);
+		const CColor col = master ? CColor (0x1E, 0x1E, 0x20, 0xFF) : Pal::red;
 		if (auto p = newPath (ctx))
 		{
 			for (int i = 0; i < DSP::kHudWavePoints; ++i)
@@ -1725,11 +1415,11 @@ public:
 				                r.getCenter ().y - wave[static_cast<size_t> (i)] / peak * r.getHeight () * 0.45);
 				i == 0 ? p->beginSubpath (q) : p->addLine (q);
 			}
-			strokePath (ctx, p, alpha (col, 0.3), 3.0);
+			strokePath (ctx, p, alpha (col, 0.18), 3.0);
 			strokePath (ctx, p, col, 1.1);
 		}
 		const CCoord marker = r.left + r.getWidth () * 0.76;
-		drawLine (ctx, CPoint (marker, r.top), CPoint (marker, r.bottom), alpha (Pal::text, 0.35), 0.8);
+		drawLine (ctx, CPoint (marker, r.top), CPoint (marker, r.bottom), alpha (Pal::ink, 0.55), 0.8);
 	}
 
 	CLASS_METHODS_NOCOPY (ScopeView, CView)
@@ -1740,7 +1430,10 @@ private:
 };
 
 //------------------------------------------------------------------------
-/** Live part of the astrolabe: braided spectrum waves, medallion, ACTIVE INFLUENCE. */
+/**
+ * Live part of the astrolabe: ink and red-mist plasma, braided spectrum rings (slave in
+ * red, master in black ink), black medallion with the red ACTIVE INFLUENCE readout.
+ */
 class OrbitView : public CView
 {
 public:
@@ -1750,8 +1443,8 @@ public:
 	{
 		ctx->setDrawMode (kAntiAliasing | kNonIntegralMode);
 
-		// Bloom buffer: the plasma and the wide, soft passes go to a reused offscreen at half the device
-		// resolution (4x fewer pixels to rasterise), composited with bilinear smoothing,
+		// Bloom buffer: the plasma and the wide, soft passes go to a reused offscreen at half the
+		// device resolution (4x fewer pixels to rasterise), composited with bilinear smoothing,
 		// which also diffuses the halo. The sharp passes stay at full resolution.
 		const CRect area = getViewSize ();
 		const double device = getFrame () ? getFrame ()->getScaleFactor () * getFrame ()->getZoom () : 1.0;
@@ -1822,25 +1515,24 @@ private:
 	enum class Pass
 	{
 		Bloom, // gaseous fill, wide translucent halo, saturated body
-		Sharp  // bright signal line, white-hot heart, braided strands
+		Sharp  // signal line, dark heart, braided strands
 	};
 
 	void drawWaves (CDrawContext* ctx, Pass pass) const
 	{
 		if (hud.showInput)
-			drawWave (ctx, pass, hud.slaveIn, CColor (0xFF, 0x70, 0x80, 0xFF), CColor (0xC0, 0x20, 0x40, 0xFF),
-			          CColor (0xFF, 0xC8, 0xD0, 0xFF), 0.35, 0.0, false, true);
+			drawWave (ctx, pass, hud.slaveIn, CColor (0xD0, 0x50, 0x5C, 0xFF), CColor (0xD8, 0x60, 0x6A, 0xFF),
+			          CColor (0x9A, 0x20, 0x2C, 0xFF), 0.35, 0.0, false, true);
 		if (hud.showMaster)
-			drawWave (ctx, pass, hud.master, CColor (0xFF, 0xA0, 0x40, 0xFF), CColor (0xFF, 0x7A, 0x12, 0xFF),
-			          CColor (0xFF, 0xF2, 0xD6, 0xFF), 1.0, 1.7, false, false);
+			drawWave (ctx, pass, hud.master, CColor (0x26, 0x26, 0x28, 0xFF), CColor (0x60, 0x60, 0x64, 0xFF),
+			          CColor (0x00, 0x00, 0x00, 0xFF), 1.0, 1.7, false, false);
 		if (hud.showSlave)
-			drawWave (ctx, pass, hud.slaveOut, CColor (0xFF, 0x2D, 0x4A, 0xFF), CColor (0xC8, 0x10, 0x2E, 0xFF),
-			          CColor (0xFF, 0xE2, 0xE8, 0xFF), 1.0, 0.0, true, true);
+			drawWave (ctx, pass, hud.slaveOut, CColor (0xB4, 0x16, 0x22, 0xFF), CColor (0x7A, 0x14, 0x1C, 0xFF), Pal::redDeep, 0.85, 0.0, true, true);
 	}
 
 	/**
-	 * Living plasma between the medallion and the waves: two pre-rendered wisp textures
-	 * cross-faded with a slow breathing, their opacity following the signal.
+	 * Ink plasma between the medallion and the waves: ink smoke and red mist cross-faded
+	 * with a slow breathing, their opacity following the signal.
 	 */
 	void drawPlasma (CDrawContext* ctx) const
 	{
@@ -1869,29 +1561,28 @@ private:
 				energy += hud.master[static_cast<size_t> (b)], ++count;
 		}
 		energy = count > 0 ? energy / count : 0.0;
-		const double strength = std::clamp (0.12 + 1.3 * energy, 0.0, 0.85);
+		const double strength = std::clamp (0.12 + 1.0 * energy, 0.0, 0.62);
 		const double breath = std::sin (hud.time * 0.8);
 		const CRect area = circleRect (kOrbit, kPlasmaImageRadius);
-		layerA->draw (ctx, area, CPoint (0, 0), static_cast<float> (strength * (0.55 + 0.4 * breath)));
-		layerB->draw (ctx, area, CPoint (0, 0), static_cast<float> (strength * (0.55 - 0.4 * breath)));
+		layerA->draw (ctx, area, CPoint (0, 0), static_cast<float> (strength * (0.85 + 0.15 * breath)));
+		layerB->draw (ctx, area, CPoint (0, 0), static_cast<float> (strength * (0.28 - 0.12 * breath)));
 	}
 
 	/**
-	 * One spectrum as an incandescent braided ring:
+	 * One spectrum as a braided ring of ink:
 	 *  - gaseous fill between the medallion and the ring (radial gradient),
-	 *  - bloom: wide translucent carmine / amber pass (alpha ~0.25),
-	 *  - saturated body, then a sharp, almost white hot core.
+	 *  - bloom: wide translucent pass (alpha ~0.25), saturated body,
+	 *  - sharp signal line, then a thin dark heart that keeps it crisp on the light disc.
 	 */
 	void drawWave (CDrawContext* ctx, Pass pass, const std::array<float, DSP::kHudBands>& levels, const CColor& core,
-	               const CColor& halo, const CColor& hot, double opacity, double phaseOffset, bool twist,
+	               const CColor& halo, const CColor& heart, double opacity, double phaseOffset, bool twist,
 	               bool leftSide) const
 	{
 		// Mirrored spectrum: bass at the bottom, treble at the top, climbing both sides,
 		// so the ring closes without a seam.
 		constexpr int bands = DSP::kHudBands;
-		constexpr int n = 2 * bands;
-		constexpr int sub = 1; // 2 x 96 bands, Catmull-Rom smoothed: 192 vertices
-		std::array<double, n * sub> radius {}, angle {};
+		constexpr int n = 2 * bands; // 192 vertices, Catmull-Rom smoothed
+		std::array<double, n> radius {}, angle {};
 		auto bandAt = [] (int j) {
 			j = (j % n + n) % n;
 			return j < bands ? j : n - 1 - j;
@@ -1902,34 +1593,26 @@ private:
 		};
 		for (int j = 0; j < n; ++j)
 		{
-			const double r0 = radiusAt (j - 1), r1 = radiusAt (j), r2 = radiusAt (j + 1), r3 = radiusAt (j + 2);
-			for (int s = 0; s < sub; ++s)
-			{
-				const double t = static_cast<double> (s) / sub;
-				// Catmull-Rom on the radius
-				const double r = 0.5 * ((2 * r1) + (-r0 + r2) * t + (2 * r0 - 5 * r1 + 4 * r2 - r3) * t * t +
-				                        (-r0 + 3 * r1 - 3 * r2 + r3) * t * t * t);
-				double a = 90.0 + 360.0 * (j + 0.5 + t) / n;
-				if (twist) // phase error twists the slave trace off its band
-					a += 2.0 * std::sin (hud.phase[static_cast<size_t> (bandAt (j))]);
-				radius[static_cast<size_t> (j * sub + s)] = std::max (kWaveMin - 8.0, r);
-				angle[static_cast<size_t> (j * sub + s)] = a;
-			}
+			const double r1 = radiusAt (j);
+			double a = 90.0 + 360.0 * (j + 0.5) / n;
+			if (twist) // phase error twists the slave trace off its band
+				a += 2.0 * std::sin (hud.phase[static_cast<size_t> (bandAt (j))]);
+			radius[static_cast<size_t> (j)] = std::max (kWaveMin - 8.0, r1);
+			angle[static_cast<size_t> (j)] = a;
 		}
 		struct Strand
 		{
 			double amp, freq, speed, width, alphaCore;
 		};
-		const Strand strands[] = {{0.0, 0.0, 0.0, 2.4, 1.0}, {5.0, 7.0, 1.3, 1.0, 0.65}, {9.0, 11.0, -0.9, 0.9, 0.5}};
+		const Strand strands[] = {{0.0, 0.0, 0.0, 2.0, 1.0}, {5.0, 7.0, 1.3, 0.9, 0.7}, {9.0, 11.0, -0.9, 0.8, 0.55}};
 		// the soft bloom passes use every other vertex: half the tessellation, no visible loss
 		const int stride = pass == Pass::Bloom ? 2 : 1;
-		constexpr int numPoints = n * sub;
 		constexpr int segments = 6;
-		std::array<CPoint, numPoints> pts {};
+		std::array<CPoint, n> pts {};
 		int index = 0;
 		for (const auto& st : strands)
 		{
-			for (int i = 0; i < numPoints; ++i)
+			for (int i = 0; i < n; ++i)
 			{
 				const double a = angle[static_cast<size_t> (i)];
 				const double r = radius[static_cast<size_t> (i)] +
@@ -1941,62 +1624,62 @@ private:
 				// gaseous fill of the ring interior, around the medallion (even-odd)
 				if (auto path = newPath (ctx))
 				{
-					for (int i = 0; i < numPoints; i += 2)
+					for (int i = 0; i < n; i += 2)
 						i == 0 ? path->beginSubpath (pts[0]) : path->addLine (pts[static_cast<size_t> (i)]);
 					path->closeSubpath ();
 					path->addEllipse (circleRect (kOrbit, 72));
 					GradientColorStopMap stops;
 					stops.emplace (0.0, alpha (halo, 0.0));
 					stops.emplace (0.45, alpha (halo, 0.03 * opacity));
-					stops.emplace (1.0, alpha (halo, 0.13 * opacity));
+					stops.emplace (1.0, alpha (halo, 0.12 * opacity));
 					if (auto g = VSTGUI::owned (CGradient::create (stops)))
 						ctx->fillRadialGradient (path, *g, kOrbit, 180.0, CPoint (0, 0), true);
 				}
 			}
-			// the slave glows on the left half, the master on the right (as on the artwork)
 			if (index > 0)
 			{
 				// secondary strands: one path each, at the mean emphasis
 				auto path = newPath (ctx);
 				if (!path)
 					return;
-				for (int i = 0; i < numPoints; i += stride)
+				for (int i = 0; i < n; i += stride)
 					i == 0 ? path->beginSubpath (pts[0]) : path->addLine (pts[static_cast<size_t> (i)]);
 				path->closeSubpath ();
 				const double o = opacity * 0.62;
 				if (pass == Pass::Bloom)
-					strokeWave (ctx, path, alpha (halo, 0.15 * o), 3.5);
+					strokeWave (ctx, path, alpha (halo, 0.12 * o), 3.5);
 				else
 					strokeWave (ctx, path, alpha (core, st.alphaCore * o), st.width);
 				++index;
 				continue;
 			}
+			// the slave is strongest on the left half, the master on the right (as on the artwork)
 			for (int seg = 0; seg < segments; ++seg)
 			{
-				const int first = seg * numPoints / segments;
-				const int last = (seg + 1) * numPoints / segments;
-				const double mid = angle[static_cast<size_t> ((first + last) / 2 % numPoints)];
+				const int first = seg * n / segments;
+				const int last = (seg + 1) * n / segments;
+				const double mid = angle[static_cast<size_t> ((first + last) / 2 % n)];
 				const double side = 0.5 - 0.5 * std::cos (deg (mid)); // 1 on the left, 0 on the right
-				const double emphasis = 0.3 + 0.7 * (leftSide ? side : 1.0 - side);
+				const double emphasis = 0.35 + 0.65 * (leftSide ? side : 1.0 - side);
 				auto path = newPath (ctx);
 				if (!path)
 					return;
 				for (int i = first; i <= last; i += stride)
 				{
-					const CPoint& q = pts[static_cast<size_t> (i % numPoints)];
+					const CPoint& q = pts[static_cast<size_t> (i % n)];
 					i == first ? path->beginSubpath (q) : path->addLine (q);
 				}
-				path->addLine (pts[static_cast<size_t> (last % numPoints)]);
+				path->addLine (pts[static_cast<size_t> (last % n)]);
 				const double o = opacity * emphasis;
 				if (pass == Pass::Bloom)
 				{
-					strokeWave (ctx, path, alpha (halo, 0.25 * o), 16.0); // diffuse carmine / amber halo
-					strokeWave (ctx, path, alpha (core, 0.45 * o), 6.5);  // saturated body
+					strokeWave (ctx, path, alpha (halo, 0.25 * o), 16.0); // diffuse mist
+					strokeWave (ctx, path, alpha (core, 0.35 * o), 6.5);  // saturated body
 				}
 				else
 				{
-					strokeWave (ctx, path, alpha (core, o), st.width);  // bright signal
-					strokeWave (ctx, path, alpha (hot, 0.95 * o), 0.9); // white-hot heart
+					strokeWave (ctx, path, alpha (core, o), st.width);     // signal line
+					strokeWave (ctx, path, alpha (heart, 0.9 * o), 0.8);  // dark heart
 				}
 			}
 			++index;
@@ -2006,21 +1689,21 @@ private:
 	static void drawReadout (CDrawContext* ctx, const std::string& text)
 	{
 		ctx->setFont (fonts ().readout);
-		drawGlowText (ctx, text, kOrbit.x, kOrbit.y + 9, CColor (0xFF, 0xEC, 0xDE, 0xFF), CColor (0xFF, 0x62, 0x30, 0xFF));
+		drawGlowText (ctx, text, kOrbit.x, kOrbit.y + 9, CColor (0xFF, 0x3A, 0x3A, 0xFF), CColor (0xFF, 0x10, 0x18, 0xFF));
 		ctx->setFont (fonts ().caption);
-		ctx->setFontColor (CColor (0xF2, 0xE0, 0xCC, 0xFF));
+		ctx->setFontColor (CColor (0xE2, 0xE2, 0xE4, 0xFF));
 		drawCentered (ctx, "ACTIVE INFLUENCE", kOrbit.x, kOrbit.y + 24);
 	}
 
 	void drawMedallion (CDrawContext* ctx) const
 	{
 		const CPoint c = kOrbit;
-		fillCircle (ctx, CPoint (c.x + 2, c.y + 3), 73, CColor (0, 0, 0, 0x70));
+		fillCircle (ctx, CPoint (c.x + 2, c.y + 3), 73, CColor (0, 0, 0, 0x45));
 		if (auto p = newPath (ctx))
 		{
 			p->addEllipse (circleRect (c, 58));
-			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0x46, 0x0C, 0x12, 0xFF), CColor (0x18, 0x03, 0x06, 0xFF))))
-				ctx->fillRadialGradient (p, *g, CPoint (c.x, c.y - 10), 62);
+			if (auto g = VSTGUI::owned (CGradient::create (0.0, 1.0, CColor (0x2C, 0x1C, 0x1E, 0xFF), CColor (0x06, 0x06, 0x07, 0xFF))))
+				ctx->fillRadialGradient (p, *g, CPoint (c.x, c.y - 6), 62);
 		}
 		std::mt19937 rng (11u);
 		std::uniform_real_distribution<double> u (0.0, 1.0);
@@ -2028,13 +1711,13 @@ private:
 		{
 			const double a = u (rng) * 360.0, r = std::sqrt (u (rng)) * 52.0;
 			const double size = 0.4 + 0.5 * u (rng);
-			fillCircle (ctx, polar (c, r, a), size, alpha (CColor (0xFF, 0x9A, 0x9A, 0xFF), 0.3 + 0.5 * u (rng)));
+			fillCircle (ctx, polar (c, r, a), size, alpha (CColor (0xFF, 0x50, 0x50, 0xFF), 0.25 + 0.5 * u (rng)));
 		}
-		goldAnnulus (ctx, c, 55, 59);
-		strokeCircle (ctx, c, 63, alpha (Pal::gold, 0.8), 0.9);
-		goldAnnulus (ctx, c, 66, 72);
+		metalAnnulus (ctx, c, 55, 59);
+		strokeCircle (ctx, c, 63, alpha (Pal::ink, 0.8), 0.9);
+		metalAnnulus (ctx, c, 66, 72);
 		for (int i = 0; i < 48; ++i)
-			drawLine (ctx, polar (c, 67, i * 7.5), polar (c, 69, i * 7.5), CColor (0x3A, 0x24, 0x0C, 0x90), 0.6);
+			drawLine (ctx, polar (c, 67, i * 7.5), polar (c, 69, i * 7.5), CColor (0x08, 0x08, 0x09, 0x90), 0.6);
 		for (int i = 0; i < 8; ++i)
 		{
 			const double a = -90.0 + 45.0 * i;
@@ -2048,11 +1731,11 @@ private:
 					p->addLine (t.x, t.y + 6);
 					p->addLine (t.x - 5, t.y);
 					p->closeSubpath ();
-					fillGold (ctx, p, CRect (t.x - 5, t.y - 8, t.x + 5, t.y + 6));
+					fillMetal (ctx, p, CRect (t.x - 5, t.y - 8, t.x + 5, t.y + 6));
 				}
 				continue;
 			}
-			goldSphere (ctx, polar (c, 69, a), i % 2 ? 3.6 : 4.6);
+			metalSphere (ctx, polar (c, 69, a), i % 2 ? 3.6 : 4.6);
 		}
 	}
 
@@ -2135,7 +1818,7 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 
 	acquireFonts ();
 	frame = new CFrame (CRect (0, 0, kCanvasWidth, kCanvasHeight), this);
-	frame->setBackgroundColor (CColor (0x0C, 0x03, 0x05, 0xFF));
+	frame->setBackgroundColor (Pal::paper);
 	frame->addView (new BackgroundView (CRect (0, 0, kCanvasWidth, kCanvasHeight)));
 
 	auto* orbit = new OrbitView (hud);
@@ -2149,12 +1832,12 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 		frame->addView (c);
 		controls[id] = c;
 	};
-	addControl (new RubyKnob (kPullCentre, this, kParamPullId, false), kParamPullId);
-	addControl (new RubyKnob (kHarmonicsCentre, this, kParamHarmonicsId, true), kParamHarmonicsId);
-	addControl (new RubySlider (67, this, kParamInertiaId, CColor (0xFF, 0x34, 0x4C, 0xFF)), kParamInertiaId);
-	addControl (new RubySlider (137, this, kParamReactionId, CColor (0xFF, 0xB0, 0x48, 0xFF)), kParamReactionId);
-	addControl (new RubySlider (730, this, kParamTrackingId, CColor (0xFF, 0xB0, 0x48, 0xFF)), kParamTrackingId);
-	addControl (new RubySlider (799, this, kParamTransShieldId, CColor (0xFF, 0x9A, 0x40, 0xFF)), kParamTransShieldId);
+	addControl (new GemKnob (kPullCentre, this, kParamPullId, GemKnob::Style::Crystal), kParamPullId);
+	addControl (new GemKnob (kHarmonicsCentre, this, kParamHarmonicsId, GemKnob::Style::Cap), kParamHarmonicsId);
+	addControl (new RubySlider (67, this, kParamInertiaId, Pal::ledRed), kParamInertiaId);
+	addControl (new RubySlider (137, this, kParamReactionId, Pal::ledWhite), kParamReactionId);
+	addControl (new RubySlider (730, this, kParamTrackingId, Pal::ledWhite), kParamTrackingId);
+	addControl (new RubySlider (799, this, kParamTransShieldId, Pal::ledRed), kParamTransShieldId);
 
 	// LED buttons (12, as on the artwork)
 	using Style = LedButton::Style;
@@ -2182,15 +1865,15 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 	};
 	toggleParam (kLeftCols[0], 0, Pal::ledRed, Style::Bar, kParamPhaseLinkId);
 	toggleParam (kLeftCols[1], 0, Pal::ledRed, Style::Bar, kParamDeltaSoloId);
-	toggleParam (kLeftCols[2], 0, Pal::ledRed, Style::Bar, kParamBypassId);
+	toggleParam (kLeftCols[2], 0, Pal::ledWhite, Style::Bar, kParamBypassId);
 	choiceParam (kLeftCols[0], 1, Pal::ledRed, Style::Bar, kParamTargetModeId, 0.0);
-	choiceParam (kLeftCols[1], 1, Pal::ledGold, Style::Bar, kParamTargetModeId, 1.0);
-	viewOption (kLeftCols[2], 1, Pal::ledGold, Style::Bar, &HudState::freeze);
+	choiceParam (kLeftCols[1], 1, Pal::ledWhite, Style::Bar, kParamTargetModeId, 1.0);
+	viewOption (kLeftCols[2], 1, Pal::ledWhite, Style::Bar, &HudState::freeze);
 	choiceParam (kRightCols[0], 0, Pal::ledRed, Style::Jewel, kParamOversamplingId, 0.0);
 	choiceParam (kRightCols[1], 0, Pal::ledRed, Style::Bar, kParamOversamplingId, 1.0);
-	choiceParam (kRightCols[2], 0, Pal::ledGold, Style::Bar, kParamOversamplingId, 2.0);
-	viewOption (kRightCols[0], 1, Pal::ledGold, Style::Jewel, &HudState::showMaster);
-	viewOption (kRightCols[1], 1, Pal::ledGold, Style::Bar, &HudState::showSlave);
+	choiceParam (kRightCols[2], 0, Pal::ledWhite, Style::Bar, kParamOversamplingId, 2.0);
+	viewOption (kRightCols[0], 1, Pal::ledWhite, Style::Jewel, &HudState::showMaster);
+	viewOption (kRightCols[1], 1, Pal::ledWhite, Style::Bar, &HudState::showSlave);
 	viewOption (kRightCols[2], 1, Pal::ledRed, Style::Bar, &HudState::showInput);
 
 	// menus

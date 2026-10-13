@@ -175,49 +175,53 @@ Pillow, sortie déterministe) dans `resource/textures/`, puis copié dans
 
 | Texture | Contenu | Densité (px / unité de canevas) |
 |---|---|---|
-| `nebula.png` | nébuleuse carmin et bordeaux à domaine déformé, filaments incandescents, couloirs de poussière, bloom, ~14 000 poussières d'étoiles, étoiles à aigrettes, assombrissement radial et zones calmes derrière les faders et libellés | 2 |
-| `astrolabe_ring.png` | anneau de laiton vieilli : profil bombé, biseaux, rainures, brossage concentrique anisotrope, ternissure, couronne de 180 dents, bande de bronze sombre avec 46 glyphes en relief doré (runes, zodiaque, planètes, étoiles) et graduation au degré, ombre portée | 2,4 |
-| `knob_gem_ruby.png`, `knob_gem_garnet.png` | cabochon facetté (table octogonale, 16 facettes en étoile, 16 facettes de rondiste) : arêtes lumineuses, contraste entre facettes, réfraction simulée, étoile vue à travers la table, lueur de sortie à l'opposé de la lumière ; **filmstrip de 16 images** sur une période de 45° de la taille | 3 |
-| `knob_gloss.png` | brillance à lumière fixe : reflet de fenêtre courbé par le dôme, point spéculaire, lumière de bord, assombrissement de Fresnel | 3 |
-| `knob_bezel.png` | lunette moletée en or avec ombre portée | 3 |
-| `plasma_a.png`, `plasma_b.png` | volutes de plasma (anneau) pour l'Orbit Visualizer | 2 |
+| `background.png` | papier marbré ivoire : fumée d'encre grise à domaine déformé, veinures, éclaboussures d'encre noire, grain du papier, bords gris clair et zones calmes derrière les faders et libellés | 2 |
+| `astrolabe_ring.png` | anneau en acier bronzé / chrome noir : profil bombé, biseaux, rainures, brossage concentrique anisotrope, couronne de 180 dents, bande claire avec 46 glyphes noirs en relief (runes, zodiaque, planètes, étoiles) et graduation au degré, ombre portée | 2,4 |
+| `knob_gem_smoke.png` | cristal fumé noir facetté (table octogonale, 16 facettes en étoile, 16 facettes de rondiste) : arêtes lumineuses, contraste entre facettes, réfraction simulée, étoile vue à travers la table ; **filmstrip de 16 images** sur une période de 45° de la taille | 3 |
+| `knob_cap.png` | dôme d'acier noir tourné (HARMONICS), anneaux d'usinage concentriques | 3 |
+| `knob_gloss.png` | brillance à lumière fixe : reflet de fenêtre courbé par le dôme, point spéculaire, lumière de bord neutre, assombrissement de Fresnel | 3 |
+| `knob_bezel.png` | lunette moletée en acier sombre avec ombre portée | 3 |
+| `plasma_a.png`, `plasma_b.png` | volutes en anneau pour l'Orbit Visualizer : fumée d'encre noire et brume rouge | 2 |
 
 L'éditeur déclare la densité de chaque PNG à VSTGUI
 (`IPlatformBitmap::setScaleFactor`) : les textures restent nettes au zoom de 120 % et
-sur écran HiDPI. S'il en manque une, le rendu vectoriel d'origine prend le relais.
+sur écran HiDPI. S'il en manque une, un rendu vectoriel simplifié prend le relais.
 
 Pour régénérer : `python3 symbiosis/tools/generate_assets.py`.
 
 ### Rendu
 
-- **Fond** : nébuleuse pourpre procédurale (bruit à domaine déformé), étoiles,
-  constellations, arabesques art nouveau dorées, cadre double en laiton, vis,
-  grille perforée et motifs art déco en bas.
+- **Fond** : papier marbré ivoire et fumée d'encre, constellations et arabesques
+  à l'encre de Chine (halo rouge près de PULL), plaque d'aluminium brossé en bas
+  avec vis sombres et motifs art déco. Palette : ivoire, encre anthracite, acier
+  bronzé, rouge sang pour les accents.
 - **Astrolabe central (Orbit Visualizer)** : bande zodiacale, couronne dentée,
-  anneau de laiton gravé, rivets, boule sommitale, deux groupes d'engrenages,
+  anneau d'acier bronzé gravé, rivets, boule sommitale, deux groupes d'engrenages,
   plaque « ORBIT VISUALIZER ». À l'intérieur, les deux spectres tressés en anneaux
-  incandescents, en miroir (graves en bas, aigus en haut, le rayon donne le niveau) :
-  esclave redistribué en carmin, plus vif à gauche, maître en ambre, plus vif à
-  droite. Les erreurs de phase font vriller le tracé rouge.
-  - **Plasma** : deux textures de volutes en fondu enchaîné lent, dont l'opacité suit
+  d'encre, en miroir (graves en bas, aigus en haut, le rayon donne le niveau) :
+  esclave redistribué en rouge sang, plus vif à gauche, maître en encre noire, plus
+  vif à droite. Les erreurs de phase font vriller le tracé rouge.
+  - **Plasma** : fumée d'encre dominante et brume rouge en fondu enchaîné lent, dont l'opacité suit
     le signal, et un remplissage gazeux entre le médaillon et l'onde.
-  - **Bloom** : passe large translucide (16 px, alpha 0,25, carmin ou ambre) et corps
+  - **Bloom** : passe large translucide (16 px, alpha 0,25, rouge sombre ou gris) et corps
     saturé (6,5 px), rendus dans un tampon hors écran à demi-résolution et rafraîchis
     une image sur deux. Ensuite, à pleine résolution et à chaque image : trait net
-    saturé, puis cœur presque blanc.
+    saturé, puis cœur sombre qui garde le trait net sur le disque clair.
 - **Médaillon** : **ACTIVE INFLUENCE** = moyenne de (1 + cos(φ₁ − φ̃₂))/2 sur la
   bande de conflit, pondérée par l'énergie (100 % = sommation entièrement
   constructive).
-- **Potentiomètres rubis** PULL et HARMONICS : rubis et grenat facettés. La pierre
+- **Potentiomètres** PULL (cristal fumé noir facetté, graduations et lueur rouges)
+  et HARMONICS (dôme d'acier noir, graduations à l'encre). La pierre
   tourne avec la valeur (image du filmstrip choisie selon l'angle, chaque image
   éclairée hors ligne sous la même lumière fixe), tandis que la brillance et la
-  lunette restent immobiles. Anneau de graduations lumineux en vectoriel. **Glissières** à curseur rubis : INERTIA, REACTION,
-  DYNAMIC TRACKING, TRANS SHIELD. Glisser verticalement (Maj = réglage fin),
+  lunette restent immobiles. Anneau de graduations en vectoriel. **Glissières** : fente noire à lueur rouge
+  (INERTIA, TRANS SHIELD) ou blanche (REACTION, DYNAMIC TRACKING), curseur rubis dans
+  un cadre d'acier sombre. Glisser verticalement (Maj = réglage fin),
   molette, double-clic ou Ctrl-clic (Cmd-clic sur Mac) pour la valeur par défaut.
 - **Menus** : `[SIDECHAIN: MASTER]` indique si le sidechain reçoit un signal (sinon
   `NONE`) ; `ROUTAGE` = Target Mode ; `SYSTEM` = Oversampling ; `SYSTEME` =
   presets d'usine (DEFAULT, KICK / 808, VOCAL / BEAT, GENTLE, INTENSE, ou CUSTOM).
-- **Douze boutons à LED** :
+- **Douze boutons à LED** (corps noir, LED rouge ou blanche) :
 
   | | colonne 1 | colonne 2 | colonne 3 |
   |---|---|---|---|
@@ -228,7 +232,7 @@ Pour régénérer : `python3 symbiosis/tools/generate_assets.py`.
 
 - **En-tête** : vumètres de la sortie et du maître (dB RMS), roue dentée (version,
   latence), bouton marche = bypass. **Oscilloscopes** en bas : sortie (rouge) et
-  maître (or).
+  maître (encre noire), sur fond clair. Vumètres à segments gris, crête rouge.
 - Police **Montserrat** embarquée dans le paquet (`Resources/Fonts`, licence SIL OFL).
 
 ### Coût à 60 FPS
@@ -283,7 +287,7 @@ symbiosis/
 │   │   ├── spectral_engine.h      transfert, phase, harmoniques, Trans-Shield
 │   │   └── yin_pitch.h            YIN temps réel
 │   └── ui/
-│       └── symbiosis_editor.*     VSTGUI4 : nébuleuse, astrolabe, rubis, LED, menus
+│       └── symbiosis_editor.*     VSTGUI4 : papier, astrolabe, cristal, LED, menus
 ├── resource/                      polices (OFL), textures PNG, ressource de version Windows
 ├── tools/generate_assets.py       générateur des textures (numpy + Pillow)
 ├── tests/dsp_test.cpp

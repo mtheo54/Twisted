@@ -111,11 +111,11 @@ smtg_target_add_plugin_resources(Symbiosis
 # Textures rendered by tools/generate_assets.py, loaded by VSTGUI from <bundle>/Resources
 smtg_target_add_plugin_resources(Symbiosis
     RESOURCES
-        resource/textures/nebula.png
+        resource/textures/background.png
         resource/textures/astrolabe_ring.png
         resource/textures/knob_bezel.png
-        resource/textures/knob_gem_ruby.png
-        resource/textures/knob_gem_garnet.png
+        resource/textures/knob_gem_smoke.png
+        resource/textures/knob_cap.png
         resource/textures/knob_gloss.png
         resource/textures/plasma_a.png
         resource/textures/plasma_b.png
