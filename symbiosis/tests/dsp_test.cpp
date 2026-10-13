@@ -450,6 +450,154 @@ void testRobustness ()
 	check (err < 1e-6, "bypass = dry delayed by the reported latency", err);
 }
 
+
+/** Short-term peak envelope (256-sample windows) from `from` to the end. */
+void envelope (const std::vector<float>& x, int from, double& mn, double& mx)
+{
+	mn = 1e9;
+	mx = 0.0;
+	for (int s = from; s + 256 <= static_cast<int> (x.size ()); s += 256)
+	{
+		double p = 0.0;
+		for (int i = 0; i < 256; ++i)
+			p = std::max (p, static_cast<double> (std::abs (x[static_cast<size_t> (s + i)])));
+		mn = std::min (mn, p);
+		mx = std::max (mx, p);
+	}
+}
+
+double maxStep (const std::vector<float>& x, int from, int to)
+{
+	double d = 0.0;
+	for (int i = std::max (from, 1); i < to; ++i)
+		d = std::max (d, static_cast<double> (std::abs (x[static_cast<size_t> (i)] - x[static_cast<size_t> (i - 1)])));
+	return d;
+}
+
+double phaseAt (const std::vector<float>& x, int start, int len, double freq)
+{
+	double re = 0.0, im = 0.0;
+	for (int i = 0; i < len; ++i)
+	{
+		const double a = 2.0 * kPi * freq * (start + i) / kRate;
+		re += x[static_cast<size_t> (start + i)] * std::cos (a);
+		im += x[static_cast<size_t> (start + i)] * std::sin (a);
+	}
+	return std::atan2 (im, re);
+}
+
+void testArtefacts ()
+{
+	// Phase Link, detuned master 30 dB under the slave (beta ~ 0.5): wrap(phi1 - phi2) jumps
+	// from +pi to -pi; the slewed rotation must not let the overlap-add cancel itself
+	{
+		const int len = 144000;
+		auto slave = sine (len, 100.0, 0.5);
+		auto master = sine (len, 101.3, 0.5 * std::pow (10.0, -30.0 / 20.0));
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p = neutralParams ();
+		p.phaseLink = true;
+		engine.setParams (p);
+		std::vector<float> ol, orr;
+		run (engine, slave, slave, &master, &master, ol, orr, 512);
+		double mn, mx;
+		envelope (ol, 3 * kN, mn, mx);
+		char msg[112];
+		std::snprintf (msg, sizeof msg, "Phase Link, detuned master: no dropout (envelope %.3f..%.3f, input 0.5)", mn, mx);
+		check (mn > 0.45 && mx < 0.52, msg);
+	}
+
+	// Phase Link keeps the stereo image: L / R 90 degrees apart stay 90 degrees apart
+	{
+		const int len = 96000;
+		auto l = sine (len, 200.0, 0.4), r = sine (len, 200.0, 0.4, kPi / 2), master = sine (len, 200.0, 0.4, 2.0);
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p = neutralParams ();
+		p.phaseLink = true;
+		engine.setParams (p);
+		std::vector<float> ol, orr;
+		run (engine, l, r, &master, &master, ol, orr, 512);
+		const double d = std::remainder (phaseAt (orr, 60000, 9600, 200.0) - phaseAt (ol, 60000, 9600, 200.0), 2.0 * kPi);
+		check (std::abs (std::abs (d) - kPi / 2) < 0.05, "Phase Link keeps the L / R phase difference (rad)", d);
+	}
+
+	// changing the Oversampling keeps the transfer (no release-and-duck pump)
+	{
+		const int len = 96000;
+		auto slave = sine (len, 220.0, 0.5), master = sine (len, 220.0, 0.5);
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p;
+		p.pull = 0.9f;
+		p.harmonics = 0.5f;
+		engine.setParams (p);
+		std::vector<float> out (static_cast<size_t> (len));
+		for (int s = 0; s < len; s += 512)
+		{
+			if (s == 48128)
+			{
+				p.oversampling = 1;
+				engine.setParams (p);
+			}
+			const float* in[1] = {slave.data () + s};
+			const float* m[1] = {master.data () + s};
+			float* o[1] = {out.data () + s};
+			engine.process (in, m, 1, o, 1, std::min (512, len - s));
+		}
+		double steadyMin, steadyMax, mn, mx;
+		envelope (std::vector<float> (out.begin () + 30000, out.begin () + 48000), 0, steadyMin, steadyMax);
+		envelope (std::vector<float> (out.begin () + 48128, out.begin () + 48128 + 2 * kN + 6000), 0, mn, mx);
+		check (mx < 1.1 * steadyMax && mn > 0.9 * steadyMin, "Oversampling 4x -> 1x: no level jump (ratio)", mx / steadyMax);
+	}
+
+	// Delta Solo is ramped: no click when it is switched
+	{
+		const int len = 96000;
+		auto slave = sine (len, 220.0, 0.5), master = sine (len, 330.0, 0.5);
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p;
+		engine.setParams (p);
+		std::vector<float> out (static_cast<size_t> (len));
+		for (int s = 0; s < len; s += 64)
+		{
+			if (s == 48000)
+			{
+				p.deltaSolo = true;
+				engine.setParams (p);
+			}
+			const float* in[1] = {slave.data () + s};
+			const float* m[1] = {master.data () + s};
+			float* o[1] = {out.data () + s};
+			engine.process (in, m, 1, o, 1, std::min (64, len - s));
+		}
+		const double before = maxStep (out, 20000, 47990), at = maxStep (out, 47990, 49100);
+		check (at < 1.5 * before, "Delta Solo switch: no click (max step / steady max step)", at / before);
+	}
+
+	// mono slave, stereo sidechain: the master's right channel is heard too
+	{
+		const int len = 48000;
+		auto slave = sine (len, 220.0, 0.5), right = sine (len, 220.0, 0.5);
+		std::vector<float> left (static_cast<size_t> (len), 0.f), out (static_cast<size_t> (len));
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p = neutralParams ();
+		p.pull = 1.f;
+		engine.setParams (p);
+		for (int s = 0; s < len; s += 512)
+		{
+			const float* in[1] = {slave.data () + s};
+			const float* m[2] = {left.data () + s, right.data () + s};
+			float* o[1] = {out.data () + s};
+			engine.process (in, m, 2, o, 1, std::min (512, len - s));
+		}
+		const double a = rms (out, len - 8192, 8192) * std::sqrt (2.0);
+		check (a < 0.47, "mono slave, master on the right channel only: the slave makes room", a);
+	}
+}
 } // namespace
 
 int main ()
@@ -464,6 +612,7 @@ int main ()
 	testHarmonicSeries ();
 	testTransientShield ();
 	testRobustness ();
+	testArtefacts ();
 	std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
 	return failures ? 1 : 0;
 }

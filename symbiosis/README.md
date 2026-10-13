@@ -92,7 +92,8 @@ Double-clic, ou Ctrl-clic (Cmd-clic sur Mac), sur un potentiomètre : retour à 
 
 STFT : N = 2048, H = 512 (recouvrement 75 %), fenêtre de Hann périodique (COLA).
 L'analyse est liée en stéréo : les décisions sont prises sur la puissance
-L + R, puis appliquées aux deux canaux, ce qui garde l'image stable.
+L + R, puis appliquées aux deux canaux, ce qui garde l'image stable. Un esclave
+mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
 
 1. **Énergie masquée** : ρ[k] = min(1, γ·|X₁|²/|X₂|²), lissé par Inertia
    (montée) et Reaction (descente). Le résidu vaut |X₂|²·(1 − ρ).
@@ -114,10 +115,21 @@ L + R, puis appliquées aux deux canaux, ce qui garde l'image stable.
    (maître et esclave à moins de 20 dB l'un de l'autre), décroît jusqu'à 0 à 40 dB
    d'écart, et suit Inertia / Reaction. Les bins d'un bassin tournent ensemble, de
    l'angle mesuré sur la crête (*spectral phase locking*).
+   - La rotation est **liée en stéréo** : un seul angle par bin, mesuré sur
+     l'interspectre Σ X₁·conj(X₂) des deux canaux, appliqué à L et à R. L'écart de
+     phase entre L et R, donc la largeur de l'image, est conservé.
+   - La rotation est un état par bin qui rejoint sa cible par le plus court arc,
+     **au plus 30° par saut**. Avec un maître désaccordé et β < 1, wrap(φ₁ − φ₂)
+     saute de +π à −π ; sans cette limite, deux trames voisines tourneraient en
+     sens opposés et l'overlap-add s'annulerait (trous de −10 dB, craquements).
 4. **Trans-Shield** : une attaque dans le saut le plus récent de la trame est
    connue 2048 échantillons avant d'être entendue. ρ et β sont réduits sur les 4
    trames qui la contiennent, ce qui évite le pré-écho de la STFT.
 5. iFFT, fenêtre de synthèse w/1,5 (Σw² = 1,5 sur 4 sauts), overlap-add.
+
+Changer l'Oversampling en cours de lecture ré-échantillonne l'état lissé (ρ, β,
+rotations) vers la nouvelle résolution, sans relâcher puis reprendre le transfert.
+Bypass et Delta Solo passent par une rampe de 20 ms (pas de clic).
 
 Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée de
 2048 échantillons (reconstruction parfaite, vérifiée par les tests).
@@ -261,6 +273,10 @@ mêmes emplacements.
   (10⁻⁸) et RMS préservée à ±0,05 dB, Phase Link (des phases opposées qui
   s'annulaient donnent |x₁ + x̃₂| = A₁ + A₂), série harmonique en 1/h (rapport
   2f₀/4f₀ = √2), Trans-Shield sans pré-écho, absence de NaN, Delta Solo, bypass.
+  Tests d'artefacts : maître désaccordé sous PHASE LINK sans trou de niveau, image
+  stéréo conservée, changement d'Oversampling sans saut, Delta Solo sans clic,
+  sidechain stéréo sur esclave mono. Chacun échoue sur la version précédente du
+  moteur.
 - Validateur Steinberg : 47 tests réussis, 0 échec (stéréo et mono, bypass,
   tailles de bloc variables, traitement sur un autre thread, état).
 - Interface ouverte dans `editorhost` du SDK sous Linux, avec de l'audio réel

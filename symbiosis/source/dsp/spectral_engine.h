@@ -23,7 +23,12 @@
 //   4. phase alignment (PHASE LINK): phi2 += beta . wrap(phi1 - phi2) on the
 //      conflict band (bins where master and slave are within 20-40 dB of
 //      each other), applied by rigid blocks on each peak's basin (spectral
-//      phase locking) so a partial's lobe rotates as one piece
+//      phase locking) so a partial's lobe rotates as one piece, by the same
+//      angle on both channels (stereo image kept). The rotation is a per-bin
+//      state that moves toward that target by at most 30 degrees per hop:
+//      when wrap() jumps from +pi to -pi (detuned master, beta < 1) the
+//      overlapping frames never disagree by more than that, so the
+//      overlap-add cannot cancel itself (no tremolo, no crackle)
 //   5. TRANS-SHIELD: an onset in the newest hop of the frame (N samples
 //      before it is heard) lowers rho and beta on the 4 frames that contain
 //      it, so the STFT does not smear the attack
@@ -116,6 +121,7 @@ public:
 	static constexpr int kMaxBins = kMaxFFTSize / 2 + 1;
 	static constexpr int kNumHarmonics = 3; // 2 f0, 3 f0, 4 f0
 	static constexpr float kMaxPartialGainDb = 24.f;
+	static constexpr float kMaxPhaseStep = 0.5235988f; // PHASE LINK slew, rad per hop (30 degrees)
 
 	static constexpr int getLatencySamples () noexcept { return kFFTSize; }
 
@@ -147,6 +153,7 @@ public:
 			x1Re[ch].assign (kMaxBins, 0.f);
 			x1Im[ch].assign (kMaxBins, 0.f);
 		}
+		thetaState.assign (kMaxBins, 0.f);
 		yRe.assign (kMaxBins, 0.f);
 		yIm.assign (kMaxBins, 0.f);
 		frameBuf.assign (kMaxFFTSize, 0.f);
@@ -169,6 +176,8 @@ public:
 		peakGain.assign (kMaxBins / 2 + 1, 1.f);
 		peakTheta.assign (kMaxBins / 2 + 1, 0.f);
 		bypassRamp.assign (kHopSize, 0.f);
+		deltaRamp.assign (kHopSize, 0.f);
+		remapScratch.assign (kMaxBins, 0.f);
 
 		// HUD bands: log-spaced 20 Hz .. 20 kHz (or Nyquist)
 		for (int o = 0; o < 3; ++o)
@@ -206,11 +215,13 @@ public:
 		}
 		std::fill (rhoSmooth.begin (), rhoSmooth.end (), 0.f);
 		std::fill (conflictSmooth.begin (), conflictSmooth.end (), 0.f);
+		std::fill (thetaState.begin (), thetaState.end (), 0.f);
 		pos = 0;
 		hopCounter = 0;
 		shieldEnv = 0.f;
 		shieldHold = 0;
 		bypassMix = params.bypass ? 1.f : 0.f;
+		deltaMix = params.deltaSolo ? 1.f : 0.f;
 		yin.reset ();
 		hud = HudFrame {};
 		stats = FrameStats {};
@@ -231,8 +242,13 @@ public:
 			return;
 		const int nCh = std::clamp (numChannels, 0, kMaxChannels);
 		const int nMaster = master ? std::clamp (numMasterChannels, 0, kMaxChannels) : 0;
-		const float bypassStep = static_cast<float> (1.0 / (0.02 * sampleRate));
+		const float rampStep = static_cast<float> (1.0 / (0.02 * sampleRate)); // 20 ms
 		const float bypassTarget = params.bypass ? 1.f : 0.f;
+		const float deltaTarget = params.deltaSolo ? 1.f : 0.f;
+		auto ramp = [rampStep] (float& v, float target) {
+			v = v < target ? std::min (target, v + rampStep) : std::max (target, v - rampStep);
+			return v;
+		};
 
 		int done = 0;
 		while (done < numSamples)
@@ -271,14 +287,10 @@ public:
 
 			for (int i = 0; i < n; ++i)
 			{
-				if (bypassMix < bypassTarget)
-					bypassMix = std::min (bypassTarget, bypassMix + bypassStep);
-				else if (bypassMix > bypassTarget)
-					bypassMix = std::max (bypassTarget, bypassMix - bypassStep);
-				bypassRamp[static_cast<size_t> (i)] = bypassMix;
+				bypassRamp[static_cast<size_t> (i)] = ramp (bypassMix, bypassTarget);
+				deltaRamp[static_cast<size_t> (i)] = ramp (deltaMix, deltaTarget);
 			}
 
-			const bool delta = params.deltaSolo;
 			for (int ch = 0; ch < nCh; ++ch)
 			{
 				const float* in = slave[ch] + done;
@@ -292,7 +304,7 @@ public:
 					h[idx] = in[i];
 					const float wet = acc[idx];
 					acc[idx] = 0.f;
-					const float y = delta ? wet - dry : wet;
+					const float y = wet - dry * deltaRamp[static_cast<size_t> (i)]; // Delta Solo: wet - dry
 					o[i] = y + (dry - y) * bypassRamp[static_cast<size_t> (i)];
 					outHist[ch][idx] = o[i];
 				}
@@ -334,10 +346,17 @@ private:
 		return 0.5 * dirichlet (delta) - 0.25 * dirichlet (delta - shift) - 0.25 * dirichlet (delta + shift);
 	}
 
-	static float wrappedAngle (float x1r, float x1i, float x2r, float x2i) noexcept
+	/** Re-samples a per-bin state from one oversampling resolution to another (same frequencies). */
+	void remapBins (std::vector<float>& v, int fromIdx, int toIdx) noexcept
 	{
-		// angle(X1 . conj X2) = wrap(phi1 - phi2), principal value in (-pi, pi]
-		return std::atan2 (x1i * x2r - x1r * x2i, x1r * x2r + x1i * x2i);
+		const int fromBins = (kFFTSize << fromIdx) / 2 + 1;
+		const int toBins = (kFFTSize << toIdx) / 2 + 1;
+		std::copy (v.begin (), v.begin () + fromBins, remapScratch.begin ());
+		for (int k = 0; k < toBins; ++k)
+		{
+			const int src = std::min (fromBins - 1, (k << fromIdx) >> toIdx);
+			v[static_cast<size_t> (k)] = remapScratch[static_cast<size_t> (src)];
+		}
 	}
 
 	//------------------------------------------------------------------------
@@ -386,9 +405,15 @@ private:
 		const int osIdx = os == 4 ? 2 : (os == 2 ? 1 : 0);
 		if (osIdx != currentOsIndex)
 		{
+			// keep the smoothed transfer and the phase rotations across the change of
+			// resolution (resetting them would release the whole transfer at once: a pump)
+			if (currentOsIndex >= 0)
+			{
+				remapBins (rhoSmooth, currentOsIndex, osIdx);
+				remapBins (conflictSmooth, currentOsIndex, osIdx);
+				remapBins (thetaState, currentOsIndex, osIdx);
+			}
 			currentOsIndex = osIdx;
-			std::fill (rhoSmooth.begin (), rhoSmooth.end (), 0.f);
-			std::fill (conflictSmooth.begin (), conflictSmooth.end (), 0.f);
 		}
 		FftEngine& fft = ffts[osIdx];
 		const int m = fft.getSize ();
@@ -419,9 +444,19 @@ private:
 
 			if (hasMaster)
 			{
-				const CircularBuffer& hm = masterHist[std::min (ch, nMaster - 1)];
-				for (int j = 0; j < kFFTSize; ++j)
-					frameBuf[static_cast<size_t> (j)] = hm[pos + j] * window[static_cast<size_t> (j)];
+				if (nCh == 1 && nMaster > 1)
+				{
+					// mono slave, stereo sidechain: analyse the master's mono downmix
+					for (int j = 0; j < kFFTSize; ++j)
+						frameBuf[static_cast<size_t> (j)] =
+						    0.5f * (masterHist[0][pos + j] + masterHist[1][pos + j]) * window[static_cast<size_t> (j)];
+				}
+				else
+				{
+					const CircularBuffer& hm = masterHist[std::min (ch, nMaster - 1)];
+					for (int j = 0; j < kFFTSize; ++j)
+						frameBuf[static_cast<size_t> (j)] = hm[pos + j] * window[static_cast<size_t> (j)];
+				}
 				fft.forward (frameBuf.data (), x1Re[ch].data (), x1Im[ch].data ());
 			}
 		}
@@ -687,7 +722,52 @@ private:
 			}
 		}
 
-		//--- 8. synthesis of the output spectrum, per channel -----------------
+		//--- 8. phase rotation, stereo-linked ------------------------------------
+		// One rotation per bin for all channels, from the cross-spectrum summed over the
+		// channels (the inter-channel phase, hence the stereo image, is kept). Target
+		// measured on each peak bin, slewed from that bin's previous rotation, then shared
+		// by the whole basin (rigid block).
+		float* state = thetaState.data ();
+		{
+			auto slew = [] (float current, float target) {
+				const float pi = 3.14159265f;
+				float step = target - current;
+				step -= 2.f * pi * std::floor ((step + pi) / (2.f * pi)); // shortest arc
+				float next = current + std::clamp (step, -kMaxPhaseStep, kMaxPhaseStep);
+				if (next > pi)
+					next -= 2.f * pi;
+				else if (next < -pi)
+					next += 2.f * pi;
+				return next;
+			};
+			auto target = [&] (int k) {
+				if (beta[k] <= 1e-4f)
+					return 0.f;
+				float cr = 0.f, ci = 0.f; // sum over channels of X1 . conj X2
+				for (int ch = 0; ch < nCh; ++ch)
+				{
+					const float x1r = x1Re[ch][k], x1i = x1Im[ch][k], x2r = x2Re[ch][k], x2i = x2Im[ch][k];
+					cr += x1r * x2r + x1i * x2i;
+					ci += x1i * x2r - x1r * x2i;
+				}
+				return beta[k] * std::atan2 (ci, cr);
+			};
+			for (int i = 0; i < numPeaks; ++i)
+			{
+				const int pk = peaks[static_cast<size_t> (i)];
+				peakTheta[static_cast<size_t> (i)] = slew (state[pk], target (pk));
+			}
+			for (int k = 0; k < numBins; ++k)
+			{
+				const int basin = basinOf[k];
+				if (basin >= 0)
+					state[k] = peakTheta[static_cast<size_t> (basin)];
+				else if (beta[k] > 1e-4f || state[k] != 0.f)
+					state[k] = slew (state[k], target (k));
+			}
+		}
+
+		//--- 9. synthesis of the output spectrum, per channel -----------------
 		double cosNum = 0.0, cosDen = 0.0;
 		for (int ch = 0; ch < nCh; ++ch)
 		{
@@ -696,26 +776,13 @@ private:
 			const float* mr = x1Re[ch].data ();
 			const float* mi = x1Im[ch].data ();
 
-			// rotation of each partial, measured on its peak bin
-			for (int i = 0; i < numPeaks; ++i)
-			{
-				const int pk = peaks[static_cast<size_t> (i)];
-				peakTheta[static_cast<size_t> (i)] =
-				    beta[pk] > 1e-4f ? beta[pk] * wrappedAngle (mr[pk], mi[pk], ar[pk], ai[pk]) : 0.f;
-			}
-
 			for (int k = 0; k < numBins; ++k)
 			{
 				const int basin = basinOf[k];
 				float gain = std::sqrt (std::max (0.f, 1.f - rho[k]));
-				float theta = 0.f;
 				if (basin >= 0)
-				{
 					gain *= peakGain[static_cast<size_t> (basin)];
-					theta = peakTheta[static_cast<size_t> (basin)];
-				}
-				else if (beta[k] > 1e-4f)
-					theta = beta[k] * wrappedAngle (mr[k], mi[k], ar[k], ai[k]);
+				const float theta = state[k];
 
 				float re = ar[k] * gain, im = ai[k] * gain;
 				if (theta != 0.f)
@@ -735,9 +802,7 @@ private:
 				const int k0 = std::clamp (static_cast<int> (std::lround (b0)), 1, numBins - 2);
 				const std::complex<double> w0 = hannKernel (k0 - b0, m);
 				double psi0 = std::atan2 (static_cast<double> (ai[k0]), static_cast<double> (ar[k0])) - std::arg (w0);
-				const int basin0 = basinOf[k0];
-				psi0 += basin0 >= 0 ? peakTheta[static_cast<size_t> (basin0)]
-				                    : (beta[k0] > 1e-4f ? beta[k0] * wrappedAngle (mr[k0], mi[k0], ar[k0], ai[k0]) : 0.f);
+				psi0 += state[k0]; // the rotation the fundamental received on this frame
 
 				for (int s = 0; s < numSynth; ++s)
 				{
@@ -786,14 +851,14 @@ private:
 				}
 			}
 
-			//--- 9. inverse FFT and overlap-add -----------------------------------
+			//--- 10. inverse FFT and overlap-add -----------------------------------
 			fft.inverse (yRe.data (), yIm.data (), timeBuf.data ());
 			CircularBuffer& acc = ola[ch];
 			for (int j = 0; j < kFFTSize; ++j)
 				acc[pos + j] += timeBuf[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
 		}
 
-		//--- 10. statistics and HUD ---------------------------------------------
+		//--- 11. statistics and HUD ---------------------------------------------
 		double eIn = 0.0, eOut = 0.0;
 		for (int k = 0; k < numBins; ++k)
 		{
@@ -859,12 +924,14 @@ private:
 	std::vector<float> rhoSmooth, conflictSmooth, rho, beta;
 	std::vector<int> basinOf, peaks, peakLo, peakHi;
 	std::vector<float> peakResidual, peakAdd, peakGain, peakTheta;
-	std::vector<float> bypassRamp;
+	std::vector<float> bypassRamp, deltaRamp, remapScratch;
+	std::vector<float> thetaState; // PHASE LINK rotation per bin, shared by the channels (rad)
 	std::array<std::array<int, kHudBands>, 3> bandLo {}, bandHi {};
 
 	float shieldEnv {0.f};
 	int shieldHold {0};
 	float bypassMix {0.f};
+	float deltaMix {0.f};
 
 	YinPitch yin;
 	HudFrame hud;

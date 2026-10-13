@@ -235,7 +235,10 @@ tresult PLUGIN_API SymbiosisProcessor::process (ProcessData& data)
 	AudioBusBuffers& out = data.outputs[0];
 	if (!in.channelBuffers32 || !out.channelBuffers32)
 		return kResultOk;
-	const int32 numChannels = std::min (in.numChannels, out.numChannels);
+	int32 numChannels = std::min (in.numChannels, out.numChannels);
+	for (int32 ch = 0; ch < numChannels; ++ch)
+		if (!in.channelBuffers32[ch] || !out.channelBuffers32[ch])
+			numChannels = ch; // never touch a missing channel buffer
 
 	const float* const* master = nullptr;
 	int32 numMaster = 0;
@@ -243,18 +246,23 @@ tresult PLUGIN_API SymbiosisProcessor::process (ProcessData& data)
 	{
 		AudioBusBuffers& side = data.inputs[1];
 		AudioBus* sideBus = getAudioInput (1);
-		if (sideBus && sideBus->isActive () && side.numChannels > 0 && side.channelBuffers32 &&
-		    side.channelBuffers32[0])
+		if (sideBus && sideBus->isActive () && side.numChannels > 0 && side.channelBuffers32)
 		{
 			master = side.channelBuffers32;
-			numMaster = side.numChannels;
+			numMaster = std::min<int32> (side.numChannels, DSP::SpectralEngine::kMaxChannels);
+			for (int32 ch = 0; ch < numMaster; ++ch)
+				if (!master[ch])
+					numMaster = ch; // a missing channel ends the sidechain
+			if (numMaster == 0)
+				master = nullptr;
 		}
 	}
 
 	engine.process (in.channelBuffers32, master, numMaster, out.channelBuffers32, numChannels, data.numSamples);
 
 	for (int32 ch = numChannels; ch < out.numChannels; ++ch)
-		std::memset (out.channelBuffers32[ch], 0, sizeof (float) * static_cast<size_t> (data.numSamples));
+		if (out.channelBuffers32[ch])
+			std::memset (out.channelBuffers32[ch], 0, sizeof (float) * static_cast<size_t> (data.numSamples));
 	out.silenceFlags = 0;
 
 	sendHudFrame (data.numSamples);
