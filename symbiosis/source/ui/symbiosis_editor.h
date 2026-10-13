@@ -38,6 +38,7 @@ struct HudState
 	float masterDb {-120.f};
 	double time {0.0};
 	int idleTicks {1000};
+	int masterHold {0}; // HUD ticks left before the sidechain is reported absent
 	bool receiving {false};
 	bool masterPresent {false};
 

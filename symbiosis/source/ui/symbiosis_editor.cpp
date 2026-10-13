@@ -2092,14 +2092,17 @@ void SymbiosisEditor::tick ()
 		follow (hud.influence, frameData.phaseTransfer, 0.12f);
 		follow (hud.slaveOutDb, frameData.slaveOutDb, 0.35f);
 		follow (hud.masterDb, frameData.masterDb, 0.35f);
-		hud.masterPresent = frameData.masterDb > -80.f;
+		// held 1.5 s, so the label does not flicker back to NONE between two kicks
+		hud.masterHold = frameData.masterDb > -80.f ? 90 : std::max (0, hud.masterHold - 1);
+		hud.masterPresent = hud.masterHold > 0;
 	}
 	else if (decay)
 	{
 		hud.influence *= 0.95f;
 		hud.slaveOutDb = std::max (-120.f, hud.slaveOutDb - 1.5f);
 		hud.masterDb = std::max (-120.f, hud.masterDb - 1.5f);
-		hud.masterPresent = false;
+		hud.masterHold = std::max (0, hud.masterHold - 1);
+		hud.masterPresent = hud.masterHold > 0;
 		for (auto& w : hud.slaveWave)
 			w *= 0.9f;
 		for (auto& w : hud.masterWave)
