@@ -5,7 +5,8 @@
 // Slave  x2 (main input)      : the track that makes room (808, pad, sample)
 // Master x1 (aux / sidechain) : the priority track (kick, lead vocal)
 //
-// Per STFT frame (N = 2048, H = 512, periodic Hann, 75 % overlap):
+// Per STFT frame (N = 2048 samples up to 50 kHz, 4096 up to 100 kHz, 8192 above: ~46 ms
+// at any rate; H = N / 4, periodic Hann, 75 % overlap):
 //   1. X1, X2 = FFT(x . w), zero-padded by the Oversampling factor (1, 2, 4)
 //   2. masked energy  E[k] = min(|X2|^2, gamma |X1|^2)      (PULL = gamma)
 //      as a ratio rho[k] = E[k] / |X2|^2, smoothed by INERTIA (attack)
@@ -114,12 +115,22 @@ struct FrameStats
 class SpectralEngine
 {
 public:
-	static constexpr int kFFTSize = 2048;
-	static constexpr int kHopSize = 512;
+	// Frame of ~46 ms at every sample rate: 2048 samples up to 50 kHz, 4096 up to 100 kHz,
+	// 8192 above (so a mix sounds the same at 44.1 and at 96 kHz). Hop = frame / 4.
+	static constexpr int kBaseFFTSize = 2048;
+	static constexpr int kMaxRateScale = 4;
 	static constexpr int kMaxChannels = 2;
 	static constexpr int kMaxOversampling = 4;
-	static constexpr int kMaxFFTSize = kFFTSize * kMaxOversampling;
+	static constexpr int kMaxFrameSize = kBaseFFTSize * kMaxRateScale;
+	static constexpr int kMaxHopSize = kMaxFrameSize / 4;
+	static constexpr int kMaxFFTSize = kMaxFrameSize * kMaxOversampling;
 	static constexpr int kMaxBins = kMaxFFTSize / 2 + 1;
+
+	/** Frame size used at a sample rate (also the latency, in samples). */
+	static constexpr int frameSizeFor (double rate) noexcept
+	{
+		return rate <= 50000.0 ? kBaseFFTSize : (rate <= 100000.0 ? 2 * kBaseFFTSize : 4 * kBaseFFTSize);
+	}
 	static constexpr int kNumHarmonics = 3; // 2 f0, 3 f0, 4 f0
 	// Most a real partial is raised (both modes): boosting a weak partial further mostly raises
 	// the noise of its basin (a rubbery sound). Energy beyond that is not redistributed in
@@ -137,34 +148,36 @@ public:
 	static constexpr double kBudgetSmoothing = 0.3; // per-hop smoothing of the energy to redistribute
 	static constexpr double kBudgetHeadroom = 1.5;  // smoothed budget <= +1.8 dB over this frame's
 
-	static constexpr int getLatencySamples () noexcept { return kFFTSize; }
+	int getLatencySamples () const noexcept { return fftSize; }
 
 	/** Allocates every buffer. Call from setupProcessing / setActive, never from process. */
 	void prepare (double newSampleRate)
 	{
 		sampleRate = newSampleRate;
+		fftSize = frameSizeFor (newSampleRate);
+		hopSize = fftSize / 4;
 		for (int i = 0; i < 3; ++i)
-			ffts[i].prepare (kFFTSize << i);
+			ffts[i].prepare (fftSize << i);
 
-		window.assign (kFFTSize, 0.f);
-		synthesisWindow.assign (kFFTSize, 0.f);
+		window.assign (fftSize, 0.f);
+		synthesisWindow.assign (fftSize, 0.f);
 		const double twoPi = 6.283185307179586476925286766559;
-		for (int j = 0; j < kFFTSize; ++j)
+		for (int j = 0; j < fftSize; ++j)
 		{
-			const double w = 0.5 - 0.5 * std::cos (twoPi * j / kFFTSize); // periodic Hann (COLA)
+			const double w = 0.5 - 0.5 * std::cos (twoPi * j / fftSize); // periodic Hann (COLA)
 			window[static_cast<size_t> (j)] = static_cast<float> (w);
 			synthesisWindow[static_cast<size_t> (j)] = static_cast<float> (w / 1.5);
 		}
-		windowProduct.assign (kFFTSize, 0.f); // analysis x synthesis: the OLA of an untouched frame
-		for (int j = 0; j < kFFTSize; ++j)
+		windowProduct.assign (fftSize, 0.f); // analysis x synthesis: the OLA of an untouched frame
+		for (int j = 0; j < fftSize; ++j)
 			windowProduct[static_cast<size_t> (j)] = window[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
 
 		for (int ch = 0; ch < kMaxChannels; ++ch)
 		{
-			slaveHist[ch].prepare (kFFTSize);
-			masterHist[ch].prepare (kFFTSize);
-			ola[ch].prepare (kFFTSize);
-			outHist[ch].prepare (kFFTSize);
+			slaveHist[ch].prepare (fftSize);
+			masterHist[ch].prepare (fftSize);
+			ola[ch].prepare (fftSize);
+			outHist[ch].prepare (fftSize);
 			x2Re[ch].assign (kMaxBins, 0.f);
 			x2Im[ch].assign (kMaxBins, 0.f);
 			x1Re[ch].assign (kMaxBins, 0.f);
@@ -195,14 +208,14 @@ public:
 		peakAdd.assign (kMaxBins / 2 + 1, 0.f);
 		peakGain.assign (kMaxBins / 2 + 1, 1.f);
 		peakTheta.assign (kMaxBins / 2 + 1, 0.f);
-		bypassRamp.assign (kHopSize, 0.f);
-		deltaRamp.assign (kHopSize, 0.f);
+		bypassRamp.assign (hopSize, 0.f);
+		deltaRamp.assign (hopSize, 0.f);
 		remapScratch.assign (kMaxBins, 0.f);
 
 		// HUD bands: log-spaced 20 Hz .. 20 kHz (or Nyquist)
 		for (int o = 0; o < 3; ++o)
 		{
-			const int m = kFFTSize << o;
+			const int m = fftSize << o;
 			const int numBins = m / 2 + 1;
 			const double fTop = std::min (20000.0, 0.5 * sampleRate);
 			for (int b = 0; b < kHudBands; ++b)
@@ -281,7 +294,7 @@ public:
 		int done = 0;
 		while (done < numSamples)
 		{
-			const int n = std::min (numSamples - done, kHopSize - hopCounter);
+			const int n = std::min (numSamples - done, hopSize - hopCounter);
 
 			// master history first: out may alias the slave input
 			for (int ch = 0; ch < kMaxChannels; ++ch)
@@ -338,10 +351,10 @@ public:
 				}
 			}
 
-			pos = (pos + n) & (kFFTSize - 1);
+			pos = (pos + n) & (fftSize - 1);
 			hopCounter += n;
 			done += n;
-			if (hopCounter == kHopSize)
+			if (hopCounter == hopSize)
 			{
 				hopCounter = 0;
 				processFrame (nCh, nMaster);
@@ -360,7 +373,7 @@ private:
 	std::complex<double> hannKernel (double delta, int m) const noexcept
 	{
 		constexpr double pi = 3.14159265358979323846;
-		const double n = kFFTSize;
+		const double n = fftSize;
 		auto dirichlet = [&] (double d) -> std::complex<double> {
 			const double s = std::sin (pi * d / m);
 			if (std::abs (s) < 1e-12)
@@ -393,8 +406,8 @@ private:
 	/** Re-samples a per-bin state from one oversampling resolution to another (same frequencies). */
 	void remapBins (std::vector<float>& v, int fromIdx, int toIdx) noexcept
 	{
-		const int fromBins = (kFFTSize << fromIdx) / 2 + 1;
-		const int toBins = (kFFTSize << toIdx) / 2 + 1;
+		const int fromBins = (fftSize << fromIdx) / 2 + 1;
+		const int toBins = (fftSize << toIdx) / 2 + 1;
 		std::copy (v.begin (), v.begin () + fromBins, remapScratch.begin ());
 		for (int k = 0; k < toBins; ++k)
 		{
@@ -416,15 +429,15 @@ private:
 		auto levelDb = [&] (const CircularBuffer* hist, int count) {
 			double e = 0.0;
 			for (int ch = 0; ch < count; ++ch)
-				for (int j = kFFTSize - kHopSize; j < kFFTSize; ++j)
+				for (int j = fftSize - hopSize; j < fftSize; ++j)
 					e += static_cast<double> (hist[ch][pos + j]) * hist[ch][pos + j];
-			const double meanSquare = count > 0 ? e / (kHopSize * count) : 0.0;
+			const double meanSquare = count > 0 ? e / (hopSize * count) : 0.0;
 			return static_cast<float> (10.0 * std::log10 (meanSquare + 1e-12));
 		};
 		hud.slaveOutDb = levelDb (outHist, nCh);
 		hud.masterDb = levelDb (masterHist, nMaster);
 
-		constexpr int bucket = kFFTSize / kHudWavePoints;
+		const int bucket = fftSize / kHudWavePoints;
 		for (int b = 0; b < kHudWavePoints; ++b)
 		{
 			float so = 0.f, ma = 0.f;
@@ -466,7 +479,7 @@ private:
 		FftEngine& fft = ffts[osIdx];
 		const int m = fft.getSize ();
 		const int numBins = m / 2 + 1;
-		const int r = m / kFFTSize;
+		const int r = m / fftSize;
 		const bool masterConnected = nMaster > 0;
 		stats = FrameStats {};
 
@@ -474,10 +487,10 @@ private:
 			return;
 
 		//--- 1. analysis -----------------------------------------------------
-		const float fullScaleBin = 0.25f * kFFTSize; // |X| of a 0 dBFS sine on its bin (Hann)
+		const float fullScaleBin = 0.25f * fftSize; // |X| of a 0 dBFS sine on its bin (Hann)
 		const float powerFloor = fullScaleBin * fullScaleBin * 1e-12f * static_cast<float> (nCh); // -120 dBFS
 		double eNew = 0.0, eOld = 0.0;
-		std::fill (frameBuf.begin () + kFFTSize, frameBuf.begin () + m, 0.f);
+		std::fill (frameBuf.begin () + fftSize, frameBuf.begin () + m, 0.f);
 
 		// A silent sidechain frame (every bin far below the -120 dBFS floor, from Parseval:
 		// no bin exceeds m x the windowed energy) is not analysed: between two kicks, or with
@@ -487,7 +500,7 @@ private:
 		{
 			double e = 0.0;
 			for (int c = 0; c < nMaster; ++c)
-				for (int j = 0; j < kFFTSize; ++j)
+				for (int j = 0; j < fftSize; ++j)
 				{
 					const double v = masterHist[c][pos + j] * window[static_cast<size_t> (j)];
 					e += v * v;
@@ -498,10 +511,10 @@ private:
 		for (int ch = 0; ch < nCh; ++ch)
 		{
 			const CircularBuffer& h = slaveHist[ch];
-			for (int j = 0; j < kFFTSize; ++j)
+			for (int j = 0; j < fftSize; ++j)
 			{
 				const float s = h[pos + j];
-				if (j >= kFFTSize - kHopSize)
+				if (j >= fftSize - hopSize)
 					eNew += static_cast<double> (s) * s;
 				else
 					eOld += static_cast<double> (s) * s;
@@ -514,7 +527,7 @@ private:
 				if (nCh == 1 && nMaster > 1)
 				{
 					// mono slave, stereo sidechain: analyse the master's mono downmix
-					for (int j = 0; j < kFFTSize; ++j)
+					for (int j = 0; j < fftSize; ++j)
 						frameBuf[static_cast<size_t> (j)] =
 						    0.5f * (masterHist[0][pos + j] + masterHist[1][pos + j]) * window[static_cast<size_t> (j)];
 				}
@@ -528,7 +541,7 @@ private:
 				else
 				{
 					const CircularBuffer& hm = masterHist[std::min (ch, nMaster - 1)];
-					for (int j = 0; j < kFFTSize; ++j)
+					for (int j = 0; j < fftSize; ++j)
 						frameBuf[static_cast<size_t> (j)] = hm[pos + j] * window[static_cast<size_t> (j)];
 				}
 				fft.forward (frameBuf.data (), x1Re[ch].data (), x1Im[ch].data ());
@@ -556,14 +569,14 @@ private:
 
 		//--- 3. transient shield (onset in the newest hop of the frame) -------
 		{
-			const double newPower = eNew / kHopSize + 1e-12;
-			const double oldPower = eOld / (kFFTSize - kHopSize) + 1e-12;
+			const double newPower = eNew / hopSize + 1e-12;
+			const double oldPower = eOld / (fftSize - hopSize) + 1e-12;
 			const float ratioDb = static_cast<float> (10.0 * std::log10 (newPower / oldPower));
 			const float onset = std::clamp ((ratioDb - 4.f) / 8.f, 0.f, 1.f);
 			if (onset >= shieldEnv && onset > 0.f)
 			{
 				shieldEnv = onset;
-				shieldHold = kFFTSize / kHopSize - 1; // the 4 frames that contain the onset
+				shieldHold = fftSize / hopSize - 1; // the 4 frames that contain the onset
 			}
 			else if (shieldHold > 0)
 				--shieldHold;
@@ -573,7 +586,7 @@ private:
 		const float protect = 1.f - std::clamp (params.transShield, 0.f, 1.f) * shieldEnv;
 
 		//--- 4. masked energy, conflict band, smoothing -----------------------
-		const double framePeriod = kHopSize / sampleRate;
+		const double framePeriod = hopSize / sampleRate;
 		const float aAttack = static_cast<float> (std::exp (-framePeriod / (std::max (params.inertiaMs, 0.01f) * 1e-3)));
 		const float aRelease = static_cast<float> (std::exp (-framePeriod / (std::max (params.reactionMs, 0.01f) * 1e-3)));
 		const float gamma = std::clamp (params.pull, 0.f, 1.f);
@@ -849,7 +862,7 @@ private:
 		// by the whole basin (rigid block).
 		float* state = thetaState.data ();
 		{
-			const float detunePerBin = static_cast<float> (6.283185307179586 * kMaxPhaseDetune * kHopSize / m);
+			const float detunePerBin = static_cast<float> (6.283185307179586 * kMaxPhaseDetune * hopSize / m);
 			auto slew = [detunePerBin] (float current, float target, int bin) {
 				const float pi = 3.14159265f;
 				const float maxStep = std::min (kMaxPhaseStep, detunePerBin * static_cast<float> (bin));
@@ -909,7 +922,7 @@ private:
 		{
 			const double twoPi = 6.283185307179586;
 			auto wrap = [twoPi] (double x) { return x - twoPi * std::floor ((x + 0.5 * twoPi) / twoPi); };
-			const double advance = twoPi * synthF0Hz * kHopSize / sampleRate;
+			const double advance = twoPi * synthF0Hz * hopSize / sampleRate;
 			const bool resolved = b0 > 0.0 && synthBin >= 4.0 * r;
 			double psi0 = 0.0;
 			if (resolved)
@@ -1040,13 +1053,13 @@ private:
 			if (neutral)
 			{
 				const CircularBuffer& h = slaveHist[ch];
-				for (int j = 0; j < kFFTSize; ++j)
+				for (int j = 0; j < fftSize; ++j)
 					acc[pos + j] += h[pos + j] * windowProduct[static_cast<size_t> (j)];
 			}
 			else
 			{
 				fft.inverse (yRe.data (), yIm.data (), timeBuf.data ());
-				for (int j = 0; j < kFFTSize; ++j)
+				for (int j = 0; j < fftSize; ++j)
 					acc[pos + j] += timeBuf[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
 			}
 		}
@@ -1096,6 +1109,8 @@ private:
 
 	//------------------------------------------------------------------------
 	double sampleRate {48000.0};
+	int fftSize {kBaseFFTSize};    // frame = latency, set by prepare() from the sample rate
+	int hopSize {kBaseFFTSize / 4};
 	bool prepared {false};
 	EngineParams params;
 

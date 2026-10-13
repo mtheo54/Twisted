@@ -126,6 +126,12 @@ tresult PLUGIN_API SymbiosisController::notify (IMessage* message)
 				hudMailbox = HudMailboxRegistry::find (id);
 		return kResultOk;
 	}
+	if (message && message->getMessageID () && std::strcmp (message->getMessageID (), kLatencyChangedMessageId) == 0)
+	{
+		if (auto handler = getComponentHandler ())
+			handler->restartComponent (kLatencyChanged);
+		return kResultOk;
+	}
 	if (hudReceiver.onMessage (message))
 		return kResultTrue;
 	return EditController::notify (message);

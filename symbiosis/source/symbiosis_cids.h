@@ -109,6 +109,9 @@ inline constexpr Steinberg::Vst::DataExchangeUserContextID kHudExchangeContextId
 inline constexpr const char* kHudMailboxMessageId = "SymbiosisHudMailbox";
 inline constexpr const char* kHudMailboxIdAttr = "id";
 
+/** IMessage from the processor: the latency changed (new sample rate). */
+inline constexpr const char* kLatencyChangedMessageId = "SymbiosisLatencyChanged";
+
 /** State chunk version written by the processor. */
 inline constexpr Steinberg::int32 kStateVersion = 1;
 

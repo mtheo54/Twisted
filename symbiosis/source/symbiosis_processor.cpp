@@ -155,7 +155,21 @@ tresult PLUGIN_API SymbiosisProcessor::setupProcessing (ProcessSetup& setup)
 {
 	const tresult result = AudioEffect::setupProcessing (setup);
 	if (result == kResultOk)
+	{
 		engine.prepare (setup.sampleRate); // every buffer is allocated here
+		// the frame (= latency) follows the sample rate: tell the controller, which asks the
+		// host to query the latency again
+		const auto latency = static_cast<uint32> (engine.getLatencySamples ());
+		if (latency != reportedLatency)
+		{
+			reportedLatency = latency;
+			if (auto msg = owned (allocateMessage ()))
+			{
+				msg->setMessageID (kLatencyChangedMessageId);
+				sendMessage (msg);
+			}
+		}
+	}
 	return result;
 }
 
@@ -179,13 +193,13 @@ tresult PLUGIN_API SymbiosisProcessor::setActive (TBool state)
 //------------------------------------------------------------------------
 uint32 PLUGIN_API SymbiosisProcessor::getLatencySamples ()
 {
-	return static_cast<uint32> (kFFTSize); // 2048 samples
+	return static_cast<uint32> (engine.getLatencySamples ()); // ~46 ms: 2048 samples at 44.1/48 kHz
 }
 
 //------------------------------------------------------------------------
 uint32 PLUGIN_API SymbiosisProcessor::getTailSamples ()
 {
-	return static_cast<uint32> (kFFTSize);
+	return static_cast<uint32> (engine.getLatencySamples ());
 }
 
 //------------------------------------------------------------------------

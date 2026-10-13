@@ -26,8 +26,11 @@ Insérer Symbiosis sur la piste esclave, puis router la piste maître vers son e
 sidechain. Sans sidechain, le plugin laisse passer le signal intact, retardé de la
 latence annoncée.
 
-**Latence : 2048 échantillons**, déclarés à l'hôte (`getLatencySamples`). Le DAW
-compense automatiquement. Le bypass sort le signal sec retardé d'autant, sans clic.
+**Latence : une trame, environ 46 ms à toutes les fréquences d'échantillonnage** :
+2048 échantillons jusqu'à 48 kHz, 4096 jusqu'à 96 kHz, 8192 au-delà. Elle est
+déclarée à l'hôte (`getLatencySamples`), qui est prévenu si elle change avec la
+fréquence (`restartComponent (kLatencyChanged)`). Le DAW compense automatiquement.
+Le bypass sort le signal sec retardé d'autant, sans clic.
 
 ## Compiler
 
@@ -105,7 +108,11 @@ Double-clic, ou Ctrl-clic (Cmd-clic sur Mac), sur un potentiomètre : retour à 
 
 ## Le traitement, trame par trame
 
-STFT : N = 2048, H = 512 (recouvrement 75 %), fenêtre de Hann périodique (COLA).
+STFT : N = 2048 échantillons jusqu'à 48 kHz (4096 jusqu'à 96 kHz, 8192 au-delà),
+H = N/4 (recouvrement 75 %), fenêtre de Hann périodique (COLA). La trame dure donc
+toujours ~46 ms et la résolution reste ~21,5 Hz par bin : un mix sonne pareil à 44,1
+et à 96 kHz (avant, à 88,2 kHz, le sub d'une 808 était tiré de 6,1 dB sous le kick
+au lieu de 3,5).
 L'analyse est liée en stéréo : les décisions sont prises sur la puissance
 L + R, puis appliquées aux deux canaux, ce qui garde l'image stable. Un esclave
 mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
@@ -166,7 +173,7 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
      saute de +π à −π ; sans cette limite, deux trames voisines tourneraient en
      sens opposés et l'overlap-add s'annulerait (trous de −10 dB, craquements).
 4. **Trans-Shield** : une attaque dans le saut le plus récent de la trame est
-   connue 2048 échantillons avant d'être entendue. ρ et β sont réduits sur les 4
+   connue une trame (~46 ms) avant d'être entendue. ρ et β sont réduits sur les 4
    trames qui la contiennent, ce qui évite le pré-écho de la STFT.
 5. iFFT, fenêtre de synthèse w/1,5 (Σw² = 1,5 sur 4 sauts), overlap-add.
 
@@ -174,8 +181,8 @@ Changer l'Oversampling en cours de lecture ré-échantillonne l'état lissé (ρ
 rotations) vers la nouvelle résolution, sans relâcher puis reprendre le transfert.
 Bypass et Delta Solo passent par une rampe de 20 ms (pas de clic).
 
-Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée de
-2048 échantillons (reconstruction parfaite, vérifiée par les tests).
+Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée d'une
+trame (reconstruction parfaite, vérifiée par les tests à 44,1, 96 et 192 kHz).
 
 ### Écarts assumés par rapport au cahier des charges
 
@@ -201,7 +208,7 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
 ## Temps réel
 
 - `process()` n'alloue rien et ne prend aucun verrou. Tous les tampons (trames, FFT
-  2048 / 4096 / 8192, tables trigonométriques, YIN) sont alloués dans
+  jusqu'à 32768 points, tables trigonométriques, YIN) sont alloués dans
   `setupProcessing()`, et `setActive(true)` les remet à zéro.
 - FTZ/DAZ (`_MM_SET_FLUSH_ZERO_MODE`, `_MM_SET_DENORMALS_ZERO_MODE`) sur x86, bit
   FZ du FPCR sur ARM64, pendant toute la durée de `process()`.
@@ -222,7 +229,11 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
   les gains et rotations par bin sont calculés une fois pour les deux canaux, la
   FFT lit ses facteurs de rotation dans des tables contiguës par étage (boucle
   vectorisée) et la fonction de différence de YIN tourne sur quatre sommes
-  indépendantes.
+  indépendantes. À 96 kHz la charge fait un peu plus que doubler, à 192 kHz elle est
+  multipliée par quatre à cinq (deux fois plus d'échantillons et des FFT deux fois
+  plus longues à chaque doublement) : ~9,6 % et ~20 % en 4x Harmonic. L'Oversampling
+  a le même sens à toutes les fréquences (la trame suit la fréquence) ; 1x ou 2x
+  allège nettement la charge à 192 kHz.
 
 ## Interface
 
@@ -321,7 +332,8 @@ mêmes emplacements.
 
 - Tests DSP (`tests/dsp_test.cpp`, également sous ASan et UBSan) : FFT contre DFT
   directe, file SPSC entre deux threads, YIN à ±1 %, reconstruction parfaite en
-  1x/2x/4x, latence exacte de 2048 échantillons, conservation de l'énergie
+  1x/2x/4x, latence exacte d'une trame (2048 échantillons à 48 kHz, 4096 à 96, 8192
+  à 192), même effet à 48 et à 96 kHz, conservation de l'énergie
   (budget réinjecté à 10⁻⁷ près, RMS à 0,2 dB), Phase Link (des phases opposées qui
   s'annulaient donnent |x₁ + x̃₂| = A₁ + A₂), série harmonique en 1/h (rapport
   2f₀/4f₀ = √2), Trans-Shield sans pré-écho, absence de NaN, Delta Solo, bypass.

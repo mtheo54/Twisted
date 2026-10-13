@@ -29,7 +29,7 @@ void check (bool ok, const char* what, double value = 0.0)
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kRate = 48000.0;
-constexpr int kN = SpectralEngine::kFFTSize;
+constexpr int kN = SpectralEngine::kBaseFFTSize; // frame and latency at 48 kHz
 
 EngineParams neutralParams ()
 {
@@ -214,7 +214,7 @@ void testLatency ()
 	for (int i = 0; i < len; ++i)
 		if (std::abs (ol[static_cast<size_t> (i)]) > std::abs (ol[static_cast<size_t> (peak)]))
 			peak = i;
-	check (peak == 100 + SpectralEngine::getLatencySamples () && std::abs (ol[static_cast<size_t> (peak)] - 1.f) < 1e-4,
+	check (peak == 100 + engine.getLatencySamples () && std::abs (ol[static_cast<size_t> (peak)] - 1.f) < 1e-4,
 	       "impulse comes out exactly getLatencySamples() = 2048 later", peak);
 }
 
@@ -814,6 +814,77 @@ void testPhaseLinkSpikes ()
 	std::snprintf (msg, sizeof msg, "Phase Link adds no one-sample spikes on a hot 808 under clicky kicks (%d vs %d without)", withLink, without);
 	check (withLink <= without + 5, msg, withLink);
 }
+
+/** The frame keeps ~46 ms at every sample rate: same latency in ms, same behaviour. */
+void testSampleRates ()
+{
+	for (double rate : {44100.0, 96000.0, 192000.0})
+	{
+		SpectralEngine engine;
+		engine.prepare (rate);
+		const int expected = SpectralEngine::frameSizeFor (rate);
+		// perfect reconstruction with PULL 0 / Phase Link off, latency = frame
+		EngineParams p;
+		p.pull = 0.f;
+		p.harmonics = 0.f;
+		p.phaseLink = false;
+		engine.setParams (p);
+		const int len = static_cast<int> (rate);
+		std::vector<float> in (static_cast<size_t> (len)), out (static_cast<size_t> (len));
+		for (int i = 0; i < len; ++i)
+			in[static_cast<size_t> (i)] = static_cast<float> (0.5 * std::sin (2.0 * kPi * 50.0 * i / rate) + 0.1 * std::sin (2.0 * kPi * 3000.0 * i / rate));
+		for (int s = 0; s < len; s += 300)
+		{
+			const float* i1[1] = {in.data () + s};
+			float* o1[1] = {out.data () + s};
+			engine.process (i1, nullptr, 0, o1, 1, std::min (300, len - s));
+		}
+		double err = 0.0;
+		for (int i = expected; i < len; ++i)
+			err = std::max (err, static_cast<double> (std::abs (out[static_cast<size_t> (i)] - in[static_cast<size_t> (i - expected)])));
+		char msg[120];
+		std::snprintf (msg, sizeof msg, "%.0f Hz: latency %d samples (%.1f ms), output = input delayed", rate,
+		               engine.getLatencySamples (), 1000.0 * engine.getLatencySamples () / rate);
+		check (engine.getLatencySamples () == expected && err < 1e-4, msg, err);
+	}
+
+	// the same 45 Hz sub under the same 50 Hz master is pulled by the same amount at 48 and 96 kHz
+	double pulled[2] = {0.0, 0.0};
+	int idx = 0;
+	for (double rate : {48000.0, 96000.0})
+	{
+		SpectralEngine engine;
+		engine.prepare (rate);
+		EngineParams p;
+		p.pull = 0.6f;
+		p.harmonics = 0.f;
+		p.phaseLink = false;
+		p.transShield = 0.f;
+		engine.setParams (p);
+		const int len = static_cast<int> (rate);
+		std::vector<float> sub (static_cast<size_t> (len)), master (static_cast<size_t> (len)), out (static_cast<size_t> (len));
+		for (int i = 0; i < len; ++i)
+		{
+			sub[static_cast<size_t> (i)] = static_cast<float> (0.5 * std::sin (2.0 * kPi * 45.0 * i / rate));
+			master[static_cast<size_t> (i)] = static_cast<float> (0.5 * std::sin (2.0 * kPi * 50.0 * i / rate));
+		}
+		for (int s = 0; s < len; s += 256)
+		{
+			const float* i1[1] = {sub.data () + s};
+			const float* m1[1] = {master.data () + s};
+			float* o1[1] = {out.data () + s};
+			engine.process (i1, m1, 1, o1, 1, std::min (256, len - s));
+		}
+		const int n = len / 4;
+		double e = 0.0;
+		for (int i = len - n; i < len; ++i)
+			e += static_cast<double> (out[static_cast<size_t> (i)]) * out[static_cast<size_t> (i)];
+		pulled[idx++] = 10.0 * std::log10 (e / n / 0.125);
+	}
+	char msg[120];
+	std::snprintf (msg, sizeof msg, "45 Hz sub under a 50 Hz master: %.2f dB at 48 kHz, %.2f dB at 96 kHz", pulled[0], pulled[1]);
+	check (std::abs (pulled[0] - pulled[1]) < 0.5, msg, pulled[1] - pulled[0]);
+}
 } // namespace
 
 int main ()
@@ -832,6 +903,7 @@ int main ()
 	testLow808 ();
 	testNoteOff ();
 	testPhaseLinkSpikes ();
+	testSampleRates ();
 	std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
 	return failures ? 1 : 0;
 }

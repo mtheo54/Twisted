@@ -49,7 +49,6 @@ public:
 	Steinberg::uint32 PLUGIN_API getTailSamples () SMTG_OVERRIDE;
 	Steinberg::tresult PLUGIN_API process (Steinberg::Vst::ProcessData& data) SMTG_OVERRIDE;
 
-	static constexpr int kFFTSize = DSP::SpectralEngine::kFFTSize;
 
 private:
 	DSP::EngineParams makeEngineParams () const;
@@ -62,6 +61,7 @@ private:
 	Steinberg::Vst::DataExchangeHandler hudExchange;
 	std::shared_ptr<HudMailbox> hudMailbox; // direct path to the controller (same process)
 	int64_t hudMailboxId {0};
+	Steinberg::uint32 reportedLatency {DSP::SpectralEngine::kBaseFFTSize};
 	Steinberg::uint32 lastHudSerial {0};
 	double samplesSinceHud {0.0};
 };

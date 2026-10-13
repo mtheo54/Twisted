@@ -1988,7 +1988,7 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 	frame->addView (new IconButton (CRect (797, 13, 817, 33), IconButton::Kind::Gear, nullptr, [] (IconButton* v) {
 		popupMenu (v,
 		           {{"Symbiosis " VERSION_STR, CMenuItem::kDisabled},
-		            {"Latency 2048 samples", CMenuItem::kDisabled},
+		            {"Latency ~46 ms (2048 samples at 44.1/48 kHz)", CMenuItem::kDisabled},
 		            {stringCompanyWeb, CMenuItem::kDisabled}},
 		           nullptr);
 	}));
