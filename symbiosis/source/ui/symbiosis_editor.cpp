@@ -374,6 +374,24 @@ void drawGlowText (CDrawContext* ctx, const std::string& s, CCoord cx, CCoord ba
 }
 
 /**
+ * Offscreen of size x scale pixels, created at scale factor 1: Direct2D and CoreGraphics
+ * pre-scale a bitmap context by its scale factor and Cairo does not, so at 1 every backend
+ * draws in pixels and the caller applies the scale transform itself, once.
+ * finishOffscreen() then gives the bitmap that scale factor, so it draws back at `size`.
+ */
+SharedPointer<COffscreenContext> makeOffscreen (const CPoint& size, double scale)
+{
+	return COffscreenContext::create (CPoint (std::ceil (size.x * scale), std::ceil (size.y * scale)), 1.0);
+}
+
+void finishOffscreen (COffscreenContext& off, double scale)
+{
+	if (auto* bitmap = off.getBitmap ())
+		if (auto platformBitmap = bitmap->getPlatformBitmap ())
+			platformBitmap->setScaleFactor (scale);
+}
+
+/**
  * Renders `paint` once into a transparent offscreen bitmap at the exact device resolution
  * (screen scale x editor zoom): later frames only copy pixels, no resampling, no paths.
  */
@@ -381,17 +399,18 @@ template <typename Paint>
 SharedPointer<CBitmap> renderToCache (CFrame* frame, const CPoint& size, Paint&& paint, double resolution = 1.0)
 {
 	const double scale = (frame ? frame->getScaleFactor () * frame->getZoom () : 1.0) * resolution;
-	auto off = COffscreenContext::create (size, scale);
+	auto off = makeOffscreen (size, scale);
 	if (!off)
 		return nullptr;
 	off->beginDraw ();
-	off->clearRect (CRect (0, 0, size.x * scale, size.y * scale));
+	off->clearRect (CRect (0, 0, std::ceil (size.x * scale), std::ceil (size.y * scale)));
 	{
 		CDrawContext::Transform t (*off, CGraphicsTransform ().scale (scale, scale));
 		off->setDrawMode (kAntiAliasing | kNonIntegralMode);
 		paint (off.get ());
 	}
 	off->endDraw ();
+	finishOffscreen (*off, scale);
 	return off->getBitmap ();
 }
 
@@ -1470,8 +1489,14 @@ public:
 		const CRect area = getViewSize ();
 		const double device = getFrame () ? getFrame ()->getScaleFactor () * getFrame ()->getZoom () : 1.0;
 		const double bloomScale = device * 0.5;
-		if (!bloomBuffer)
-			bloomBuffer = COffscreenContext::create (area.getSize (), bloomScale);
+		if (!bloomBuffer || bloomBufferScale != bloomScale) // created, or screen scale changed
+		{
+			bloomBuffer = makeOffscreen (area.getSize (), bloomScale);
+			if (bloomBuffer)
+				finishOffscreen (*bloomBuffer, bloomScale);
+			bloomBufferScale = bloomScale;
+			bloomValid = false;
+		}
 		// the soft layers move slowly: refresh them every other frame (sharp lines: every frame)
 		const bool refreshBloom = !bloomValid || (++frameCounter % 2) == 0;
 		if (bloomBuffer && !refreshBloom)
@@ -1483,7 +1508,7 @@ public:
 		{
 			bloomValid = true;
 			bloomBuffer->beginDraw ();
-			bloomBuffer->clearRect (CRect (0, 0, area.getWidth () * bloomScale, area.getHeight () * bloomScale));
+			bloomBuffer->clearRect (CRect (0, 0, std::ceil (area.getWidth () * bloomScale), std::ceil (area.getHeight () * bloomScale)));
 			{
 				CDrawContext::Transform t (*bloomBuffer, CGraphicsTransform ().translate (-area.left, -area.top).scale (bloomScale, bloomScale));
 				bloomBuffer->setDrawMode (kAntiAliasing | kNonIntegralMode);
@@ -1764,6 +1789,7 @@ private:
 	// device-resolution caches (GUI thread only)
 	mutable SharedPointer<CBitmap> plasmaCacheA, plasmaCacheB;
 	SharedPointer<COffscreenContext> bloomBuffer;
+	double bloomBufferScale {0.0};
 	bool bloomValid {false};
 	uint32_t frameCounter {0};
 	SharedPointer<CBitmap> medallionCache, readoutCache;
