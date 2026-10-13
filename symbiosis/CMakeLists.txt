@@ -100,13 +100,11 @@ target_link_libraries(Symbiosis PRIVATE
     vstgui_support
 )
 
-# Unbounded and JetBrains Mono (SIL OFL 1.1), loaded by VSTGUI from <bundle>/Resources/Fonts
+# Montserrat (SIL OFL 1.1), loaded by VSTGUI from <bundle>/Resources/Fonts
 smtg_target_add_plugin_resources(Symbiosis
     RESOURCES
-        resource/fonts/Unbounded-Regular.ttf
-        resource/fonts/Unbounded-Bold.ttf
-        resource/fonts/JetBrainsMono-Regular.ttf
-        resource/fonts/JetBrainsMono-Bold.ttf
+        resource/fonts/Montserrat-Regular.ttf
+        resource/fonts/Montserrat-Bold.ttf
     OUTPUT_SUBDIRECTORY Fonts
 )
 

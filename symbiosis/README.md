@@ -10,9 +10,9 @@ secondaire sur celle de la piste maître, pour que la somme soit constructive
 
 ![Symbiosis en fonctionnement : 808 sur l'entrée principale, kick en sidechain](docs/img/symbiosis-live.png)
 
-*Capture prise sous Linux (Xvfb) : une 808 à 55 Hz sur l'entrée principale, un kick
-sur le sidechain, Phase Link actif. Tracé cyan = maître, tracé braise = esclave
-redistribué, anneau intérieur = cohérence de phase par bande.*
+*Capture prise sous Linux (Xvfb) avec de l'audio réel : une 808 à 55 Hz sur l'entrée
+principale, un kick sur le sidechain, Phase Link actif. Anneau rouge = esclave
+redistribué, anneau orange = maître.*
 
 ## Routage
 
@@ -162,23 +162,48 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
 
 ## Interface
 
-VSTGUI4, construite en code (pas de `.uidesc`), 980 × 600.
+VSTGUI4, entièrement dessinée en code (pas de `.uidesc`, aucune image) d'après la
+maquette « astrolabe » : canevas de 860 × 560 affiché à 120 % (1032 × 672). Les
+éléments fixes (nébuleuse, cadre, astrolabe) sont calculés une seule fois dans une
+image en mémoire, à la résolution de l'écran.
 
-- Châssis noir #0D0809, grain abrasé au laser généré une fois, lueur bordeaux
-  #4A0307 en haut, trait d'usinage 1 px rgba(226, 52, 68, 0.45).
-- Polices embarquées dans le paquet (`Resources/Fonts`, licence SIL OFL) :
-  **Unbounded** pour les titres (espacement 0,16 em, dessiné glyphe par glyphe) et
-  **JetBrains Mono** pour les valeurs (#FFECEE, chiffres tabulaires).
-- **Orbit HUD** : réticule pointillé de 0° à 360°. Les spectres sont enroulés sur
-  l'orbite, de 20 Hz en haut à 20 kHz dans le sens horaire, le rayon donnant le
-  niveau. Maître en cyan #17D4C6, esclave redistribué en braise #E23444 (les erreurs
-  de phase le font vriller), entrée esclave en fantôme. L'anneau intérieur montre
-  la cohérence de phase par bande (cyan = constructif, braise = destructif).
-- Afficheur central **PHASE TRANSFER** en rouge sang incandescent : moyenne de
-  (1 + cos(φ₁ − φ̃₂))/2 sur la bande de conflit, pondérée par l'énergie. Autour :
-  part d'énergie déplacée, f₀ (mode Harmonic) ou action du Trans-Shield.
-- Potentiomètres en aluminium anodisé noir brossé, arc de valeur et marqueur
-  incandescents.
+- **Fond** : nébuleuse pourpre procédurale (bruit à domaine déformé), étoiles,
+  constellations, arabesques art nouveau dorées, cadre double en laiton, vis,
+  grille perforée et motifs art déco en bas.
+- **Astrolabe central (Orbit Visualizer)** : bande zodiacale, couronne dentée,
+  anneau de laiton gravé, rivets, boule sommitale, deux groupes d'engrenages,
+  plaque « ORBIT VISUALIZER ». À l'intérieur, les deux spectres tressés en anneaux
+  lumineux, en miroir (graves en bas, aigus en haut, le rayon donne le niveau) :
+  esclave redistribué en rouge, plus vif à gauche, maître en orange, plus vif à
+  droite. Les erreurs de phase font vriller le tracé rouge.
+- **Médaillon** : **ACTIVE INFLUENCE** = moyenne de (1 + cos(φ₁ − φ̃₂))/2 sur la
+  bande de conflit, pondérée par l'énergie (100 % = sommation entièrement
+  constructive).
+- **Potentiomètres rubis** PULL et HARMONICS (lunette moletée, anneau de
+  graduations lumineux). **Glissières** à curseur rubis : INERTIA, REACTION,
+  DYNAMIC TRACKING, TRANS SHIELD. Glisser verticalement (Maj = réglage fin),
+  molette, double-clic ou Ctrl-clic (Cmd-clic sur Mac) pour la valeur par défaut.
+- **Menus** : `[SIDECHAIN: MASTER]` indique si le sidechain reçoit un signal (sinon
+  `NONE`) ; `ROUTAGE` = Target Mode ; `SYSTEM` = Oversampling ; `SYSTEME` =
+  presets d'usine (DEFAULT, KICK / 808, VOCAL / BEAT, GENTLE, INTENSE, ou CUSTOM).
+- **Douze boutons à LED** :
+
+  | | colonne 1 | colonne 2 | colonne 3 |
+  |---|---|---|---|
+  | gauche, rang 1 | PHASE LINK | SOLO DELTA | BYPASS |
+  | gauche, rang 2 | EXACT | HARMONIC | FREEZE (fige l'affichage) |
+  | droite, rang 1 | OS 1X | OS 2X | OS 4X |
+  | droite, rang 2 | MASTER | SLAVE | INPUT (tracés affichés) |
+
+- **En-tête** : vumètres de la sortie et du maître (dB RMS), roue dentée (version,
+  latence), bouton marche = bypass. **Oscilloscopes** en bas : sortie (rouge) et
+  maître (or).
+- Police **Montserrat** embarquée dans le paquet (`Resources/Fonts`, licence SIL OFL).
+
+Les libellés de la maquette qui ne correspondaient à aucune fonction
+(« COMPLIANCE », « PIOLAGE », « LOCK MODE », « PHASE MIRC », « PHASE LRRS »,
+« SRAGON », « RULT ») ont été remplacés par les commandes réelles ci-dessus, aux
+mêmes emplacements.
 
 ## Vérifications
 
@@ -191,7 +216,9 @@ VSTGUI4, construite en code (pas de `.uidesc`), 980 × 600.
 - Validateur Steinberg : 47 tests réussis, 0 échec (stéréo et mono, bypass,
   tailles de bloc variables, traitement sur un autre thread, état).
 - Interface ouverte dans `editorhost` du SDK sous Linux, avec de l'audio réel
-  traversant le processeur (capture ci-dessus).
+  traversant le processeur (capture ci-dessus), et superposée à la maquette pour
+  vérifier l'emplacement de chaque élément.
+- Tests DSP également compilés avec libc++ (la bibliothèque standard de macOS).
 - **Pas encore essayé dans un DAW sous Windows ou macOS.** La CI GitHub compile et
   valide le plugin sur Windows, macOS et Linux à chaque push.
 
@@ -212,7 +239,7 @@ symbiosis/
 │   │   ├── spectral_engine.h      transfert, phase, harmoniques, Trans-Shield
 │   │   └── yin_pitch.h            YIN temps réel
 │   └── ui/
-│       └── symbiosis_editor.*     VSTGUI4 : châssis, Orbit HUD, potentiomètres
+│       └── symbiosis_editor.*     VSTGUI4 : nébuleuse, astrolabe, rubis, LED, menus
 ├── resource/                      polices (OFL), ressource de version Windows
 ├── tests/dsp_test.cpp
 └── docs/img/

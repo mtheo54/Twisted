@@ -1,36 +1,61 @@
 //------------------------------------------------------------------------
 // SYMBIOSIS — symbiosis_editor.h
-// Native VSTGUI4 editor, built in code (no .uidesc):
-//   - chassis: absolute black #0D0809, laser-abraded grain, bordeaux top glow
-//   - Orbit HUD: master (cyan) and redistributed slave (ember) spectra wrapped
-//     on a 0..360 degree reticle, phase-coherence ring, PHASE TRANSFER readout
-//   - brushed black anodised aluminium knobs with incandescent markers
+// Native VSTGUI4 editor, drawn in code (no .uidesc, no bitmap assets):
+// crimson nebula, gold art-nouveau frame, astrolabe Orbit visualizer with
+// zodiac ring and gears, ruby knobs and sliders, LED buttons, menus,
+// level meters and scopes. Authored on an 860 x 560 canvas, shown at 120 %.
 //------------------------------------------------------------------------
 #pragma once
 
+#include "dsp/spectral_engine.h"
 #include "symbiosis_cids.h"
 
 #include "public.sdk/source/vst/vstguieditor.h"
 #include "vstgui/lib/controls/icontrollistener.h"
 
+#include <array>
 #include <map>
+#include <string>
+#include <vector>
 
 namespace VSTGUI {
 class CControl;
+class CView;
 class CVSTGUITimer;
 }
 
 namespace Symbiosis {
 
 class SymbiosisController;
-class OrbitView;
-class MetalKnob;
+
+/** Smoothed HUD data shared by the Orbit, the meters and the scopes (GUI thread only). */
+struct HudState
+{
+	std::array<float, DSP::kHudBands> master {}, slaveIn {}, slaveOut {}, phase {};
+	std::array<float, DSP::kHudWavePoints> slaveWave {}, masterWave {};
+	float influence {0.f};
+	float slaveOutDb {-120.f};
+	float masterDb {-120.f};
+	double time {0.0};
+	int idleTicks {1000};
+	bool receiving {false};
+	bool masterPresent {false};
+
+	// display options (FREEZE / MASTER / SLAVE / INPUT buttons)
+	bool freeze {false};
+	bool showMaster {true};
+	bool showSlave {true};
+	bool showInput {false};
+};
 
 class SymbiosisEditor : public Steinberg::Vst::VSTGUIEditor, public VSTGUI::IControlListener
 {
 public:
-	static constexpr int kWidth = 980;
-	static constexpr int kHeight = 600;
+	static constexpr int kCanvasWidth = 860;
+	static constexpr int kCanvasHeight = 560;
+	static constexpr double kZoom = 1.2;
+	static constexpr int kWidth = 1032;  // kCanvasWidth * kZoom
+	static constexpr int kHeight = 672;  // kCanvasHeight * kZoom
 
 	explicit SymbiosisEditor (SymbiosisController* controller);
 
@@ -44,12 +69,30 @@ public:
 	/** Host automation / state load: called by the controller on the GUI thread. */
 	void parameterChanged (Steinberg::Vst::ParamID tag, double normalized);
 
+	//--- used by the views ----------------------------------------------------
+	double getParam (Steinberg::Vst::ParamID tag) const;
+	double getPlain (Steinberg::Vst::ParamID tag) const { return toPlain (tag, getParam (tag)); }
+	/** One complete gesture: beginEdit, performEdit, endEdit. */
+	void setParamFromGui (Steinberg::Vst::ParamID tag, double normalized);
+	void setPlainFromGui (Steinberg::Vst::ParamID tag, double plain)
+	{
+		setParamFromGui (tag, toNormalized (tag, plain));
+	}
+	void applyPreset (const FactoryPreset& preset);
+	/** Name of the factory preset matching the current settings, or "CUSTOM". */
+	std::string currentPresetName () const;
+	HudState& getHud () { return hud; }
+	void refreshParamViews ();
+
 private:
-	void updateValueText (Steinberg::Vst::ParamID tag);
+	void tick ();
 
 	SymbiosisController* symbiosisController {nullptr};
+	HudState hud;
+	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> timer;
 	std::map<Steinberg::Vst::ParamID, VSTGUI::CControl*> controls;
-	std::map<Steinberg::Vst::ParamID, MetalKnob*> knobs;
+	std::vector<VSTGUI::CView*> paramViews; // buttons and menus drawn from parameter values
+	std::vector<VSTGUI::CView*> hudViews;   // redrawn on each HUD tick
 };
 
 } // namespace Symbiosis

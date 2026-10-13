@@ -81,6 +81,27 @@ inline double defaultNormalized (Steinberg::Vst::ParamID id)
 	return toNormalized (id, kParamSpecs[id].defaultPlain);
 }
 
+/** Factory presets (SYSTEME menu). Bypass and Delta Solo are never touched by a preset. */
+struct FactoryPreset
+{
+	const char* name;
+	double plain[kNumParams]; // plain values, in ParamIds order
+};
+
+inline constexpr FactoryPreset kFactoryPresets[] = {
+    //            Pull  Harm  Inert React Track Shield PLink Delta Target OS  Bypass
+    {"DEFAULT",    {0.68, 0.42, 35.0, 80.0,  0.75, 0.20,  1.0,  0.0,  0.0,   2.0, 0.0}},
+    {"KICK / 808", {0.80, 0.60, 10.0, 120.0, 0.70, 0.35,  1.0,  0.0,  1.0,   2.0, 0.0}},
+    {"VOCAL / BEAT", {0.55, 0.45, 25.0, 150.0, 0.85, 0.15, 1.0, 0.0,  0.0,   2.0, 0.0}},
+    {"GENTLE",     {0.35, 0.30, 60.0, 250.0, 0.75, 0.20,  1.0,  0.0,  0.0,   1.0, 0.0}},
+    {"INTENSE",    {0.95, 0.80, 5.0,  60.0,  0.60, 0.40,  1.0,  0.0,  1.0,   2.0, 0.0}},
+};
+
+inline constexpr bool isPresetParam (Steinberg::Vst::ParamID id)
+{
+	return id != kParamDeltaSoloId && id != kParamBypassId;
+}
+
 /** Data-exchange queue carrying the Orbit HUD frames (processor -> controller). */
 inline constexpr Steinberg::Vst::DataExchangeUserContextID kHudExchangeContextId = 0x5359;
 

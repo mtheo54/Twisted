@@ -71,6 +71,7 @@ struct EngineParams
 };
 
 inline constexpr int kHudBands = 96;
+inline constexpr int kHudWavePoints = 128;
 
 /** One snapshot for the Orbit HUD. Plain data: copied through the data-exchange queue. */
 struct HudFrame
@@ -81,10 +82,14 @@ struct HudFrame
 	float energyMoved {0.f};    // share of the slave energy extracted on this frame
 	float shield {0.f};         // transient-shield protection, 0..1
 	float f0Hz {0.f};           // fundamental (Harmonic Series mode), 0 if none
+	float slaveOutDb {-120.f};  // RMS of the output over the last hop, dBFS
+	float masterDb {-120.f};    // RMS of the sidechain over the last hop, dBFS
 	float master[kHudBands] {};    // band level, 0..1 = -90..0 dBFS
 	float slaveIn[kHudBands] {};
 	float slaveOut[kHudBands] {};
 	float phaseDelta[kHudBands] {}; // angle(X1 . conj Y) per band, radians
+	float slaveWave[kHudWavePoints] {};  // output waveform, last N samples (peak per bucket)
+	float masterWave[kHudWavePoints] {}; // sidechain waveform, last N samples
 };
 
 /** Energy accounting of the last frame (one-sided spectrum, all channels). */
@@ -136,6 +141,7 @@ public:
 			slaveHist[ch].prepare (kFFTSize);
 			masterHist[ch].prepare (kFFTSize);
 			ola[ch].prepare (kFFTSize);
+			outHist[ch].prepare (kFFTSize);
 			x2Re[ch].assign (kMaxBins, 0.f);
 			x2Im[ch].assign (kMaxBins, 0.f);
 			x1Re[ch].assign (kMaxBins, 0.f);
@@ -196,6 +202,7 @@ public:
 			slaveHist[ch].clear ();
 			masterHist[ch].clear ();
 			ola[ch].clear ();
+			outHist[ch].clear ();
 		}
 		std::fill (rhoSmooth.begin (), rhoSmooth.end (), 0.f);
 		std::fill (conflictSmooth.begin (), conflictSmooth.end (), 0.f);
@@ -287,6 +294,7 @@ public:
 					acc[idx] = 0.f;
 					const float y = delta ? wet - dry : wet;
 					o[i] = y + (dry - y) * bypassRamp[static_cast<size_t> (i)];
+					outHist[ch][idx] = o[i];
 				}
 			}
 
@@ -317,7 +325,10 @@ private:
 			const double s = std::sin (pi * d / m);
 			if (std::abs (s) < 1e-12)
 				return {n, 0.0};
-			return std::polar (std::sin (pi * d * n / m) / s, -pi * d * (n - 1.0) / m);
+			// signed magnitude: std::polar requires rho >= 0 (libc++ returns NaN otherwise)
+			const double magnitude = std::sin (pi * d * n / m) / s;
+			const double phase = -pi * d * (n - 1.0) / m;
+			return {magnitude * std::cos (phase), magnitude * std::sin (phase)};
 		};
 		const double shift = static_cast<double> (m) / n;
 		return 0.5 * dirichlet (delta) - 0.25 * dirichlet (delta - shift) - 0.25 * dirichlet (delta + shift);
@@ -327,6 +338,45 @@ private:
 	{
 		// angle(X1 . conj X2) = wrap(phi1 - phi2), principal value in (-pi, pi]
 		return std::atan2 (x1i * x2r - x1r * x2i, x1r * x2r + x1i * x2i);
+	}
+
+	//------------------------------------------------------------------------
+	/** Levels of the last hop and waveforms of the last N samples, for the HUD meters and scopes. */
+	void captureTimeDomain (int nCh, int nMaster) noexcept
+	{
+		auto mono = [&] (const CircularBuffer* hist, int count, int j) {
+			float v = 0.f;
+			for (int ch = 0; ch < count; ++ch)
+				v += hist[ch][pos + j];
+			return count > 0 ? v / static_cast<float> (count) : 0.f;
+		};
+		auto levelDb = [&] (const CircularBuffer* hist, int count) {
+			double e = 0.0;
+			for (int ch = 0; ch < count; ++ch)
+				for (int j = kFFTSize - kHopSize; j < kFFTSize; ++j)
+					e += static_cast<double> (hist[ch][pos + j]) * hist[ch][pos + j];
+			const double meanSquare = count > 0 ? e / (kHopSize * count) : 0.0;
+			return static_cast<float> (10.0 * std::log10 (meanSquare + 1e-12));
+		};
+		hud.slaveOutDb = levelDb (outHist, nCh);
+		hud.masterDb = levelDb (masterHist, nMaster);
+
+		constexpr int bucket = kFFTSize / kHudWavePoints;
+		for (int b = 0; b < kHudWavePoints; ++b)
+		{
+			float so = 0.f, ma = 0.f;
+			for (int j = b * bucket; j < (b + 1) * bucket; ++j)
+			{
+				const float vs = mono (outHist, nCh, j);
+				const float vm = mono (masterHist, nMaster, j);
+				if (std::abs (vs) > std::abs (so))
+					so = vs;
+				if (std::abs (vm) > std::abs (ma))
+					ma = vm;
+			}
+			hud.slaveWave[b] = so;
+			hud.masterWave[b] = ma;
+		}
 	}
 
 	//------------------------------------------------------------------------
@@ -759,6 +809,7 @@ private:
 		hud.energyMoved = eIn > 0.0 ? static_cast<float> (extracted / eIn) : 0.f;
 		hud.phaseTransfer = cosDen > 0.0 ? static_cast<float> (0.5 * (1.0 + cosNum / cosDen)) : 0.5f;
 		hud.shield = 1.f - protect;
+		captureTimeDomain (nCh, nMaster);
 		const float ref = 1.f / (fullScaleBin * fullScaleBin * static_cast<float> (nCh));
 		auto level = [] (float power) {
 			const float db = 10.f * std::log10 (power + 1e-20f);
@@ -797,6 +848,7 @@ private:
 	CircularBuffer slaveHist[kMaxChannels];
 	CircularBuffer masterHist[kMaxChannels];
 	CircularBuffer ola[kMaxChannels];
+	CircularBuffer outHist[kMaxChannels];
 	int pos {0};
 	int hopCounter {0};
 
