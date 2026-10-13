@@ -219,8 +219,8 @@ Pour régénérer : `python3 symbiosis/tools/generate_assets.py`.
   un cadre d'acier sombre. Glisser verticalement (Maj = réglage fin),
   molette, double-clic ou Ctrl-clic (Cmd-clic sur Mac) pour la valeur par défaut.
 - **Menus** : `[SIDECHAIN: MASTER]` indique si le sidechain reçoit un signal (sinon
-  `NONE`) ; `ROUTAGE` = Target Mode ; `SYSTEM` = Oversampling ; `SYSTEME` =
-  presets d'usine (DEFAULT, KICK / 808, VOCAL / BEAT, GENTLE, INTENSE, ou CUSTOM).
+  `NONE`) ; `ROUTAGE` = Target Mode ; `OVERSAMPLING` = suréchantillonnage
+  (comme les boutons OS 1X / 2X / 4X) ; `PRESET` = presets d'usine (DEFAULT, KICK / 808, VOCAL / BEAT, GENTLE, INTENSE, ou CUSTOM).
 - **Douze boutons à LED** (corps noir, LED rouge ou blanche) :
 
   | | colonne 1 | colonne 2 | colonne 3 |

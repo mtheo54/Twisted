@@ -1902,10 +1902,10 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 	frame->addView (routage);
 	paramViews.push_back (routage);
 
-	auto* system = new DropdownView (
+	auto* oversampling = new DropdownView (
 	    CRect (693, 58, 838, 75),
 	    [this] {
-		    static const char* names[] = {"SYSTEM : OS 1X", "SYSTEM : OS 2X", "SYSTEM : OS 4X"};
+		    static const char* names[] = {"OVERSAMPLING : 1X", "OVERSAMPLING : 2X", "OVERSAMPLING : 4X"};
 		    return std::string (names[std::clamp (static_cast<int> (getPlain (kParamOversamplingId)), 0, 2)]);
 	    },
 	    [this] (DropdownView* v) {
@@ -1916,11 +1916,11 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 		                {"Oversampling 4x", os == 2 ? CMenuItem::kChecked : 0}},
 		               [this] (int i) { setPlainFromGui (kParamOversamplingId, i); });
 	    });
-	frame->addView (system);
-	paramViews.push_back (system);
+	frame->addView (oversampling);
+	paramViews.push_back (oversampling);
 
-	auto* systeme = new DropdownView (
-	    CRect (693, 82, 838, 99), [this] { return "SYSTEME : " + currentPresetName (); },
+	auto* preset = new DropdownView (
+	    CRect (693, 82, 838, 99), [this] { return "PRESET : " + currentPresetName (); },
 	    [this] (DropdownView* v) {
 		    const std::string current = currentPresetName ();
 		    std::vector<std::pair<std::string, int32_t>> entries;
@@ -1931,8 +1931,8 @@ bool PLUGIN_API SymbiosisEditor::open (void* parent, const PlatformType& platfor
 				    applyPreset (kFactoryPresets[i]);
 		    });
 	    });
-	frame->addView (systeme);
-	paramViews.push_back (systeme);
+	frame->addView (preset);
+	paramViews.push_back (preset);
 
 	// header: meters, gear (about), power (bypass)
 	auto* meters = new MeterView (CRect (650, 10, 795, 36), hud);
