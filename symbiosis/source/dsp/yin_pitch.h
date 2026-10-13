@@ -91,13 +91,24 @@ public:
 		double running = 0.0;
 		for (int tau = 1; tau <= tauMax; ++tau)
 		{
-			float d = 0.f;
+			// four independent partial sums: no serial dependency, the loop pipelines/vectorises
+			float d0 = 0.f, d1 = 0.f, d2 = 0.f, d3 = 0.f;
 			const float* y = x + tau;
-			for (int j = 0; j < window; ++j)
+			int j = 0;
+			for (; j + 4 <= window; j += 4)
 			{
-				const float delta = x[j] - y[j];
-				d += delta * delta;
+				const float e0 = x[j] - y[j], e1 = x[j + 1] - y[j + 1], e2 = x[j + 2] - y[j + 2], e3 = x[j + 3] - y[j + 3];
+				d0 += e0 * e0;
+				d1 += e1 * e1;
+				d2 += e2 * e2;
+				d3 += e3 * e3;
 			}
+			for (; j < window; ++j)
+			{
+				const float e = x[j] - y[j];
+				d0 += e * e;
+			}
+			const float d = (d0 + d1) + (d2 + d3);
 			running += d;
 			diff[static_cast<size_t> (tau)] =
 			    running > 0.0 ? static_cast<float> (static_cast<double> (d) * tau / running) : 1.f;

@@ -17,6 +17,12 @@
 #include <cstddef>
 #include <vector>
 
+#if defined(_MSC_VER)
+#define SYMBIOSIS_RESTRICT __restrict
+#else
+#define SYMBIOSIS_RESTRICT __restrict__
+#endif
+
 namespace Symbiosis::DSP {
 
 class FftEngine
@@ -44,14 +50,17 @@ public:
 			bitRev[static_cast<size_t> (i)] = r;
 		}
 
-		// twiddles of the complex FFT: exp(-j 2 pi k / half), k < half/2
-		cosTable.assign (static_cast<size_t> (half / 2), 0.f);
-		sinTable.assign (static_cast<size_t> (half / 2), 0.f);
-		for (int k = 0; k < half / 2; ++k)
-		{
-			cosTable[static_cast<size_t> (k)] = static_cast<float> (std::cos (twoPi * k / half));
-			sinTable[static_cast<size_t> (k)] = static_cast<float> (-std::sin (twoPi * k / half));
-		}
+		// twiddles of the complex FFT, contiguous per stage: the stage of half-length h uses
+		// exp(-j 2 pi n / 2h), n < h, stored at offset h - 1 (so the inner loop reads them in
+		// order and vectorises)
+		stageCos.assign (static_cast<size_t> (half), 0.f);
+		stageSin.assign (static_cast<size_t> (half), 0.f);
+		for (int h = 1; h < half; h <<= 1)
+			for (int n = 0; n < h; ++n)
+			{
+				stageCos[static_cast<size_t> (h - 1 + n)] = static_cast<float> (std::cos (twoPi * n / (2 * h)));
+				stageSin[static_cast<size_t> (h - 1 + n)] = static_cast<float> (-std::sin (twoPi * n / (2 * h)));
+			}
 
 		// twiddles of the real split: exp(-j 2 pi k / size), k <= half
 		splitCos.assign (static_cast<size_t> (half + 1), 0.f);
@@ -133,23 +142,37 @@ public:
 private:
 	void complexButterflies (float* zr, float* zi) noexcept
 	{
-		for (int len = 2; len <= half; len <<= 1)
+		// stages 1 and 2 merged (radix 4, twiddles 1 and -j)
+		for (int start = 0; start < half; start += 4)
 		{
-			const int halfLen = len >> 1;
-			const int step = half / len;
-			for (int start = 0; start < half; start += len)
+			float* r = zr + start;
+			float* i = zi + start;
+			const float r0 = r[0] + r[1], i0 = i[0] + i[1], r1 = r[0] - r[1], i1 = i[0] - i[1];
+			const float r2 = r[2] + r[3], i2 = i[2] + i[3], r3 = r[2] - r[3], i3 = i[2] - i[3];
+			r[0] = r0 + r2, i[0] = i0 + i2;
+			r[2] = r0 - r2, i[2] = i0 - i2;
+			r[1] = r1 + i3, i[1] = i1 - r3; // (r3 + j i3) . (-j) = i3 - j r3
+			r[3] = r1 - i3, i[3] = i1 + r3;
+		}
+		// remaining stages: contiguous twiddles, independent iterations (vectorisable)
+		for (int h = 4; h < half; h <<= 1)
+		{
+			const float* SYMBIOSIS_RESTRICT wr = stageCos.data () + (h - 1);
+			const float* SYMBIOSIS_RESTRICT wi = stageSin.data () + (h - 1);
+			for (int start = 0; start < half; start += 2 * h)
 			{
-				for (int j = 0; j < halfLen; ++j)
+				float* SYMBIOSIS_RESTRICT ar = zr + start;
+				float* SYMBIOSIS_RESTRICT ai = zi + start;
+				float* SYMBIOSIS_RESTRICT br = zr + start + h;
+				float* SYMBIOSIS_RESTRICT bi = zi + start + h;
+				for (int n = 0; n < h; ++n)
 				{
-					const float wr = cosTable[static_cast<size_t> (j * step)];
-					const float wi = sinTable[static_cast<size_t> (j * step)];
-					const int a = start + j, b = a + halfLen;
-					const float tr = zr[b] * wr - zi[b] * wi;
-					const float ti = zr[b] * wi + zi[b] * wr;
-					zr[b] = zr[a] - tr;
-					zi[b] = zi[a] - ti;
-					zr[a] += tr;
-					zi[a] += ti;
+					const float tr = br[n] * wr[n] - bi[n] * wi[n];
+					const float ti = br[n] * wi[n] + bi[n] * wr[n];
+					br[n] = ar[n] - tr;
+					bi[n] = ai[n] - ti;
+					ar[n] += tr;
+					ai[n] += ti;
 				}
 			}
 		}
@@ -158,7 +181,7 @@ private:
 	int size {0};
 	int half {0};
 	std::vector<int> bitRev;
-	std::vector<float> cosTable, sinTable, splitCos, splitSin;
+	std::vector<float> stageCos, stageSin, splitCos, splitSin;
 	std::vector<float> workRe, workIm;
 };
 

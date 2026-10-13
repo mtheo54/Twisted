@@ -153,6 +153,9 @@ public:
 			window[static_cast<size_t> (j)] = static_cast<float> (w);
 			synthesisWindow[static_cast<size_t> (j)] = static_cast<float> (w / 1.5);
 		}
+		windowProduct.assign (kFFTSize, 0.f); // analysis x synthesis: the OLA of an untouched frame
+		for (int j = 0; j < kFFTSize; ++j)
+			windowProduct[static_cast<size_t> (j)] = window[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
 
 		for (int ch = 0; ch < kMaxChannels; ++ch)
 		{
@@ -166,6 +169,9 @@ public:
 			x1Im[ch].assign (kMaxBins, 0.f);
 		}
 		thetaState.assign (kMaxBins, 0.f);
+		binGain.assign (kMaxBins, 1.f);
+		binCos.assign (kMaxBins, 1.f);
+		binSin.assign (kMaxBins, 0.f);
 		yRe.assign (kMaxBins, 0.f);
 		yIm.assign (kMaxBins, 0.f);
 		frameBuf.assign (kMaxFFTSize, 0.f);
@@ -443,15 +449,34 @@ private:
 		const int m = fft.getSize ();
 		const int numBins = m / 2 + 1;
 		const int r = m / kFFTSize;
-		const bool hasMaster = nMaster > 0;
+		const bool masterConnected = nMaster > 0;
 		stats = FrameStats {};
 
 		if (nCh == 0)
 			return;
 
 		//--- 1. analysis -----------------------------------------------------
+		const float fullScaleBin = 0.25f * kFFTSize; // |X| of a 0 dBFS sine on its bin (Hann)
+		const float powerFloor = fullScaleBin * fullScaleBin * 1e-12f * static_cast<float> (nCh); // -120 dBFS
 		double eNew = 0.0, eOld = 0.0;
 		std::fill (frameBuf.begin () + kFFTSize, frameBuf.begin () + m, 0.f);
+
+		// A silent sidechain frame (every bin far below the -120 dBFS floor, from Parseval:
+		// no bin exceeds m x the windowed energy) is not analysed: between two kicks, or with
+		// nothing on the sidechain, that saves one FFT per channel.
+		bool masterActive = false;
+		if (masterConnected)
+		{
+			double e = 0.0;
+			for (int c = 0; c < nMaster; ++c)
+				for (int j = 0; j < kFFTSize; ++j)
+				{
+					const double v = masterHist[c][pos + j] * window[static_cast<size_t> (j)];
+					e += v * v;
+				}
+			masterActive = e * m >= 1e-3 * powerFloor;
+		}
+		const bool hasMaster = masterActive; // this frame
 		for (int ch = 0; ch < nCh; ++ch)
 		{
 			const CircularBuffer& h = slaveHist[ch];
@@ -474,6 +499,13 @@ private:
 					for (int j = 0; j < kFFTSize; ++j)
 						frameBuf[static_cast<size_t> (j)] =
 						    0.5f * (masterHist[0][pos + j] + masterHist[1][pos + j]) * window[static_cast<size_t> (j)];
+				}
+				else if (ch > 0 && nMaster == 1)
+				{
+					// mono sidechain: same spectrum for both slave channels
+					std::copy_n (x1Re[0].begin (), numBins, x1Re[ch].begin ());
+					std::copy_n (x1Im[0].begin (), numBins, x1Im[ch].begin ());
+					continue;
 				}
 				else
 				{
@@ -528,8 +560,6 @@ private:
 		const float aRelease = static_cast<float> (std::exp (-framePeriod / (std::max (params.reactionMs, 0.01f) * 1e-3)));
 		const float gamma = std::clamp (params.pull, 0.f, 1.f);
 		const float eta = std::clamp (params.harmonics, 0.f, 1.f);
-		const float fullScaleBin = 0.25f * kFFTSize; // |X| of a 0 dBFS sine on its bin (Hann)
-		const float powerFloor = fullScaleBin * fullScaleBin * 1e-12f * static_cast<float> (nCh); // -120 dBFS
 		const bool phaseOn = params.phaseLink && hasMaster;
 
 		rho[0] = rho[numBins - 1] = 0.f;
@@ -882,6 +912,23 @@ private:
 		}
 
 		//--- 10. synthesis of the output spectrum, per channel ----------------
+		// gain and rotation of each bin, once for all channels; a frame with no change at all
+		// (nothing pulled, raised, rotated or synthesised) skips the inverse FFT: its
+		// overlap-add is the windowed input itself
+		bool neutral = !synthSounding;
+		for (int k = 0; k < numBins; ++k)
+		{
+			const int basin = basinOf[k];
+			float gain = std::sqrt (std::max (0.f, 1.f - rho[k]));
+			if (basin >= 0)
+				gain *= peakGain[static_cast<size_t> (basin)];
+			binGain[k] = gain;
+			const float theta = state[k];
+			binCos[k] = theta != 0.f ? std::cos (theta) : 1.f;
+			binSin[k] = theta != 0.f ? std::sin (theta) : 0.f;
+			neutral = neutral && std::abs (gain - 1.f) < 1e-6f && theta == 0.f;
+		}
+
 		double cosNum = 0.0, cosDen = 0.0;
 		for (int ch = 0; ch < nCh; ++ch)
 		{
@@ -890,25 +937,18 @@ private:
 			const float* mr = x1Re[ch].data ();
 			const float* mi = x1Im[ch].data ();
 
-			for (int k = 0; k < numBins; ++k)
+			if (neutral)
 			{
-				const int basin = basinOf[k];
-				float gain = std::sqrt (std::max (0.f, 1.f - rho[k]));
-				if (basin >= 0)
-					gain *= peakGain[static_cast<size_t> (basin)];
-				const float theta = state[k];
-
-				float re = ar[k] * gain, im = ai[k] * gain;
-				if (theta != 0.f)
-				{
-					const float c = std::cos (theta), s = std::sin (theta);
-					const float t = re * c - im * s;
-					im = re * s + im * c;
-					re = t;
-				}
-				yRe[k] = re;
-				yIm[k] = im;
+				std::copy_n (ar, numBins, yRe.begin ());
+				std::copy_n (ai, numBins, yIm.begin ());
 			}
+			else
+				for (int k = 0; k < numBins; ++k)
+				{
+					const float re = ar[k] * binGain[k], im = ai[k] * binGain[k];
+					yRe[k] = re * binCos[k] - im * binSin[k];
+					yIm[k] = re * binSin[k] + im * binCos[k];
+				}
 
 			// harmonics absent from the spectrum: Hann lobes of the oscillators above
 			if (synthSounding && synthF0Hz > 0.0)
@@ -978,10 +1018,19 @@ private:
 			}
 
 			//--- 11. inverse FFT and overlap-add -----------------------------------
-			fft.inverse (yRe.data (), yIm.data (), timeBuf.data ());
 			CircularBuffer& acc = ola[ch];
-			for (int j = 0; j < kFFTSize; ++j)
-				acc[pos + j] += timeBuf[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
+			if (neutral)
+			{
+				const CircularBuffer& h = slaveHist[ch];
+				for (int j = 0; j < kFFTSize; ++j)
+					acc[pos + j] += h[pos + j] * windowProduct[static_cast<size_t> (j)];
+			}
+			else
+			{
+				fft.inverse (yRe.data (), yIm.data (), timeBuf.data ());
+				for (int j = 0; j < kFFTSize; ++j)
+					acc[pos + j] += timeBuf[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
+			}
 		}
 
 		//--- 12. statistics and HUD ---------------------------------------------
@@ -1034,7 +1083,7 @@ private:
 
 	FftEngine ffts[3]; // N, 2N, 4N
 	int currentOsIndex {-1};
-	std::vector<float> window, synthesisWindow;
+	std::vector<float> window, synthesisWindow, windowProduct;
 
 	CircularBuffer slaveHist[kMaxChannels];
 	CircularBuffer masterHist[kMaxChannels];
@@ -1052,6 +1101,7 @@ private:
 	std::vector<float> peakResidual, peakAdd, peakGain, peakTheta;
 	std::vector<float> bypassRamp, deltaRamp, remapScratch;
 	std::vector<float> thetaState; // PHASE LINK rotation per bin, shared by the channels (rad)
+	std::vector<float> binGain, binCos, binSin; // per-bin change of the current frame
 	std::array<std::array<int, kHudBands>, 3> bandLo {}, bandHi {};
 
 	float shieldEnv {0.f};

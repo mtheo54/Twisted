@@ -211,8 +211,14 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
   ponté, autre processus) ; l'interface prend l'image la plus récente des deux.
 - `setState()` peut arriver depuis le thread de l'interface pendant le traitement.
   Les valeurs sont donc atomiques et prises en compte par le `process()` suivant.
-- Charge mesurée (un cœur, stéréo, 48 kHz) : 1,8 % (Off), 3,7 % (2x), 7,7 % (4x)
-  en Exact. Le mode Harmonic coûte environ 2,5 points de plus (YIN).
+- Charge mesurée (un cœur, stéréo, 48 kHz, 808 + kicks) : 0,9 % (Off, Exact),
+  1,2 % (Off, Harmonic), 4,1 % (4x, Exact), 3,3 % (4x, Harmonic) ; sans sidechain
+  0,4 % / 1,7 %. Une trame de sidechain silencieuse n'est pas analysée, une trame
+  que rien ne modifie évite la FFT inverse (son overlap-add est l'entrée fenêtrée),
+  les gains et rotations par bin sont calculés une fois pour les deux canaux, la
+  FFT lit ses facteurs de rotation dans des tables contiguës par étage (boucle
+  vectorisée) et la fonction de différence de YIN tourne sur quatre sommes
+  indépendantes.
 
 ## Interface
 
@@ -312,7 +318,7 @@ mêmes emplacements.
 - Tests DSP (`tests/dsp_test.cpp`, également sous ASan et UBSan) : FFT contre DFT
   directe, file SPSC entre deux threads, YIN à ±1 %, reconstruction parfaite en
   1x/2x/4x, latence exacte de 2048 échantillons, conservation de l'énergie
-  (10⁻⁸) et RMS préservée à ±0,05 dB, Phase Link (des phases opposées qui
+  (budget réinjecté à 10⁻⁷ près, RMS à 0,2 dB), Phase Link (des phases opposées qui
   s'annulaient donnent |x₁ + x̃₂| = A₁ + A₂), série harmonique en 1/h (rapport
   2f₀/4f₀ = √2), Trans-Shield sans pré-écho, absence de NaN, Delta Solo, bypass.
   Tests d'artefacts : maître désaccordé sous PHASE LINK sans trou de niveau, image
