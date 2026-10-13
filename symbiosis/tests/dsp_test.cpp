@@ -754,6 +754,66 @@ void testNoteOff ()
 	}
 	check (worst <= 1.0, "note off under a kick: never injects more than the frame's own energy (ratio)", worst);
 }
+
+/**
+ * Phase Link on a hot distorted 808 under clicky kicks: no isolated one-sample spikes beyond
+ * what PULL alone gives (PULL filters the 808's treble grain under the click, which moves
+ * sample-level outliers of the noise; the previous Phase Link added thousands of spikes).
+ */
+void testPhaseLinkSpikes ()
+{
+	const int len = 2 * 48000;
+	std::vector<float> slave (static_cast<size_t> (len)), kick (static_cast<size_t> (len), 0.f);
+	unsigned seed = 7;
+	auto noise = [&seed] {
+		seed = seed * 1664525u + 1013904223u;
+		return (seed >> 9) / 4194304.0 - 1.0;
+	};
+	for (int i = 0; i < len; ++i) // hot distorted 808 with a crunchy treble grain, like a real 808 bus
+		slave[static_cast<size_t> (i)] = static_cast<float> (1.6 * std::tanh (3.0 * std::sin (2.0 * kPi * 33.0 * i / kRate)) + 0.03 * noise ());
+	for (int hit = 2400; hit < len; hit += 22080)
+		for (int i = 0; i < 6000 && hit + i < len; ++i)
+		{
+			const double click = noise ();
+			kick[static_cast<size_t> (hit + i)] = static_cast<float> (
+			    3.0 * std::exp (-i / 2500.0) * std::sin (2.0 * kPi * (50.0 * i / kRate + 2.0 * (1.0 - std::exp (-i / 400.0))))
+			    + 1.5 * std::exp (-i / 80.0) * click);
+		}
+	auto countSpikes = [&] (bool phaseLink) {
+		SpectralEngine engine;
+		engine.prepare (kRate);
+		EngineParams p;
+		p.pull = 0.46f;
+		p.harmonics = 0.44f;
+		p.phaseLink = phaseLink;
+		p.targetMode = TargetMode::HarmonicSeries;
+		engine.setParams (p);
+		std::vector<float> out (static_cast<size_t> (len));
+		for (int s = 0; s < len; s += 512)
+		{
+			const float* in[1] = {slave.data () + s};
+			const float* m[1] = {kick.data () + s};
+			float* o[1] = {out.data () + s};
+			engine.process (in, m, 1, o, 1, std::min (512, len - s));
+		}
+		// a sample far from the mean of its neighbours, where the input is smooth
+		auto outlier = [] (const std::vector<float>& x, int i) {
+			return std::abs (x[static_cast<size_t> (i)] - 0.5f * (x[static_cast<size_t> (i - 1)] + x[static_cast<size_t> (i + 1)]));
+		};
+		int spikes = 0;
+		for (int i = kN + 1; i < len - 1; ++i)
+		{
+			const float o = outlier (out, i), r = outlier (slave, i - kN);
+			if (o > 1e-3f && o > 4.f * std::max (r, 1e-5f))
+				++spikes;
+		}
+		return spikes;
+	};
+	const int withLink = countSpikes (true), without = countSpikes (false);
+	char msg[120];
+	std::snprintf (msg, sizeof msg, "Phase Link adds no one-sample spikes on a hot 808 under clicky kicks (%d vs %d without)", withLink, without);
+	check (withLink <= without + 5, msg, withLink);
+}
 } // namespace
 
 int main ()
@@ -771,6 +831,7 @@ int main ()
 	testArtefacts ();
 	testLow808 ();
 	testNoteOff ();
+	testPhaseLinkSpikes ();
 	std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
 	return failures ? 1 : 0;
 }

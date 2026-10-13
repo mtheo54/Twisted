@@ -130,6 +130,8 @@ public:
 	// A rotation that changes by d rad per hop shifts the partial by d / (2 pi H / fs) Hz: the
 	// slew is also limited so that no partial is detuned by more than 2 % (a sixth of a tone)
 	static constexpr double kMaxPhaseDetune = 0.02;
+	static constexpr double kPhaseLinkFullHz = 200.0; // PHASE LINK band (see phaseBandWeight)
+	static constexpr double kPhaseLinkMaxHz = 400.0;
 	static constexpr int kF0HoldHops = 10;          // keep the last f0 through short YIN dropouts
 	static constexpr double kSynthSmoothing = 0.5;  // per-hop smoothing of the synthesised harmonics
 	static constexpr double kBudgetSmoothing = 0.3; // per-hop smoothing of the energy to redistribute
@@ -372,6 +374,22 @@ private:
 		return 0.5 * dirichlet (delta) - 0.25 * dirichlet (delta - shift) - 0.25 * dirichlet (delta + shift);
 	}
 
+	/**
+	 * PHASE LINK acts where two waves really add up into one: the bass. Full below 200 Hz,
+	 * raised-cosine taper to 0 at 400 Hz. Rotating the phases of treble partials brings
+	 * nothing audible and disperses transients (one-sample spikes on the 808 at each kick).
+	 */
+	float phaseBandWeight (int bin, int m) const noexcept
+	{
+		const double f = bin * sampleRate / m;
+		if (f <= kPhaseLinkFullHz)
+			return 1.f;
+		if (f >= kPhaseLinkMaxHz)
+			return 0.f;
+		const double x = (f - kPhaseLinkFullHz) / (kPhaseLinkMaxHz - kPhaseLinkFullHz);
+		return static_cast<float> (0.5 + 0.5 * std::cos (3.14159265358979323846 * x));
+	}
+
 	/** Re-samples a per-bin state from one oversampling resolution to another (same frequencies). */
 	void remapBins (std::vector<float>& v, int fromIdx, int toIdx) noexcept
 	{
@@ -582,7 +600,7 @@ private:
 			cs = conflictRaw + (conflictRaw > cs ? aAttack : aRelease) * (cs - conflictRaw);
 
 			rho[k] = rs * protect;
-			beta[k] = phaseOn ? cs * protect : 0.f;
+			beta[k] = phaseOn ? cs * protect * phaseBandWeight (k, m) : 0.f;
 		}
 
 		//--- 5. peak picking and basins (spectral phase locking regions) ------

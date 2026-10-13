@@ -150,7 +150,11 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
      à 0,1 dB près dans les tests).
 3. **Phase Link** : φ₂ ← φ₂ + β·wrap(φ₁ − φ₂). β vaut 1 sur la bande de conflit
    (maître et esclave à moins de 20 dB l'un de l'autre), décroît jusqu'à 0 à 40 dB
-   d'écart, et suit Inertia / Reaction. Les bins d'un bassin tournent ensemble, de
+   d'écart, et suit Inertia / Reaction. Il n'agit que dans le grave, là où deux ondes
+   s'additionnent vraiment en une seule : plein jusqu'à 200 Hz, fondu en cosinus
+   jusqu'à 400 Hz, nul au-dessus. Tourner les phases des aigus n'apporte rien
+   d'audible et disperse les transitoires (pics d'un échantillon sur la 808 à chaque
+   kick : 3 414 sur les fichiers d'un utilisateur, 0 désormais). Les bins d'un bassin tournent ensemble, de
    l'angle mesuré sur la crête (*spectral phase locking*).
    - La rotation est **liée en stéréo** : un seul angle par bin, mesuré sur
      l'interspectre Σ X₁·conj(X₂) des deux canaux, appliqué à L et à R. L'écart de
@@ -323,7 +327,9 @@ mêmes emplacements.
   2f₀/4f₀ = √2), Trans-Shield sans pré-écho, absence de NaN, Delta Solo, bypass.
   Tests d'artefacts : maître désaccordé sous PHASE LINK sans trou de niveau, image
   stéréo conservée, changement d'Oversampling sans saut, Delta Solo sans clic,
-  sidechain stéréo sur esclave mono, f₀ stable sur une 808 à 33 Hz sous des kicks.
+  sidechain stéréo sur esclave mono, f₀ stable sur une 808 à 33 Hz sous des kicks,
+  pas de bouffée d'harmoniques quand une note s'arrête, pas de grésillement aigu en
+  Exact Peaks, pas de pics d'un échantillon ajoutés par Phase Link.
   Ces tests échouent sur la version du moteur qui précédait leur correctif.
 - Validateur Steinberg : 47 tests réussis, 0 échec (stéréo et mono, bypass,
   tailles de bloc variables, traitement sur un autre thread, état).
