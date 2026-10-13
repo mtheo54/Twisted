@@ -121,11 +121,11 @@ public:
 	static constexpr int kMaxFFTSize = kFFTSize * kMaxOversampling;
 	static constexpr int kMaxBins = kMaxFFTSize / 2 + 1;
 	static constexpr int kNumHarmonics = 3; // 2 f0, 3 f0, 4 f0
-	static constexpr float kMaxPartialGainDb = 24.f;
-	// Harmonic Series: a real partial near h f0 takes dE only if that needs at most +6 dB;
-	// boosting a weak partial further mostly raises the noise of its basin (a rubbery sound),
-	// so a clean lobe is synthesised instead
-	static constexpr float kMaxHarmonicPartialGainDb = 6.f;
+	// Most a real partial is raised (both modes): boosting a weak partial further mostly raises
+	// the noise of its basin (a rubbery sound). Energy beyond that is not redistributed in
+	// Exact Peaks; Harmonic Series synthesises a clean lobe instead.
+	static constexpr float kMaxPartialGainDb = 6.f;
+	static constexpr double kExactMaxOctaves = 3.0; // Exact Peaks: targets up to 3 octaves above the extraction
 	static constexpr float kMaxPhaseStep = 0.5235988f; // PHASE LINK slew, rad per hop (30 degrees)
 	// A rotation that changes by d rad per hop shifts the partial by d / (2 pi H / fs) Hz: the
 	// slew is also limited so that no partial is detuned by more than 2 % (a sixth of a tone)
@@ -635,7 +635,6 @@ private:
 		stats.budgetBase = budgetState;
 		const double budget = eta * budgetState;
 		const float maxGainSq = std::pow (10.f, kMaxPartialGainDb / 10.f);
-		const float maxHarmonicGainSq = std::pow (10.f, kMaxHarmonicPartialGainDb / 10.f);
 
 		//--- 7. redistribution targets ------------------------------------------
 		struct SynthTarget
@@ -734,7 +733,7 @@ private:
 							if (std::abs (pk - bh) <= r && (nearest < 0 || std::abs (pk - bh) < std::abs (peaks[static_cast<size_t> (nearest)] - bh)))
 								nearest = i;
 						}
-						if (nearest >= 0 && peakResidual[static_cast<size_t> (nearest)] * (maxHarmonicGainSq - 1.f) >= dE)
+						if (nearest >= 0 && peakResidual[static_cast<size_t> (nearest)] * (maxGainSq - 1.f) >= dE)
 							peakAdd[static_cast<size_t> (nearest)] += static_cast<float> (dE);
 						else
 							synth[static_cast<size_t> (numSynth++)] = {bh, h, w};
@@ -747,20 +746,33 @@ private:
 
 		if (!harmonicDone && budget > 0.0)
 		{
-			// Exact Peaks (or fallback): weights proportional to the partial's own energy
+			// Exact Peaks (or fallback): weights proportional to the partial's own energy, among
+			// the unmasked partials at most kExactMaxOctaves above where the energy was taken
+			// (energy-weighted mean bin of the extraction). Without that limit, a kick masking
+			// the low partials of a distorted 808 sent all its sub energy to the weak treble
+			// partials of the distortion (+20 dB of fizz at 1-12 kHz).
+			double centroidNum = 0.0, centroidDen = 0.0;
+			for (int k = 1; k < numBins - 1; ++k)
+			{
+				const double e = static_cast<double> (rho[k]) * p2[k];
+				centroidNum += e * k;
+				centroidDen += e;
+			}
+			const double topBin = centroidDen > 0.0 ? (centroidNum / centroidDen) * std::exp2 (kExactMaxOctaves) : 0.0;
+			auto eligible = [&] (int i) {
+				const int pk = peaks[static_cast<size_t> (i)];
+				return rho[pk] < 0.5f && peakResidual[static_cast<size_t> (i)] > powerFloor && pk <= topBin;
+			};
 			double weightSum = 0.0;
 			for (int i = 0; i < numPeaks; ++i)
-			{
-				const int pk = peaks[static_cast<size_t> (i)];
-				if (rho[pk] < 0.5f && peakResidual[static_cast<size_t> (i)] > powerFloor)
-					weightSum += p2[pk];
-			}
+				if (eligible (i))
+					weightSum += p2[peaks[static_cast<size_t> (i)]];
 			if (weightSum > 0.0)
 			{
 				for (int i = 0; i < numPeaks; ++i)
 				{
 					const int pk = peaks[static_cast<size_t> (i)];
-					if (rho[pk] < 0.5f && peakResidual[static_cast<size_t> (i)] > powerFloor)
+					if (eligible (i))
 					{
 						peakAdd[static_cast<size_t> (i)] = static_cast<float> (budget * p2[pk] / weightSum);
 						++stats.numTargets;

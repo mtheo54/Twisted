@@ -236,6 +236,27 @@ struct Scene
 	}
 };
 
+/**
+ * Masked 60 Hz under a 60 Hz master, with the slave's own partials 1-2 octaves up that can
+ * take the energy within the +6 dB cap (the spec's energy conservation).
+ */
+struct ConservationScene
+{
+	std::vector<float> slave, master;
+	explicit ConservationScene (int len)
+	{
+		slave.assign (static_cast<size_t> (len), 0.f);
+		const double freqs[] = {60.0, 120.0, 180.0, 240.0}, amps[] = {0.3, 0.3, 0.25, 0.2};
+		for (int p = 0; p < 4; ++p)
+		{
+			auto v = sine (len, freqs[p], amps[p]);
+			for (int i = 0; i < len; ++i)
+				slave[static_cast<size_t> (i)] += v[static_cast<size_t> (i)];
+		}
+		master = sine (len, 60.0, 0.8, 1.0);
+	}
+};
+
 void testEnergyConservation ()
 {
 	for (int os : {1, 4})
@@ -252,22 +273,25 @@ void testEnergyConservation ()
 		p.targetMode = TargetMode::ExactPeaks;
 		engine.setParams (p);
 		const int len = 48000;
-		Scene s (len);
+		ConservationScene s (len);
 		std::vector<float> ol, orr;
 		run (engine, s.slave, s.slave, &s.master, &s.master, ol, orr);
 		const auto& st = engine.getLastFrameStats ();
+		// eta = 1: all of the (smoothed) extracted energy comes back, and the frame's energy
+		// is conserved to within the budget smoothing (~3 hops, about 1 % on a 60 Hz partial)
 		const double relErr = std::abs (st.energyOut - st.energyIn) / st.energyIn;
+		const double budgetErr = std::abs (st.injected - st.budgetBase) / st.budgetBase;
 		char msg[128];
-		std::snprintf (msg, sizeof msg, "x%d eta=1: frame energy conserved (extracted %.0f %%, %d targets)", os,
-		               100.0 * st.extracted / st.energyIn, st.numTargets);
-		check (st.extracted > 0.2 * st.energyIn && st.numTargets >= 3 && relErr < 1e-3, msg, relErr);
+		std::snprintf (msg, sizeof msg, "x%d eta=1: energy conserved (extracted %.0f %%, %d targets, budget err %.1e)", os,
+		               100.0 * st.extracted / st.energyIn, st.numTargets, budgetErr);
+		check (st.extracted > 0.2 * st.energyIn && st.numTargets >= 3 && budgetErr < 1e-3 && relErr < 1e-2, msg, relErr);
 
 		// the masked 60 Hz is pulled down, the partials go up
 		const int start = len - 8192;
 		const double low = toneAmplitude (ol, start, 8192, 60.0);
-		const double hi = toneAmplitude (ol, start, 8192, 420.0);
-		std::snprintf (msg, sizeof msg, "x%d 60 Hz pulled (%.3f -> %.3f), 420 Hz raised (0.12 -> %.3f)", os, 0.5, low, hi);
-		check (low < 0.25 && hi > 0.2, msg);
+		const double hi = toneAmplitude (ol, start, 8192, 120.0);
+		std::snprintf (msg, sizeof msg, "x%d 60 Hz pulled (%.3f -> %.3f), 120 Hz raised (0.30 -> %.3f)", os, 0.3, low, hi);
+		check (low < 0.15 && hi > 0.32, msg);
 
 		// time-domain loudness preserved within 1 dB
 		const double rIn = rms (s.slave, start - kN, 8192), rOut = rms (ol, start, 8192);
@@ -283,12 +307,35 @@ void testEnergyConservation ()
 	p.harmonics = 0.42f;
 	p.transShield = 0.f;
 	engine.setParams (p);
-	Scene s (48000);
+	ConservationScene s (48000);
 	std::vector<float> ol, orr;
 	run (engine, s.slave, s.slave, &s.master, &s.master, ol, orr);
 	const auto& st = engine.getLastFrameStats ();
-	check (std::abs (st.injected - 0.42 * st.extracted) < 1e-3 * st.extracted, "eta = 0.42: injected = 0.42 x extracted",
-	       st.injected / st.extracted);
+	check (std::abs (st.injected - 0.42 * st.budgetBase) < 1e-3 * st.budgetBase,
+	       "eta = 0.42: injected = 0.42 x extracted (smoothed)", st.injected / st.budgetBase);
+
+	// Exact Peaks never sends energy more than 3 octaves up, nor raises a partial past +6 dB:
+	// a masked 60 Hz with a weak 3 kHz partial (5.6 octaves up) leaves that partial as it is
+	{
+		SpectralEngine e2;
+		e2.prepare (kRate);
+		EngineParams q;
+		q.pull = 1.f;
+		q.harmonics = 1.f;
+		q.transShield = 0.f;
+		e2.setParams (q);
+		const int len = 48000;
+		auto low = sine (len, 60.0, 0.5), fizz = sine (len, 3000.0, 0.02), part = sine (len, 180.0, 0.1);
+		std::vector<float> slave (static_cast<size_t> (len)), master = sine (len, 60.0, 0.8, 1.0), o1, o2;
+		for (int i = 0; i < len; ++i)
+			slave[static_cast<size_t> (i)] = low[static_cast<size_t> (i)] + fizz[static_cast<size_t> (i)] + part[static_cast<size_t> (i)];
+		run (e2, slave, slave, &master, &master, o1, o2);
+		const double a3k = toneAmplitude (o1, len - 8192, 8192, 3000.0);
+		const double a180 = toneAmplitude (o1, len - 8192, 8192, 180.0);
+		char msg[120];
+		std::snprintf (msg, sizeof msg, "Exact Peaks: 3 kHz untouched (0.020 -> %.3f), 180 Hz raised at most +6 dB (0.10 -> %.3f)", a3k, a180);
+		check (a3k < 0.021 && a180 > 0.11 && a180 < 0.2 * 1.001, msg);
+	}
 }
 
 void testPhaseAlignment ()

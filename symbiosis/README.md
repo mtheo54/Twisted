@@ -114,7 +114,14 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
    (montée) et Reaction (descente). Le résidu vaut |X₂|²·(1 − ρ).
 2. **Redistribution**, avec un budget de η·Σ ρ|X₂|² :
    - *Exact Peaks* : crêtes locales de |X₂|² au-dessus du seuil Tracking, en
-     excluant les crêtes elles-mêmes masquées (ρ ≥ 0,5). Poids W = |X₂[m]|²/Σ|X₂[mⱼ]|².
+     excluant les crêtes elles-mêmes masquées (ρ ≥ 0,5) et celles à plus de 3 octaves
+     au-dessus de l'endroit où l'énergie est prise (barycentre de l'extraction). Poids
+     W = |X₂[m]|²/Σ|X₂[mⱼ]|². Sans cette limite, un kick qui masque les graves d'une
+     808 distordue envoyait tout son sub sur les aigus faibles de la distorsion
+     (+20 dB de grésillement entre 1 et 12 kHz).
+   - Un partiel réel n'est jamais relevé de plus de **+6 dB** (les deux modes) : au-delà
+     on gonfle surtout le bruit de son bassin. En Exact Peaks, l'énergie qui ne tient
+     pas sous ce plafond n'est pas redistribuée.
    - *Harmonic Series* : f₀ par YIN, lissée (un saut de plus de 6 % est une nouvelle
      note) et maintenue 10 sauts si YIN décroche un instant. Elle n'est affinée sur la
      crête spectrale que si le lobe de la fondamentale est résolu : sur une 808 à
@@ -128,15 +135,19 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
      à vallée, limité à ±Δ bins par Tracking) reçoivent le même gain
      g = √(1 + ΔE/R). L'énergie arrive donc sur le partiel sans déformer son lobe.
      Un partiel réel proche de h·f₀ ne reçoit l'énergie que s'il lui suffit de
-     +6 dB : au-delà, on gonflerait surtout le bruit de son bassin (un son
-     « caoutchouteux »). Sinon l'harmonique est synthétisée : un lobe de Hann calculé
+     +6 dB (un son « caoutchouteux » au-delà). Sinon l'harmonique est synthétisée : un lobe de Hann calculé
      exactement, porté par un oscillateur continu par harmonique (phase avancée de
      h·2π·f₀·H/fs à chaque saut, ramenée vers h·ψ₀ quand la fondamentale est résolue),
      dont l'amplitude est lissée : l'harmonique monte et s'éteint en douceur.
    - Le budget (énergie extraite) est lissé sur ~3 sauts : la puissance d'un partiel
      grave mesurée sur une seule trame varie d'environ 1 dB selon sa phase, ce qui
-     modulait en amplitude les partiels relevés.
-   - Avec η = 1, Σ|Y|² = Σ|X₂|² : les tests mesurent un écart relatif de 10⁻⁸.
+     modulait en amplitude les partiels relevés. Il ne dépasse jamais de plus de
+     1,8 dB ce que la trame extrait vraiment : quand une note s'arrête sous le kick,
+     rien n'est injecté dans la queue silencieuse (jusqu'à 17 fois l'énergie de la
+     trame avant ce plafond).
+   - Avec η = 1 et tant que les partiels absorbent l'énergie sous le plafond, l'énergie
+     est conservée en moyenne sur quelques sauts (écart de 0,3 % sur une trame, RMS
+     à 0,1 dB près dans les tests).
 3. **Phase Link** : φ₂ ← φ₂ + β·wrap(φ₁ − φ₂). β vaut 1 sur la bande de conflit
    (maître et esclave à moins de 20 dB l'un de l'autre), décroît jusqu'à 0 à 40 dB
    d'écart, et suit Inertia / Reaction. Les bins d'un bassin tournent ensemble, de
@@ -171,7 +182,7 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
   élargirait les bins en Hz. Le zero-padding rend plus précis le repérage des
   crêtes, les bassins, l'estimation de f₀ et le placement des harmoniques
   synthétisées.
-- **Plafond de gain par partiel : +24 dB.** Un partiel très faible ne peut pas
+- **Plafond de gain par partiel : +6 dB.** Un partiel très faible ne peut pas
   absorber une énergie démesurée. La conservation reste exacte tant que le plafond
   n'est pas atteint.
 - **Bypass** ajouté (paramètre hôte standard, compensé en latence).
