@@ -162,10 +162,33 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
 
 ## Interface
 
-VSTGUI4, entièrement dessinée en code (pas de `.uidesc`, aucune image) d'après la
-maquette « astrolabe » : canevas de 860 × 560 affiché à 120 % (1032 × 672). Les
-éléments fixes (nébuleuse, cadre, astrolabe) sont calculés une seule fois dans une
-image en mémoire, à la résolution de l'écran.
+VSTGUI4, construite en code (pas de `.uidesc`) d'après la maquette « astrolabe » :
+canevas de 860 × 560 affiché à 120 % (1032 × 672). Les éléments fixes sont calculés
+une seule fois dans une image en mémoire, à la résolution de l'écran.
+
+### Textures
+
+Ce que le dessin vectoriel de `CDrawContext` rend mal (éclairage par pixel, biseaux,
+flou, bloom) est pré-calculé hors ligne par `tools/generate_assets.py` (numpy +
+Pillow, sortie déterministe) dans `resource/textures/`, puis copié dans
+`<bundle>/Resources` par CMake :
+
+| Texture | Contenu | Densité (px / unité de canevas) |
+|---|---|---|
+| `nebula.png` | nébuleuse carmin et bordeaux à domaine déformé, filaments incandescents, couloirs de poussière, bloom, ~14 000 poussières d'étoiles, étoiles à aigrettes, assombrissement radial et zones calmes derrière les faders et libellés | 2 |
+| `astrolabe_ring.png` | anneau de laiton vieilli : profil bombé, biseaux, rainures, brossage concentrique anisotrope, ternissure, couronne de 180 dents, bande de bronze sombre avec 46 glyphes en relief doré (runes, zodiaque, planètes, étoiles) et graduation au degré, ombre portée | 2,4 |
+| `knob_gem_ruby.png`, `knob_gem_garnet.png` | cabochon facetté (table octogonale, 16 facettes en étoile, 16 facettes de rondiste) : arêtes lumineuses, contraste entre facettes, réfraction simulée, étoile vue à travers la table, lueur de sortie à l'opposé de la lumière ; **filmstrip de 16 images** sur une période de 45° de la taille | 3 |
+| `knob_gloss.png` | brillance à lumière fixe : reflet de fenêtre courbé par le dôme, point spéculaire, lumière de bord, assombrissement de Fresnel | 3 |
+| `knob_bezel.png` | lunette moletée en or avec ombre portée | 3 |
+| `plasma_a.png`, `plasma_b.png` | volutes de plasma (anneau) pour l'Orbit Visualizer | 2 |
+
+L'éditeur déclare la densité de chaque PNG à VSTGUI
+(`IPlatformBitmap::setScaleFactor`) : les textures restent nettes au zoom de 120 % et
+sur écran HiDPI. S'il en manque une, le rendu vectoriel d'origine prend le relais.
+
+Pour régénérer : `python3 symbiosis/tools/generate_assets.py`.
+
+### Rendu
 
 - **Fond** : nébuleuse pourpre procédurale (bruit à domaine déformé), étoiles,
   constellations, arabesques art nouveau dorées, cadre double en laiton, vis,
@@ -173,14 +196,22 @@ image en mémoire, à la résolution de l'écran.
 - **Astrolabe central (Orbit Visualizer)** : bande zodiacale, couronne dentée,
   anneau de laiton gravé, rivets, boule sommitale, deux groupes d'engrenages,
   plaque « ORBIT VISUALIZER ». À l'intérieur, les deux spectres tressés en anneaux
-  lumineux, en miroir (graves en bas, aigus en haut, le rayon donne le niveau) :
-  esclave redistribué en rouge, plus vif à gauche, maître en orange, plus vif à
+  incandescents, en miroir (graves en bas, aigus en haut, le rayon donne le niveau) :
+  esclave redistribué en carmin, plus vif à gauche, maître en ambre, plus vif à
   droite. Les erreurs de phase font vriller le tracé rouge.
+  - **Plasma** : deux textures de volutes en fondu enchaîné lent, dont l'opacité suit
+    le signal, et un remplissage gazeux entre le médaillon et l'onde.
+  - **Bloom** : passe large translucide (16 px, alpha 0,25, carmin ou ambre) et corps
+    saturé (6,5 px), rendus dans un tampon hors écran à demi-résolution et rafraîchis
+    une image sur deux. Ensuite, à pleine résolution et à chaque image : trait net
+    saturé, puis cœur presque blanc.
 - **Médaillon** : **ACTIVE INFLUENCE** = moyenne de (1 + cos(φ₁ − φ̃₂))/2 sur la
   bande de conflit, pondérée par l'énergie (100 % = sommation entièrement
   constructive).
-- **Potentiomètres rubis** PULL et HARMONICS (lunette moletée, anneau de
-  graduations lumineux). **Glissières** à curseur rubis : INERTIA, REACTION,
+- **Potentiomètres rubis** PULL et HARMONICS : rubis et grenat facettés. La pierre
+  tourne avec la valeur (image du filmstrip choisie selon l'angle, chaque image
+  éclairée hors ligne sous la même lumière fixe), tandis que la brillance et la
+  lunette restent immobiles. Anneau de graduations lumineux en vectoriel. **Glissières** à curseur rubis : INERTIA, REACTION,
   DYNAMIC TRACKING, TRANS SHIELD. Glisser verticalement (Maj = réglage fin),
   molette, double-clic ou Ctrl-clic (Cmd-clic sur Mac) pour la valeur par défaut.
 - **Menus** : `[SIDECHAIN: MASTER]` indique si le sidechain reçoit un signal (sinon
@@ -199,6 +230,19 @@ image en mémoire, à la résolution de l'écran.
   latence), bouton marche = bypass. **Oscilloscopes** en bas : sortie (rouge) et
   maître (or).
 - Police **Montserrat** embarquée dans le paquet (`Resources/Fonts`, licence SIL OFL).
+
+### Coût à 60 FPS
+
+Tout le dessin se fait sur le thread de l'interface, qui ne touche que l'état du HUD
+lu dans la file SPSC. Aucune rotation de bitmap à l'exécution : le backend Cairo de
+VSTGUI découpe mal les bitmaps tournés. Le mouvement vient donc des images du
+filmstrip et des fondus. Médaillon, afficheur et plasma sont rendus une fois dans des
+caches à la résolution de l'écran (l'afficheur est refait quand son texte change).
+Les ondes sont des polylignes de 192 sommets, tracées avec des jointures biseautées.
+
+Mesure dans le pire cas, rendu 100 % logiciel (Cairo sous Xvfb) : Orbit Visualizer
+**6,9 ms par image** (22,7 ms avant ces optimisations). Direct2D sous Windows et
+CoreGraphics sous macOS sont nettement plus rapides.
 
 Les libellés de la maquette qui ne correspondaient à aucune fonction
 (« COMPLIANCE », « PIOLAGE », « LOCK MODE », « PHASE MIRC », « PHASE LRRS »,
@@ -240,7 +284,8 @@ symbiosis/
 │   │   └── yin_pitch.h            YIN temps réel
 │   └── ui/
 │       └── symbiosis_editor.*     VSTGUI4 : nébuleuse, astrolabe, rubis, LED, menus
-├── resource/                      polices (OFL), ressource de version Windows
+├── resource/                      polices (OFL), textures PNG, ressource de version Windows
+├── tools/generate_assets.py       générateur des textures (numpy + Pillow)
 ├── tests/dsp_test.cpp
 └── docs/img/
 ```
