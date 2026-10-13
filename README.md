@@ -138,6 +138,14 @@ C++ de la maquette `ui-prototype/`. Le détail des effets de chaque knob est dan
   n'est pas une cible.
 - La fenêtre a une taille fixe (1100 × 760, multipliée par l'échelle de l'écran).
 
+## Autre plugin du dépôt : SYMBIOSIS
+
+Le dossier [`symbiosis/`](symbiosis/README.md) contient un second plugin, autonome :
+un VST3 de transfert spectral à énergie conservée et d'alignement de phase (une 808
+qui laisse la place au kick sans perdre son énergie). Il est construit sur le SDK
+VST3 officiel de Steinberg et sur VSTGUI4, avec son propre `CMakeLists.txt` :
+`cmake -S symbiosis -B build-symbiosis`. Le build de Twisted ne change pas.
+
 ## Arborescence
 
 ```
@@ -150,4 +158,5 @@ src/preview/    appli d'aperçu sans DAW
 tests/          tests DSP
 ui-prototype/   maquette HTML/Three.js validée
 docs/           spécification de l'interface
+symbiosis/      second plugin, autonome (SDK VST3 Steinberg + VSTGUI4)
 ```

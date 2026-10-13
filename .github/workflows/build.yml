@@ -70,3 +70,46 @@ jobs:
         with:
           name: site-${{ runner.os }}
           path: dist/Twisted-*.zip
+
+  # SYMBIOSIS: separate VST3 on the official Steinberg SDK (downloaded at configure time).
+  # The SDK runs its validator on the plug-in after each build.
+  symbiosis:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux packages (VSTGUI)
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          libx11-dev libx11-xcb-dev libxcb-util-dev libxcb-cursor-dev libxcb-keysyms1-dev libxcb-xkb-dev
+          libxkbcommon-dev libxkbcommon-x11-dev libglib2.0-dev libcairo2-dev libpango1.0-dev
+          libfontconfig1-dev libfreetype-dev libgtkmm-3.0-dev libwayland-dev wayland-protocols
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -S symbiosis -B build-symbiosis -A x64
+
+      - name: Configure (macOS, universal arm64 + x86_64)
+        if: runner.os == 'macOS'
+        run: cmake -S symbiosis -B build-symbiosis -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -S symbiosis -B build-symbiosis -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (+ Steinberg validator)
+        run: cmake --build build-symbiosis --config Release --parallel
+
+      - name: DSP tests
+        run: ctest --test-dir build-symbiosis -C Release --output-on-failure
+
+      - name: Upload plug-in
+        uses: actions/upload-artifact@v4
+        with:
+          name: Symbiosis-${{ runner.os }}
+          path: build-symbiosis/VST3/Release/Symbiosis.vst3
