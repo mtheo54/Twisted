@@ -115,16 +115,27 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
 2. **Redistribution**, avec un budget de η·Σ ρ|X₂|² :
    - *Exact Peaks* : crêtes locales de |X₂|² au-dessus du seuil Tracking, en
      excluant les crêtes elles-mêmes masquées (ρ ≥ 0,5). Poids W = |X₂[m]|²/Σ|X₂[mⱼ]|².
-   - *Harmonic Series* : f₀ par YIN, affiné sur la crête spectrale. Cibles 2f₀,
-     3f₀, 4f₀ avec des poids (1/h)/Σ(1/i). Une cible est retenue si le maître ne la
-     masquerait pas de nouveau une fois l'énergie déposée. Sans f₀ détectée, le mode
-     se replie sur Exact Peaks pour la trame.
+   - *Harmonic Series* : f₀ par YIN, lissée (un saut de plus de 6 % est une nouvelle
+     note) et maintenue 10 sauts si YIN décroche un instant. Elle n'est affinée sur la
+     crête spectrale que si le lobe de la fondamentale est résolu : sur une 808 à
+     30-80 Hz, une trame de 2048 échantillons ne contient qu'une ou deux périodes et la
+     crête dérive (±1,7 Hz mesurés), alors que YIN reste juste. Cibles 2f₀, 3f₀, 4f₀
+     avec des poids (1/h)/Σ(1/i). Une cible est retenue si le maître ne la masquerait
+     pas de nouveau une fois l'énergie déposée. Sans f₀, le mode se replie sur Exact
+     Peaks pour la trame ; avec une f₀, il n'y bascule jamais (sinon l'énergie
+     arroserait les autres partiels par à-coups).
    - Un partiel est relevé d'un seul bloc : tous les bins de son bassin (de vallée
      à vallée, limité à ±Δ bins par Tracking) reçoivent le même gain
      g = √(1 + ΔE/R). L'énergie arrive donc sur le partiel sans déformer son lobe.
-     Une harmonique absente du spectre (808 quasi sinusoïdale) est synthétisée :
-     un lobe de Hann calculé exactement, verrouillé en phase sur la fondamentale
-     (ψₕ = h·ψ₀).
+     Un partiel réel proche de h·f₀ ne reçoit l'énergie que s'il lui suffit de
+     +6 dB : au-delà, on gonflerait surtout le bruit de son bassin (un son
+     « caoutchouteux »). Sinon l'harmonique est synthétisée : un lobe de Hann calculé
+     exactement, porté par un oscillateur continu par harmonique (phase avancée de
+     h·2π·f₀·H/fs à chaque saut, ramenée vers h·ψ₀ quand la fondamentale est résolue),
+     dont l'amplitude est lissée : l'harmonique monte et s'éteint en douceur.
+   - Le budget (énergie extraite) est lissé sur ~3 sauts : la puissance d'un partiel
+     grave mesurée sur une seule trame varie d'environ 1 dB selon sa phase, ce qui
+     modulait en amplitude les partiels relevés.
    - Avec η = 1, Σ|Y|² = Σ|X₂|² : les tests mesurent un écart relatif de 10⁻⁸.
 3. **Phase Link** : φ₂ ← φ₂ + β·wrap(φ₁ − φ₂). β vaut 1 sur la bande de conflit
    (maître et esclave à moins de 20 dB l'un de l'autre), décroît jusqu'à 0 à 40 dB
@@ -134,7 +145,9 @@ mono avec un sidechain stéréo analyse le mixage mono du maître, (L + R)/2.
      l'interspectre Σ X₁·conj(X₂) des deux canaux, appliqué à L et à R. L'écart de
      phase entre L et R, donc la largeur de l'image, est conservé.
    - La rotation est un état par bin qui rejoint sa cible par le plus court arc,
-     **au plus 30° par saut**. Avec un maître désaccordé et β < 1, wrap(φ₁ − φ₂)
+     **au plus 30° par saut**, et jamais plus vite que ce qui désaccorde le partiel de
+     2 % (une rotation qui varie de d rad par saut décale la fréquence de
+     d/(2π·H/fs) Hz : 30° par saut, c'était ±7 Hz sur une 808 à 33 Hz). Avec un maître désaccordé et β < 1, wrap(φ₁ − φ₂)
      saute de +π à −π ; sans cette limite, deux trames voisines tourneraient en
      sens opposés et l'overlap-add s'annulerait (trous de −10 dB, craquements).
 4. **Trans-Shield** : une attaque dans le saut le plus récent de la trame est
@@ -177,11 +190,14 @@ Avec Pull = 0 et Phase Link coupé, la sortie est exactement l'entrée retardée
   `setupProcessing()`, et `setActive(true)` les remet à zéro.
 - FTZ/DAZ (`_MM_SET_FLUSH_ZERO_MODE`, `_MM_SET_DENORMALS_ZERO_MODE`) sur x86, bit
   FZ du FPCR sur ARM64, pendant toute la durée de `process()`.
-- Visualiseur : le thread audio publie au plus 60 images par seconde via l'API
-  *Data Exchange* du SDK (`DataExchangeHandler`, sans verrou côté audio, avec un
-  repli `IMessage` pour les hôtes qui ne la gèrent pas). Le contrôleur pousse les
-  images dans une file SPSC sans verrou (`dsp/ring_buffer.h`), que l'interface lit
-  à 60 FPS.
+- Visualiseur : le thread audio publie au plus 60 images par seconde dans une
+  « boîte aux lettres » partagée en mémoire avec le contrôleur (`hud_mailbox.h` :
+  file SPSC sans verrou, dont l'identifiant arrive dans un seul `IMessage` à la
+  connexion), que l'interface lit à 60 FPS. Ce chemin ne dépend d'aucun minuteur de
+  l'hôte : le repli `IMessage` du SDK en utilise un, créé sur le thread qui active le
+  plugin, et certains hôtes l'activent depuis un thread sans boucle de messages
+  (interface vide dans FL Studio). L'API *Data Exchange* reste en secours (plugin
+  ponté, autre processus) ; l'interface prend l'image la plus récente des deux.
 - `setState()` peut arriver depuis le thread de l'interface pendant le traitement.
   Les valeurs sont donc atomiques et prises en compte par le `process()` suivant.
 - Charge mesurée (un cœur, stéréo, 48 kHz) : 1,8 % (Off), 3,7 % (2x), 7,7 % (4x)
@@ -290,8 +306,8 @@ mêmes emplacements.
   2f₀/4f₀ = √2), Trans-Shield sans pré-écho, absence de NaN, Delta Solo, bypass.
   Tests d'artefacts : maître désaccordé sous PHASE LINK sans trou de niveau, image
   stéréo conservée, changement d'Oversampling sans saut, Delta Solo sans clic,
-  sidechain stéréo sur esclave mono. Chacun échoue sur la version précédente du
-  moteur.
+  sidechain stéréo sur esclave mono, f₀ stable sur une 808 à 33 Hz sous des kicks.
+  Ces tests échouent sur la version du moteur qui précédait leur correctif.
 - Validateur Steinberg : 47 tests réussis, 0 échec (stéréo et mono, bypass,
   tailles de bloc variables, traitement sur un autre thread, état).
 - Interface ouverte dans `editorhost` du SDK sous Linux, avec de l'audio réel
@@ -311,6 +327,7 @@ symbiosis/
 │   ├── symbiosis_cids.h           FUID, ID et plages des paramètres
 │   ├── symbiosis_processor.*      AudioEffect : bus, état, STFT, flux du HUD
 │   ├── symbiosis_controller.*     EditController + IDataExchangeReceiver
+│   ├── hud_mailbox.h              boîte aux lettres du visualiseur (même processus)
 │   ├── symbiosis_entry.cpp        fabrique VST3
 │   ├── dsp/
 │   │   ├── fft_engine.h           FFT réelle radix-2, sans dépendance

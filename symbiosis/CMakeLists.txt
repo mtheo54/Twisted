@@ -79,6 +79,7 @@ smtg_add_vst3plugin(Symbiosis
     source/symbiosis_processor.cpp
     source/symbiosis_controller.h
     source/symbiosis_controller.cpp
+    source/hud_mailbox.h
     source/symbiosis_entry.cpp
     source/dsp/fft_engine.h
     source/dsp/ring_buffer.h

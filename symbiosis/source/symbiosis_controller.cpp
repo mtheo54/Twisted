@@ -66,6 +66,7 @@ tresult PLUGIN_API SymbiosisController::initialize (FUnknown* context)
 tresult PLUGIN_API SymbiosisController::terminate ()
 {
 	activeEditor = nullptr;
+	hudMailbox.reset ();
 	return EditController::terminate ();
 }
 
@@ -117,6 +118,14 @@ void SymbiosisController::editFromGui (ParamID tag, ParamValue value)
 //------------------------------------------------------------------------
 tresult PLUGIN_API SymbiosisController::notify (IMessage* message)
 {
+	if (message && message->getMessageID () && std::strcmp (message->getMessageID (), kHudMailboxMessageId) == 0)
+	{
+		int64 id = 0;
+		if (auto attributes = message->getAttributes ())
+			if (attributes->getInt (kHudMailboxIdAttr, id) == kResultOk)
+				hudMailbox = HudMailboxRegistry::find (id);
+		return kResultOk;
+	}
 	if (hudReceiver.onMessage (message))
 		return kResultTrue;
 	return EditController::notify (message);

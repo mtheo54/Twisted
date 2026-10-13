@@ -5,6 +5,7 @@
 #pragma once
 
 #include "dsp/spectral_engine.h"
+#include "hud_mailbox.h"
 #include "symbiosis_cids.h"
 
 #include "public.sdk/source/vst/utility/dataexchange.h"
@@ -59,6 +60,8 @@ private:
 	std::array<std::atomic<double>, kNumParams> paramValues;
 	std::atomic<bool> paramsDirty {true};
 	Steinberg::Vst::DataExchangeHandler hudExchange;
+	std::shared_ptr<HudMailbox> hudMailbox; // direct path to the controller (same process)
+	int64_t hudMailboxId {0};
 	Steinberg::uint32 lastHudSerial {0};
 	double samplesSinceHud {0.0};
 };

@@ -2,16 +2,18 @@
 // SYMBIOSIS — symbiosis_controller.h
 // Edit controller: parameters, editor, and the receiving end of the HUD feed.
 //
-// HUD path (no mutex anywhere):
-//   audio thread  --DataExchangeHandler-->  onDataExchangeBlocksReceived()
-//   (background thread when the host has IDataExchangeHandler, else the
-//   IMessage fallback on the main thread)  --SpscRingBuffer-->  editor timer
-//   at 60 FPS on the GUI thread.
+// HUD paths (no mutex in the audio path):
+//   1. audio thread --HudMailbox (SPSC ring, same process)--> editor timer at
+//      60 FPS on the GUI thread; the mailbox id comes in one IMessage at connect.
+//   2. backup: audio thread --DataExchangeHandler--> onDataExchangeBlocksReceived()
+//      --SpscRingBuffer--> editor timer (bridged plug-ins, other processes).
+//   The editor takes the most recent frame of either path (by serial).
 //------------------------------------------------------------------------
 #pragma once
 
 #include "dsp/ring_buffer.h"
 #include "dsp/spectral_engine.h"
+#include "hud_mailbox.h"
 #include "symbiosis_cids.h"
 
 #include "public.sdk/source/vst/utility/dataexchange.h"
@@ -53,7 +55,16 @@ public:
 
 	//--- editor support (GUI thread) ------------------------------------------
 	/** Consumer side of the HUD queue: the most recent frame, if any arrived. */
-	bool popLatestHudFrame (DSP::HudFrame& frame) noexcept { return hudQueue.popLatest (frame); }
+	bool popLatestHudFrame (DSP::HudFrame& frame) noexcept
+	{
+		bool got = hudQueue.popLatest (frame);
+		if (hudMailbox && hudMailbox->ring.popLatest (mailboxFrame) && (!got || mailboxFrame.serial >= frame.serial))
+		{
+			frame = mailboxFrame;
+			got = true;
+		}
+		return got;
+	}
 	void editorOpened (SymbiosisEditor* editor) { activeEditor = editor; }
 	void editorClosed (SymbiosisEditor* editor)
 	{
@@ -72,6 +83,8 @@ public:
 private:
 	Steinberg::Vst::DataExchangeReceiverHandler hudReceiver {this};
 	DSP::SpscRingBuffer<DSP::HudFrame> hudQueue {8};
+	std::shared_ptr<HudMailbox> hudMailbox; // set by the processor's message (GUI thread)
+	DSP::HudFrame mailboxFrame;
 	SymbiosisEditor* activeEditor {nullptr};
 };
 

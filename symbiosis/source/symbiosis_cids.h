@@ -105,6 +105,10 @@ inline constexpr bool isPresetParam (Steinberg::Vst::ParamID id)
 /** Data-exchange queue carrying the Orbit HUD frames (processor -> controller). */
 inline constexpr Steinberg::Vst::DataExchangeUserContextID kHudExchangeContextId = 0x5359;
 
+/** IMessage from the processor to the controller: id of the in-process HUD mailbox. */
+inline constexpr const char* kHudMailboxMessageId = "SymbiosisHudMailbox";
+inline constexpr const char* kHudMailboxIdAttr = "id";
+
 /** State chunk version written by the processor. */
 inline constexpr Steinberg::int32 kStateVersion = 1;
 

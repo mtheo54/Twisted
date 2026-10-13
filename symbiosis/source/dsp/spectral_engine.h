@@ -103,6 +103,7 @@ struct FrameStats
 	double energyIn {0.0};
 	double energyOut {0.0};
 	double extracted {0.0};
+	double budgetBase {0.0}; // extracted energy smoothed over a few hops: injected = eta x budgetBase
 	double injected {0.0};
 	int numPeaks {0};
 	int numTargets {0};
@@ -121,7 +122,17 @@ public:
 	static constexpr int kMaxBins = kMaxFFTSize / 2 + 1;
 	static constexpr int kNumHarmonics = 3; // 2 f0, 3 f0, 4 f0
 	static constexpr float kMaxPartialGainDb = 24.f;
+	// Harmonic Series: a real partial near h f0 takes dE only if that needs at most +6 dB;
+	// boosting a weak partial further mostly raises the noise of its basin (a rubbery sound),
+	// so a clean lobe is synthesised instead
+	static constexpr float kMaxHarmonicPartialGainDb = 6.f;
 	static constexpr float kMaxPhaseStep = 0.5235988f; // PHASE LINK slew, rad per hop (30 degrees)
+	// A rotation that changes by d rad per hop shifts the partial by d / (2 pi H / fs) Hz: the
+	// slew is also limited so that no partial is detuned by more than 2 % (a sixth of a tone)
+	static constexpr double kMaxPhaseDetune = 0.02;
+	static constexpr int kF0HoldHops = 10;          // keep the last f0 through short YIN dropouts
+	static constexpr double kSynthSmoothing = 0.5;  // per-hop smoothing of the synthesised harmonics
+	static constexpr double kBudgetSmoothing = 0.3; // per-hop smoothing of the energy to redistribute
 
 	static constexpr int getLatencySamples () noexcept { return kFFTSize; }
 
@@ -222,6 +233,14 @@ public:
 		shieldHold = 0;
 		bypassMix = params.bypass ? 1.f : 0.f;
 		deltaMix = params.deltaSolo ? 1.f : 0.f;
+		f0Smooth = 0.0;
+		f0Hold = 0;
+		budgetState = 0.0;
+		budgetStateCh.fill (0.0);
+		synthF0Hz = 0.0;
+		synthPhase.fill (0.0);
+		for (auto& c : synthScale)
+			c.fill (0.0);
 		yin.reset ();
 		hud = HudFrame {};
 		stats = FrameStats {};
@@ -412,6 +431,10 @@ private:
 				remapBins (rhoSmooth, currentOsIndex, osIdx);
 				remapBins (conflictSmooth, currentOsIndex, osIdx);
 				remapBins (thetaState, currentOsIndex, osIdx);
+				const double energyRatio = static_cast<double> (1 << osIdx) / static_cast<double> (1 << currentOsIndex);
+				budgetState *= energyRatio;
+				for (auto& b : budgetStateCh)
+					b *= energyRatio;
 			}
 			currentOsIndex = osIdx;
 		}
@@ -594,8 +617,20 @@ private:
 				    static_cast<double> (rho[k]) * (x2Re[ch][k] * x2Re[ch][k] + x2Im[ch][k] * x2Im[ch][k]);
 		}
 		stats.extracted = extracted;
-		const double budget = eta * extracted;
+		// The power of a low partial measured on one frame depends on its phase in the window
+		// (leakage with its negative-frequency image: a 33 Hz 808 varies by about 1 dB from
+		// frame to frame). Smoothed over ~3 hops, the budget no longer amplitude-modulates the
+		// partials it raises (a rough, rubbery sound around the harmonics).
+		budgetState += kBudgetSmoothing * (extracted - budgetState);
+		for (int ch = 0; ch < kMaxChannels; ++ch)
+		{
+			auto& b = budgetStateCh[static_cast<size_t> (ch)];
+			b += kBudgetSmoothing * (extractedCh[static_cast<size_t> (ch)] - b);
+		}
+		stats.budgetBase = budgetState;
+		const double budget = eta * budgetState;
 		const float maxGainSq = std::pow (10.f, kMaxPartialGainDb / 10.f);
+		const float maxHarmonicGainSq = std::pow (10.f, kMaxHarmonicPartialGainDb / 10.f);
 
 		//--- 7. redistribution targets ------------------------------------------
 		struct SynthTarget
@@ -612,16 +647,34 @@ private:
 
 		if (params.targetMode == TargetMode::HarmonicSeries)
 		{
-			const float f0 = yin.analyze ();
-			if (f0 > 0.f && budget > 0.0)
+			// f0: YIN, smoothed (a jump of more than 6 % is a new note and is taken at once) and
+			// held through short dropouts, so the targets do not jitter or switch every frame
+			const float yinF0 = yin.analyze ();
+			if (yinF0 > 0.f)
 			{
-				b0 = static_cast<double> (f0) * m / sampleRate;
-				// refine on the spectral peak closest to the YIN estimate
+				if (f0Smooth <= 0.0 || std::abs (yinF0 / f0Smooth - 1.0) > 0.06)
+					f0Smooth = yinF0;
+				else
+					f0Smooth += 0.35 * (yinF0 - f0Smooth);
+				f0Hold = kF0HoldHops;
+			}
+			else if (f0Hold > 0)
+				--f0Hold;
+			else
+				f0Smooth = 0.0;
+			const double f0 = f0Hold > 0 ? f0Smooth : 0.0;
+			if (f0 > 0.0 && budget > 0.0)
+			{
+				b0 = f0 * m / sampleRate;
+				// Refine on the spectral peak closest to the YIN estimate, only when the
+				// fundamental's lobe is resolved (clear of DC): below that (a 30-80 Hz 808 in a
+				// 2048-sample frame), leakage makes the peak wander and YIN is the better estimate.
 				const int c = static_cast<int> (std::lround (b0));
 				int best = -1;
-				for (int k = std::max (2, c - r); k <= std::min (numBins - 3, c + r); ++k)
-					if (best < 0 || p2[k] > p2[best])
-						best = k;
+				if (b0 >= 4.0 * r)
+					for (int k = std::max (2, c - r); k <= std::min (numBins - 3, c + r); ++k)
+						if (best < 0 || p2[k] > p2[best])
+							best = k;
 				if (best > 0 && p2[best] > p2[best - 1] && p2[best] >= p2[best + 1] && p2[best] > powerFloor)
 				{
 					const double a = std::log (p2[best - 1] + 1e-30), b = std::log (p2[best] + 1e-30),
@@ -656,9 +709,11 @@ private:
 						weightSum += 1.0 / h;
 					}
 				}
+				// with a valid f0 the frame stays in Harmonic Series even when every target is
+				// masked (nothing is injected then): no switching to Exact Peaks and back
+				harmonicDone = true;
 				if (weightSum > 0.0)
 				{
-					harmonicDone = true;
 					for (int h = 2; h <= kNumHarmonics + 1; ++h)
 					{
 						const double w = weights[static_cast<size_t> (h - 2)] / weightSum;
@@ -674,7 +729,7 @@ private:
 							if (std::abs (pk - bh) <= r && (nearest < 0 || std::abs (pk - bh) < std::abs (peaks[static_cast<size_t> (nearest)] - bh)))
 								nearest = i;
 						}
-						if (nearest >= 0 && peakResidual[static_cast<size_t> (nearest)] * (maxGainSq - 1.f) >= dE)
+						if (nearest >= 0 && peakResidual[static_cast<size_t> (nearest)] * (maxHarmonicGainSq - 1.f) >= dE)
 							peakAdd[static_cast<size_t> (nearest)] += static_cast<float> (dE);
 						else
 							synth[static_cast<size_t> (numSynth++)] = {bh, h, w};
@@ -729,11 +784,13 @@ private:
 		// by the whole basin (rigid block).
 		float* state = thetaState.data ();
 		{
-			auto slew = [] (float current, float target) {
+			const float detunePerBin = static_cast<float> (6.283185307179586 * kMaxPhaseDetune * kHopSize / m);
+			auto slew = [detunePerBin] (float current, float target, int bin) {
 				const float pi = 3.14159265f;
+				const float maxStep = std::min (kMaxPhaseStep, detunePerBin * static_cast<float> (bin));
 				float step = target - current;
 				step -= 2.f * pi * std::floor ((step + pi) / (2.f * pi)); // shortest arc
-				float next = current + std::clamp (step, -kMaxPhaseStep, kMaxPhaseStep);
+				float next = current + std::clamp (step, -maxStep, maxStep);
 				if (next > pi)
 					next -= 2.f * pi;
 				else if (next < -pi)
@@ -755,7 +812,7 @@ private:
 			for (int i = 0; i < numPeaks; ++i)
 			{
 				const int pk = peaks[static_cast<size_t> (i)];
-				peakTheta[static_cast<size_t> (i)] = slew (state[pk], target (pk));
+				peakTheta[static_cast<size_t> (i)] = slew (state[pk], target (pk), pk);
 			}
 			for (int k = 0; k < numBins; ++k)
 			{
@@ -763,11 +820,51 @@ private:
 				if (basin >= 0)
 					state[k] = peakTheta[static_cast<size_t> (basin)];
 				else if (beta[k] > 1e-4f || state[k] != 0.f)
-					state[k] = slew (state[k], target (k));
+					state[k] = slew (state[k], target (k), k);
 			}
 		}
 
-		//--- 9. synthesis of the output spectrum, per channel -----------------
+		//--- 9. synthesised harmonics: one continuous oscillator per harmonic -----
+		// Phase advanced by h * 2 pi f0 H / fs at each hop, so a harmonic is a steady sinusoid
+		// whatever the frame-to-frame accuracy of f0. When the fundamental is resolved its
+		// measured phase pulls the oscillators (psi_h -> h psi0, phase-locked to the
+		// fundamental); a 30-80 Hz 808 is not resolved in a 2048-sample frame and keeps the
+		// free-running phase. Amplitudes are smoothed: harmonics fade in and out.
+		std::array<double, kNumHarmonics> synthWeight {};
+		for (int s = 0; s < numSynth; ++s)
+			synthWeight[static_cast<size_t> (synth[static_cast<size_t> (s)].harmonic - 2)] = synth[static_cast<size_t> (s)].weight;
+		bool synthSounding = numSynth > 0;
+		for (const auto& c : synthScale)
+			for (double v : c)
+				synthSounding = synthSounding || v > 0.0;
+		if (b0 > 0.0)
+			synthF0Hz = b0 * sampleRate / m;
+		const double synthBin = synthF0Hz * m / sampleRate;
+		if (synthSounding && synthF0Hz > 0.0)
+		{
+			const double twoPi = 6.283185307179586;
+			auto wrap = [twoPi] (double x) { return x - twoPi * std::floor ((x + 0.5 * twoPi) / twoPi); };
+			const double advance = twoPi * synthF0Hz * kHopSize / sampleRate;
+			const bool resolved = b0 > 0.0 && synthBin >= 4.0 * r;
+			double psi0 = 0.0;
+			if (resolved)
+			{
+				const int k0 = std::clamp (static_cast<int> (std::lround (synthBin)), 1, numBins - 2);
+				double sr0 = 0.0, si0 = 0.0;
+				for (int ch = 0; ch < nCh; ++ch)
+					sr0 += x2Re[ch][k0], si0 += x2Im[ch][k0];
+				psi0 = std::atan2 (si0, sr0) - std::arg (hannKernel (k0 - synthBin, m)) + state[k0];
+			}
+			for (int hi = 0; hi < kNumHarmonics; ++hi)
+			{
+				double& ph = synthPhase[static_cast<size_t> (hi)];
+				ph = wrap (ph + (hi + 2) * advance);
+				if (resolved)
+					ph = wrap (ph + 0.25 * wrap ((hi + 2) * psi0 - ph));
+			}
+		}
+
+		//--- 10. synthesis of the output spectrum, per channel ----------------
 		double cosNum = 0.0, cosDen = 0.0;
 		for (int ch = 0; ch < nCh; ++ch)
 		{
@@ -796,38 +893,46 @@ private:
 				yIm[k] = im;
 			}
 
-			// harmonics absent from the spectrum: Hann lobes phase-locked to the fundamental
-			if (numSynth > 0 && extractedCh[static_cast<size_t> (ch)] > 0.0)
+			// harmonics absent from the spectrum: Hann lobes of the oscillators above
+			if (synthSounding && synthF0Hz > 0.0)
 			{
-				const int k0 = std::clamp (static_cast<int> (std::lround (b0)), 1, numBins - 2);
-				const std::complex<double> w0 = hannKernel (k0 - b0, m);
-				double psi0 = std::atan2 (static_cast<double> (ai[k0]), static_cast<double> (ar[k0])) - std::arg (w0);
-				psi0 += state[k0]; // the rotation the fundamental received on this frame
-
-				for (int s = 0; s < numSynth; ++s)
+				for (int hi = 0; hi < kNumHarmonics; ++hi)
 				{
-					const SynthTarget& t = synth[static_cast<size_t> (s)];
-					const double dE = eta * t.weight * extractedCh[static_cast<size_t> (ch)];
-					const int lo = std::max (1, static_cast<int> (std::floor (t.bin)) - 3 * r);
-					const int hi = std::min (numBins - 2, static_cast<int> (std::ceil (t.bin)) + 3 * r);
-					const std::complex<double> rot = std::polar (1.0, t.harmonic * psi0);
+					double& sc = synthScale[static_cast<size_t> (ch)][static_cast<size_t> (hi)];
+					const double bin = (hi + 2) * synthBin;
+					const double weight = synthWeight[static_cast<size_t> (hi)];
+					if (bin >= numBins - 3.0 * r - 2.0 || (weight <= 0.0 && sc <= 0.0))
+					{
+						sc = 0.0;
+						continue;
+					}
+					const int lo = std::max (1, static_cast<int> (std::floor (bin)) - 3 * r);
+					const int hiBin = std::min (numBins - 2, static_cast<int> (std::ceil (bin)) + 3 * r);
 					std::array<std::complex<double>, 8 * kMaxOversampling> lobe;
 					double unit = 0.0;
-					for (int k = lo; k <= hi; ++k)
+					for (int k = lo; k <= hiBin; ++k)
 					{
-						lobe[static_cast<size_t> (k - lo)] = hannKernel (k - t.bin, m);
+						lobe[static_cast<size_t> (k - lo)] = hannKernel (k - bin, m);
 						unit += std::norm (lobe[static_cast<size_t> (k - lo)]);
 					}
 					if (unit <= 0.0)
 						continue;
-					const double scale = std::sqrt (dE / unit);
-					for (int k = lo; k <= hi; ++k)
+					const double dE = eta * weight * budgetStateCh[static_cast<size_t> (ch)];
+					const double targetScale = dE > 0.0 ? std::sqrt (dE / unit) : 0.0;
+					sc += kSynthSmoothing * (targetScale - sc);
+					if (targetScale <= 0.0 && sc < 1e-6) // faded out (about -120 dB)
 					{
-						const std::complex<double> v = scale * rot * lobe[static_cast<size_t> (k - lo)];
+						sc = 0.0;
+						continue;
+					}
+					const std::complex<double> rot = std::polar (sc, synthPhase[static_cast<size_t> (hi)]);
+					for (int k = lo; k <= hiBin; ++k)
+					{
+						const std::complex<double> v = rot * lobe[static_cast<size_t> (k - lo)];
 						yRe[k] += static_cast<float> (v.real ());
 						yIm[k] += static_cast<float> (v.imag ());
 					}
-					injected += dE;
+					injected += sc * sc * unit;
 				}
 			}
 
@@ -851,14 +956,14 @@ private:
 				}
 			}
 
-			//--- 10. inverse FFT and overlap-add -----------------------------------
+			//--- 11. inverse FFT and overlap-add -----------------------------------
 			fft.inverse (yRe.data (), yIm.data (), timeBuf.data ());
 			CircularBuffer& acc = ola[ch];
 			for (int j = 0; j < kFFTSize; ++j)
 				acc[pos + j] += timeBuf[static_cast<size_t> (j)] * synthesisWindow[static_cast<size_t> (j)];
 		}
 
-		//--- 11. statistics and HUD ---------------------------------------------
+		//--- 12. statistics and HUD ---------------------------------------------
 		double eIn = 0.0, eOut = 0.0;
 		for (int k = 0; k < numBins; ++k)
 		{
@@ -932,6 +1037,14 @@ private:
 	int shieldHold {0};
 	float bypassMix {0.f};
 	float deltaMix {0.f};
+
+	double budgetState {0.0};                           // smoothed extracted energy (all channels)
+	std::array<double, kMaxChannels> budgetStateCh {}; // per channel
+	double f0Smooth {0.0};  // smoothed YIN f0 (Hz)
+	int f0Hold {0};          // hops the last f0 is kept through a dropout
+	double synthF0Hz {0.0};  // fundamental of the harmonic oscillators
+	std::array<double, kNumHarmonics> synthPhase {};                            // rad, at frame start
+	std::array<std::array<double, kNumHarmonics>, kMaxChannels> synthScale {}; // smoothed lobe amplitudes
 
 	YinPitch yin;
 	HudFrame hud;

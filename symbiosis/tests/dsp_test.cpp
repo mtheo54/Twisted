@@ -598,6 +598,80 @@ void testArtefacts ()
 		check (a < 0.47, "mono slave, master on the right channel only: the slave makes room", a);
 	}
 }
+
+/** Harmonic Series on a 33 Hz distorted 808 under kicks: steady f0, no rubbery modulation. */
+void testLow808 ()
+{
+	const int len = 4 * 48000;
+	std::vector<float> s808 (static_cast<size_t> (len)), kick (static_cast<size_t> (len), 0.f);
+	for (int i = 0; i < len; ++i)
+		s808[static_cast<size_t> (i)] = static_cast<float> (0.5 * std::tanh (2.5 * std::sin (2.0 * kPi * 33.0 * i / kRate)));
+	for (int hit = 0; hit < len; hit += 22080) // 130 BPM eighths
+		for (int i = 0; i < 6000 && hit + i < len; ++i)
+		{
+			const double t = i / kRate;
+			kick[static_cast<size_t> (hit + i)] = static_cast<float> (
+			    0.9 * std::exp (-t / 0.04) * std::sin (2.0 * kPi * (50.0 * t + 150.0 * 0.02 * (1.0 - std::exp (-t / 0.02)))));
+		}
+	SpectralEngine engine;
+	engine.prepare (kRate);
+	EngineParams p;
+	p.pull = 0.46f;
+	p.harmonics = 0.44f;
+	p.targetMode = TargetMode::HarmonicSeries;
+	engine.setParams (p);
+	std::vector<float> out (static_cast<size_t> (len));
+	double sum = 0.0, sumSq = 0.0;
+	int count = 0;
+	for (int s = 0; s < len; s += 512)
+	{
+		const float* in[1] = {s808.data () + s};
+		const float* m[1] = {kick.data () + s};
+		float* o[1] = {out.data () + s};
+		engine.process (in, m, 1, o, 1, std::min (512, len - s));
+		const double f0 = engine.getHudFrame ().f0Hz;
+		if (s > 48000 && f0 > 0.0)
+			sum += f0, sumSq += f0 * f0, ++count;
+	}
+	const double mean = count ? sum / count : 0.0;
+	const double sd = count ? std::sqrt (std::max (0.0, sumSq / count - mean * mean)) : 99.0;
+	char msg[112];
+	std::snprintf (msg, sizeof msg, "33 Hz 808: f0 steady (%.2f Hz, sd %.3f Hz)", mean, sd);
+	check (std::abs (mean - 33.0) < 0.5 && sd < 0.15, msg, sd);
+
+	// frame-to-frame level change of the raised harmonics region, between kicks
+	auto wobble = [&] (const std::vector<float>& x, int offset) {
+		const int n = 4096;
+		double acc = 0.0;
+		int frames = 0;
+		double prev = 0.0;
+		for (int hit = 22080; hit + 22080 < len - n; hit += 22080)
+			for (int s = hit + 6000; s < hit + 19000; s += 256)
+			{
+				double re = 0.0, e = 0.0;
+				for (int harmonic = 2; harmonic <= 6; ++harmonic) // 66..200 Hz
+				{
+					double c = 0.0, d = 0.0;
+					for (int i = 0; i < n; i += 2)
+					{
+						const double w = 0.5 - 0.5 * std::cos (2.0 * kPi * i / n);
+						const double a = 2.0 * kPi * 33.0 * harmonic * i / kRate;
+						const double v = w * x[static_cast<size_t> (s + offset + i)];
+						c += v * std::cos (a), d += v * std::sin (a);
+					}
+					e += c * c + d * d;
+				}
+				re = 10.0 * std::log10 (e + 1e-20);
+				if (s > hit + 6000)
+					acc += (re - prev) * (re - prev), ++frames;
+				prev = re;
+			}
+		return std::sqrt (acc / std::max (1, frames));
+	};
+	const double wIn = wobble (s808, 0), wOut = wobble (out, kN);
+	std::snprintf (msg, sizeof msg, "33 Hz 808: harmonics steady between kicks (%.2f dB/frame, input %.2f)", wOut, wIn);
+	check (wOut < wIn + 0.25, msg, wOut);
+}
 } // namespace
 
 int main ()
@@ -613,6 +687,7 @@ int main ()
 	testTransientShield ();
 	testRobustness ();
 	testArtefacts ();
+	testLow808 ();
 	std::printf ("%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
 	return failures ? 1 : 0;
 }

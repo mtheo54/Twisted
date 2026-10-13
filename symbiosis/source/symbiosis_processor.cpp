@@ -90,12 +90,15 @@ tresult PLUGIN_API SymbiosisProcessor::initialize (FUnknown* context)
 	addAudioInput (STR16 ("Slave In"), SpeakerArr::kStereo);
 	addAudioInput (STR16 ("Master Sidechain"), SpeakerArr::kStereo, kAux, 0);
 	addAudioOutput (STR16 ("Slave Out"), SpeakerArr::kStereo);
+	hudMailbox = HudMailboxRegistry::create (hudMailboxId);
 	return kResultOk;
 }
 
 //------------------------------------------------------------------------
 tresult PLUGIN_API SymbiosisProcessor::terminate ()
 {
+	HudMailboxRegistry::remove (hudMailboxId);
+	hudMailbox.reset ();
 	return AudioEffect::terminate ();
 }
 
@@ -104,7 +107,19 @@ tresult PLUGIN_API SymbiosisProcessor::connect (IConnectionPoint* other)
 {
 	const tresult result = AudioEffect::connect (other);
 	if (result == kResultTrue)
+	{
 		hudExchange.onConnect (other, getHostContext ());
+		// tell the controller where the in-process HUD mailbox is
+		if (auto msg = owned (allocateMessage ()))
+		{
+			msg->setMessageID (kHudMailboxMessageId);
+			if (auto attributes = msg->getAttributes ())
+			{
+				attributes->setInt (kHudMailboxIdAttr, hudMailboxId);
+				sendMessage (msg);
+			}
+		}
+	}
 	return result;
 }
 
@@ -277,13 +292,15 @@ void SymbiosisProcessor::sendHudFrame (int32 numSamples)
 	const DSP::HudFrame& hud = engine.getHudFrame ();
 	if (hud.serial == lastHudSerial || samplesSinceHud < processSetup.sampleRate / 60.0)
 		return;
+	lastHudSerial = hud.serial;
+	samplesSinceHud = 0.0;
+	if (hudMailbox)
+		hudMailbox->ring.push (hud); // lock-free; dropped when the editor is closed (ring full)
 	DataExchangeBlock block = hudExchange.getCurrentOrNewBlock ();
 	if (block.blockID == InvalidDataExchangeBlockID || !block.data || block.size < sizeof (DSP::HudFrame))
 		return;
 	std::memcpy (block.data, &hud, sizeof (DSP::HudFrame));
 	hudExchange.sendCurrentBlock ();
-	lastHudSerial = hud.serial;
-	samplesSinceHud = 0.0;
 }
 
 //------------------------------------------------------------------------
