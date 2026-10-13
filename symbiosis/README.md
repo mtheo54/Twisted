@@ -230,7 +230,7 @@ Pour régénérer : `python3 symbiosis/tools/generate_assets.py`.
   | droite, rang 1 | OS 1X | OS 2X | OS 4X |
   | droite, rang 2 | MASTER | SLAVE | INPUT (tracés affichés) |
 
-- **En-tête** : vumètres de la sortie et du maître (dB RMS), roue dentée (version,
+- **En-tête** : titre SYMBIOSIS et mention « ONIRIQUE × ABRASION » juste dessous, vumètres de la sortie et du maître (dB RMS), roue dentée (version,
   latence), bouton marche = bypass. **Oscilloscopes** en bas : sortie (rouge) et
   maître (encre noire), sur fond clair. Vumètres à segments gris, crête rouge.
 - Police **Montserrat** embarquée dans le paquet (`Resources/Fonts`, licence SIL OFL).

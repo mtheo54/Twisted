@@ -329,17 +329,20 @@ void drawCentered (CDrawContext* ctx, const std::string& s, CCoord cx, CCoord ba
 	ctx->drawString (s.c_str (), CPoint (cx - ctx->getStringWidth (s.c_str ()) * 0.5, baseline));
 }
 
-void drawTracked (CDrawContext* ctx, const std::string& s, CPoint origin, CCoord tracking)
+/** Draws a UTF-8 string glyph by glyph with extra letter spacing; returns the end x. */
+CCoord drawTracked (CDrawContext* ctx, const std::string& s, CPoint origin, CCoord tracking, bool measureOnly = false)
 {
 	for (size_t i = 0; i < s.size ();)
 	{
 		const auto lead = static_cast<unsigned char> (s[i]);
 		const size_t len = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : 4;
 		const std::string glyph = s.substr (i, len);
-		ctx->drawString (glyph.c_str (), origin);
+		if (!measureOnly)
+			ctx->drawString (glyph.c_str (), origin);
 		origin.x += ctx->getStringWidth (glyph.c_str ()) + tracking;
 		i += len;
 	}
+	return origin.x - tracking;
 }
 
 /** Charcoal label, lightly embossed into the paper. */
@@ -783,7 +786,25 @@ private:
 		ctx->setFontColor (CColor (0xFF, 0xFF, 0xFF, 0xD0));
 		drawTracked (ctx, "SYMBIOSIS", CPoint (50.5, 32.5), 1.6);
 		ctx->setFontColor (CColor (0x2E, 0x2E, 0x31, 0xFF));
-		drawTracked (ctx, "SYMBIOSIS", CPoint (50, 31.5), 1.6);
+		const CCoord titleEnd = drawTracked (ctx, "SYMBIOSIS", CPoint (50, 31.5), 1.6);
+
+		// credit line, centred under the title: ONIRIQUE x ABRASION, red cross
+		{
+			const std::string left = "ONIRIQUE", cross = "\xC3\x97", right = "ABRASION";
+			constexpr CCoord kTrack = 1.9, kGap = 4.0, kBaseline = 43.0;
+			ctx->setFont (fonts ().small);
+			const CCoord wl = drawTracked (ctx, left, CPoint (0, 0), kTrack, true);
+			const CCoord wx = ctx->getStringWidth (cross.c_str ());
+			const CCoord wr = drawTracked (ctx, right, CPoint (0, 0), kTrack, true);
+			CCoord x = 50.0 + (titleEnd - 50.0 - (wl + wx + wr + 2 * kGap)) * 0.5;
+			for (const auto& [text, red] : {std::pair<const std::string&, bool> {left, false}, {cross, true}, {right, false}})
+			{
+				ctx->setFontColor (CColor (0xFF, 0xFF, 0xFF, 0xC0));
+				drawTracked (ctx, text, CPoint (x + 0.4, kBaseline + 0.6), kTrack);
+				ctx->setFontColor (red ? Pal::red : CColor (0x3E, 0x3E, 0x42, 0xFF));
+				x = drawTracked (ctx, text, CPoint (x, kBaseline), kTrack) + kGap;
+			}
+		}
 		drawLine (ctx, CPoint (546, 47), CPoint (kW - 14, 47), alpha (Pal::ink, 0.8), 1.0);
 
 		// scope frames and their bracket
