@@ -12,6 +12,10 @@ on:
       - '.github/workflows/raw2-macos.yml'
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash  # bash -eo pipefail : un échec avant « | tee » fait échouer l'étape
+
 jobs:
   macos:
     runs-on: macos-14
@@ -36,6 +40,7 @@ jobs:
           codesign -dv build/AU/RAW2.component 2>&1 | tee -a lipo.log
 
       - name: Validation Audio Unit (auval)
+        continue-on-error: true
         run: |
           mkdir -p ~/Library/Audio/Plug-Ins/Components
           cp -R build/AU/RAW2.component ~/Library/Audio/Plug-Ins/Components/
@@ -49,12 +54,21 @@ jobs:
         if: always()
         run: |
           mkdir -p shots
-          for t in 0 1 2 3 4 5 6 7; do RAW2_SNAP_PRESET=5 RAW2_SNAP_RETINA=1 ./build/raw2_snap shots/tab$t.png $t 0 || echo "capture $t en échec"; done
-          for th in 1 2 3 4 5; do RAW2_SNAP_PRESET=5 ./build/raw2_snap shots/theme$th.png 0 $th || true; done
-          ./build/raw2_snap shots/presets.png 0 0 presets || true
+          # 60 s au plus par capture (alarm de perl : macOS n'a pas « timeout »)
+          snap() { local t0=$(date +%s); perl -e 'alarm 60; exec @ARGV' ./build/raw2_snap "$@" || echo "  -> code $?"; echo "$1 : $(( $(date +%s) - t0 )) s"; }
+          for t in 0 1 2 3 4 5 6 7; do RAW2_SNAP_PRESET=5 snap shots/tab$t.png $t 0; done
+          for th in 1 2 3 4 5; do RAW2_SNAP_PRESET=5 snap shots/theme$th.png 0 $th; done
+          snap shots/presets.png 0 0 presets
           ls -la shots
+          # aperçus réduits imprimés dans le journal (lisibles sans télécharger l'artefact)
+          for f in tab0 tab7 tab1 theme4; do
+            [ -f shots/$f.png ] || continue
+            sips -Z 960 -s format jpeg -s formatOptions 45 shots/$f.png --out /tmp/$f.jpg >/dev/null
+            echo "IMG-BEGIN $f"; base64 -b 4000 -i /tmp/$f.jpg; echo "IMG-END $f"
+          done
 
       - name: Installeur .pkg et image .dmg
+        if: always()
         run: |
           VER=$(grep -m1 -o 'VERSION [0-9.]*' raw2/CMakeLists.txt | cut -d' ' -f2)
           mkdir -p root-vst3/Library/Audio/Plug-Ins/VST3 root-au/Library/Audio/Plug-Ins/Components
@@ -87,3 +101,7 @@ jobs:
             auval.log
             lipo.log
           if-no-files-found: warn
+
+      - name: Bilan (auval doit réussir)
+        if: always()
+        run: grep -q "AU VALIDATION SUCCEEDED" auval.log
