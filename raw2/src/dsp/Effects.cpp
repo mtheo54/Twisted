@@ -1,6 +1,7 @@
 #include "dsp/Effects.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 
 #if defined(__SSE__) || defined(_M_X64) || defined(_M_IX86_FP)
@@ -62,6 +63,14 @@ struct DenormalGuard {
     unsigned int csr;
     DenormalGuard() : csr(_mm_getcsr()) { _mm_setcsr(csr | 0x8040); }
     ~DenormalGuard() { _mm_setcsr(csr); }
+#elif defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
+    // ARM 64 bits (Apple Silicon) : bit FZ du registre FPCR (sous-normaux mis à zéro)
+    uint64_t fpcr;
+    DenormalGuard() {
+        __asm__ __volatile__("mrs %0, fpcr" : "=r"(fpcr));
+        __asm__ __volatile__("msr fpcr, %0" ::"r"(fpcr | (1ull << 24)));
+    }
+    ~DenormalGuard() { __asm__ __volatile__("msr fpcr, %0" ::"r"(fpcr)); }
 #endif
 };
 

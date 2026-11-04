@@ -61,6 +61,32 @@ le copie automatiquement (il faut alors lancer Visual Studio / PowerShell en adm
 Dans **FL Studio** : *Options → Manage plugins → Find installed plugins*, puis cherche
 « RAW 2 » (fabricant ABRASION, catégorie Instrument / Synth).
 
+## Version macOS (VST3 et Audio Unit)
+
+RAW 2 tourne aussi sur Mac (Apple Silicon et Intel, macOS 10.15 et plus), en **VST3** et en
+**Audio Unit** (instrument `aumu Raw2 Abrs`). Ableton Live 11 et 12 chargent l'un ou l'autre ;
+Live 10, Logic Pro et GarageBand utilisent l'AU. Le code propre au Mac :
+
+- `src/ui/CGCanvas.cpp` : le dessin avec CoreGraphics et CoreText (polices embarquées) ;
+- `src/platform/MacView.mm` : la vue Cocoa (souris, clavier, glisser-déposer entrant et
+  sortant, zoom) ;
+- `src/au/Raw2AU.mm` : l'adaptateur Audio Unit v2, écrit directement sur l'API AudioComponent
+  (sans JUCE) : paramètres, état, presets d'usine, tempo de l'hôte, vue Cocoa ;
+- `src/platform/MacFiles.mm` : corbeille du Finder ; les réglages vont dans
+  `~/Library/Application Support/ABRASION/RAW2.json`, les packs dans `~/Documents/Raw 2`.
+
+Le workflow GitHub Actions `.github/workflows/raw2-macos.yml` compile le binaire universel
+sur un Mac, lance les tests (dont l'hôte VST3 qui ouvre l'éditeur dans une fenêtre), valide
+l'AU avec `auval`, fait des captures CoreGraphics et fabrique `RAW2-macOS-<version>.dmg`
+(installeur `.pkg` + copie manuelle + `LISEZ-MOI.txt`). Sur un Mac, à la main :
+
+```sh
+cmake -S raw2 -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+cmake --build build --parallel
+# build/VST3/RAW2.vst3 -> ~/Library/Audio/Plug-Ins/VST3
+# build/AU/RAW2.component -> ~/Library/Audio/Plug-Ins/Components
+```
+
 Tests (facultatif) : `ctest --test-dir build -C Release`.
 
 Si CMake répond « could not find any instance of Visual Studio », vérifie le nom du générateur
