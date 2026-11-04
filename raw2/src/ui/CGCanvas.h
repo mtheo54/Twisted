@@ -53,13 +53,14 @@ private:
     CTFontRef font(const Font& f);
     CTLineRef lineFor(const std::string& s, const Font& f);
     void roundRectPath(const Rect& r, float radius);
+    float pixelScale() const;
 
     CGContextRef ctx_ = nullptr;
     CGColorSpaceRef space_ = nullptr;
     std::array<CGFontRef, (size_t)Face::Count> faces_{};
     std::unordered_map<uint64_t, CTFontRef> fonts_;      // (face, taille)
     std::unordered_map<std::string, CTLineRef> lines_;   // texte mis en forme (couleur prise du contexte)
-    std::unordered_map<uint64_t, CGLayerRef> lenses_;    // une lentille de la grille de VIE
+    std::unordered_map<uint64_t, CGImageRef> tiles_;     // motifs répétés (points du châssis, lentilles de VIE)
 };
 
 } // namespace raw2::ui

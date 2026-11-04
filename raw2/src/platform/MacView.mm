@@ -55,6 +55,9 @@ struct MacViewCore {
     ui::Input input;
     RAW2EditorNSView* view = nil;
     int zoomShown = 100;
+    double drawMs = 0.0;     // temps moyen d'une image (lissé)
+    bool slow = false;       // vrai : 30 images/s au lieu de 60
+    unsigned tickN = 0;
     std::string pendingDrag;  // WAV demandé par l'éditeur : le glisser part au prochain mouseDragged
     int width = ui::Editor::kWidth, height = ui::Editor::kHeight;  // points
 
@@ -69,7 +72,8 @@ struct MacViewCore {
     ui::Pt toLogical(NSPoint p) const { return ui::Pt{(float)p.x / scale(), (float)p.y / scale()}; }
 
     void draw(CGContextRef ctx) {
-        input.timeMs = nowMs();
+        const double t0 = nowMs();
+        input.timeMs = t0;
         input.shift = ([NSEvent modifierFlags] & NSEventModifierFlagShift) != 0;
         canvas.setContext(ctx);
         CGContextSaveGState(ctx);
@@ -77,6 +81,11 @@ struct MacViewCore {
         editor.frame(canvas, input);
         CGContextRestoreGState(ctx);
         canvas.frameDone();
+        // cadence adaptative : si une image coûte plus de 12 ms (Mac lent, Retina, page VIE),
+        // on passe à 30 images/s pour laisser le fil principal à l'hôte ; retour à 60 sous 8 ms
+        drawMs = drawMs * 0.9 + (nowMs() - t0) * 0.1;
+        if (drawMs > 12.0) slow = true;
+        else if (drawMs < 8.0) slow = false;
         // les évènements ponctuels ne valent que pour une image
         input.pressed = input.released = input.rightPressed = false;
         input.wheel = 0.f;
@@ -189,6 +198,11 @@ struct MacView::Impl {
 
 - (void)tick:(NSTimer*)t {
     (void)t;
+    if (!core) return;
+    NSWindow* w = self.window;
+    // fenêtre cachée, réduite ou recouverte : on ne dessine pas
+    if (!w || !([w occlusionState] & NSWindowOcclusionStateVisible) || [self isHiddenOrHasHiddenAncestor]) return;
+    if (core->slow && (++core->tickN & 1)) return;
     [self setNeedsDisplay:YES];
 }
 

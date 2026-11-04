@@ -37,18 +37,17 @@ CGCanvas::CGCanvas() {
 CGCanvas::~CGCanvas() {
     for (auto& kv : lines_) CFRelease(kv.second);
     for (auto& kv : fonts_) CFRelease(kv.second);
-    for (auto& kv : lenses_) CGLayerRelease(kv.second);
+    for (auto& kv : tiles_) CGImageRelease(kv.second);
     for (CGFontRef f : faces_)
         if (f) CGFontRelease(f);
     if (space_) CGColorSpaceRelease(space_);
 }
 
 void CGCanvas::frameDone() {
-    // les couches de lentilles dépendent de la résolution : on les garde tant qu'elles servent,
-    // mais on borne le cache (changement de zoom, d'écran Retina, de thème)
-    if (lenses_.size() > 24) {
-        for (auto& kv : lenses_) CGLayerRelease(kv.second);
-        lenses_.clear();
+    // les tuiles dépendent de la résolution et du thème : on borne le cache (zoom, écran, thème)
+    if (tiles_.size() > 48) {
+        for (auto& kv : tiles_) CGImageRelease(kv.second);
+        tiles_.clear();
     }
 }
 
@@ -204,55 +203,83 @@ void CGCanvas::fillRadial(Pt c, float rx, float ry, Pt o, float gr, const GradSt
     CGGradientRelease(g);
 }
 
-void CGCanvas::lensGrid(const Rect& a, float ox, float oy, float sp, float rad, Color c0, Color c1, Color c2) {
-    // une lentille dessinée une fois dans une couche (à la résolution de l'écran), puis répétée
+float CGCanvas::pixelScale() const {
     const CGAffineTransform dev = CGContextGetUserSpaceToDeviceSpaceTransform(ctx_);
-    const float pxScale = (float)std::sqrt(std::fabs(dev.a * dev.d - dev.b * dev.c));
-    uint64_t key = 0xcbf29ce484222325ull;
+    return std::max(0.25f, (float)std::sqrt(std::fabs(dev.a * dev.d - dev.b * dev.c)));
+}
+
+// Motifs répétés : une tuile (une case de la grille, à la résolution de l'écran) dessinée une
+// fois, puis posée sur toute la zone par CGContextDrawTiledImage, au lieu de milliers de disques
+// par image. La tuile est dessinée dans un bitmap y vers le haut avec nos coordonnées y vers le
+// bas : posée dans le contexte retourné de la vue, elle retrouve le bon sens.
+namespace {
+template <class Draw>
+CGImageRef makeTile(CGColorSpaceRef space, float sp, float pxScale, Draw draw) {
+    const size_t px = (size_t)std::max(1L, std::lround(sp * pxScale));
+    CGContextRef tc = CGBitmapContextCreate(nullptr, px, px, 8, 0, space, kCGImageAlphaPremultipliedLast);
+    if (!tc) return nullptr;
+    CGContextScaleCTM(tc, (CGFloat)px / sp, (CGFloat)px / sp);
+    draw(tc);
+    CGImageRef img = CGBitmapContextCreateImage(tc);
+    CGContextRelease(tc);
+    return img;
+}
+} // namespace
+
+void CGCanvas::lensGrid(const Rect& a, float ox, float oy, float sp, float rad, Color c0, Color c1, Color c2) {
+    if (sp <= 0.f) return;
+    const float pxs = pixelScale();
+    uint64_t key = 0x9e3779b97f4a7c15ull;
     key = hashColor(key, c0);
     key = hashColor(key, c1);
     key = hashColor(key, c2);
-    key = hashColor(key, Color{sp, rad, pxScale, 0.f});
-    CGLayerRef& layer = lenses_[key];
-    if (!layer) {
-        layer = CGLayerCreateWithContext(ctx_, CGSizeMake(sp * pxScale, sp * pxScale), nullptr);
-        if (!layer) return;
-        CGContextRef lc = CGLayerGetContext(layer);
-        CGContextScaleCTM(lc, pxScale, pxScale);
-        const float cx = sp * 0.5f, cy = sp * 0.5f;
-        const GradStop st[3] = {{0.f, c0}, {0.65f, c1}, {1.f, c2}};
-        CGGradientRef g = makeGradient(space_, st, 3);
-        if (g) {
-            CGContextSaveGState(lc);
-            CGContextAddEllipseInRect(lc, CGRectMake(cx - rad, cy - rad, 2 * rad, 2 * rad));
-            CGContextClip(lc);
-            const CGPoint o = CGPointMake(cx - rad + 0.76f * rad, cy - rad + 0.64f * rad);
-            CGContextDrawRadialGradient(lc, g, o, 0, o, 1.7f * rad, kCGGradientDrawsAfterEndLocation);
-            CGContextRestoreGState(lc);
-            CGGradientRelease(g);
-        }
-        CGContextSetRGBFillColor(lc, 1, 1, 1, 0.3);
-        CGContextFillEllipseInRect(lc, CGRectMake(cx + rad * 0.38f - 0.8f, cy + rad * 0.4f - 0.8f, 1.6f, 1.6f));
+    key = hashColor(key, Color{sp, rad, pxs, 1.f});
+    CGImageRef& img = tiles_[key];
+    if (!img) {
+        img = makeTile(space_, sp, pxs, [&](CGContextRef lc) {
+            const float cx = sp * 0.5f, cy = sp * 0.5f;
+            const GradStop st[3] = {{0.f, c0}, {0.65f, c1}, {1.f, c2}};
+            if (CGGradientRef g = makeGradient(space_, st, 3)) {
+                CGContextSaveGState(lc);
+                CGContextAddEllipseInRect(lc, CGRectMake(cx - rad, cy - rad, 2 * rad, 2 * rad));
+                CGContextClip(lc);
+                const CGPoint o = CGPointMake(cx - rad + 0.76f * rad, cy - rad + 0.64f * rad);
+                CGContextDrawRadialGradient(lc, g, o, 0, o, 1.7f * rad, kCGGradientDrawsAfterEndLocation);
+                CGContextRestoreGState(lc);
+                CGGradientRelease(g);
+            }
+            CGContextSetRGBFillColor(lc, 1, 1, 1, 0.3);
+            CGContextFillEllipseInRect(lc, CGRectMake(cx + rad * 0.38f - 0.8f, cy + rad * 0.4f - 0.8f, 1.6f, 1.6f));
+        });
+        if (!img) return;
     }
     CGContextSaveGState(ctx_);
     CGContextClipToRect(ctx_, CGRectMake(a.x, a.y, a.w, a.h));
     const float x0 = ox + std::floor((a.x - ox) / sp) * sp;
     const float y0 = oy + std::floor((a.y - oy) / sp) * sp;
-    for (float y = y0; y < a.b(); y += sp)
-        for (float x = x0; x < a.r(); x += sp) CGContextDrawLayerInRect(ctx_, CGRectMake(x, y, sp, sp), layer);
+    CGContextDrawTiledImage(ctx_, CGRectMake(x0, y0, sp, sp), img);
     CGContextRestoreGState(ctx_);
 }
 
 void CGCanvas::dotGrid(const Rect& a, float ox, float oy, float sp, float rad, Color c) {
+    if (sp <= 0.f) return;
+    const float pxs = pixelScale();
+    uint64_t key = 0x51ed2701f3a5c7b9ull;
+    key = hashColor(key, c);
+    key = hashColor(key, Color{sp, rad, pxs, 2.f});
+    CGImageRef& img = tiles_[key];
+    if (!img) {
+        img = makeTile(space_, sp, pxs, [&](CGContextRef tc) {
+            CGContextSetRGBFillColor(tc, c.r, c.g, c.b, c.a);
+            CGContextFillEllipseInRect(tc, CGRectMake(sp * 0.5f - rad, sp * 0.5f - rad, 2 * rad, 2 * rad));
+        });
+        if (!img) return;
+    }
     CGContextSaveGState(ctx_);
     CGContextClipToRect(ctx_, CGRectMake(a.x, a.y, a.w, a.h));
-    fill(c);
-    const float x0 = ox + sp * 0.5f + std::floor((a.x - ox) / sp) * sp;
-    const float y0 = oy + sp * 0.5f + std::floor((a.y - oy) / sp) * sp;
-    CGContextBeginPath(ctx_);
-    for (float y = y0; y < a.b() + sp; y += sp)
-        for (float x = x0; x < a.r() + sp; x += sp) CGContextAddEllipseInRect(ctx_, CGRectMake(x - rad, y - rad, 2 * rad, 2 * rad));
-    CGContextFillPath(ctx_);
+    const float x0 = ox + std::floor((a.x - ox) / sp) * sp;
+    const float y0 = oy + std::floor((a.y - oy) / sp) * sp;
+    CGContextDrawTiledImage(ctx_, CGRectMake(x0, y0, sp, sp), img);
     CGContextRestoreGState(ctx_);
 }
 

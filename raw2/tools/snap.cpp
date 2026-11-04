@@ -120,6 +120,8 @@ int main(int argc, char** argv) {
     int frames = 110 + (int)clicks.size() * 2;
     for (int at : clickFrame) frames = std::max(frames, at + 20);
     if (const char* f = std::getenv("RAW2_SNAP_FRAMES")) frames = std::max(frames, std::atoi(f));  // laisser le temps à l'IA
+    double frameSum = 0.0, frameMax = 0.0;
+    int frameN = 0;
     for (int f = 0; f < frames; ++f) {
         in = ui::Input{};
         in.timeMs = now() + 1000.0;
@@ -161,12 +163,16 @@ int main(int argc, char** argv) {
             }
         }
         if (opt == "drag") { in.dragOver = true; in.dragPos = tab == 6 ? ui::Pt{600.f, 780.f} : ui::Pt{200.f, 200.f}; }
+        const auto f0 = std::chrono::steady_clock::now();
         ed.frame(canvas, in);
 #if defined(__APPLE__)
         canvas.frameDone();
 #endif
+        const double fms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - f0).count();
+        if (f >= 10) { frameSum += fms; frameMax = std::max(frameMax, fms); ++frameN; }  // après le démarrage
         std::this_thread::sleep_for(std::chrono::milliseconds(opt == "analyse" ? 50 : 16));
     }
+    if (frameN) std::printf("image : %.1f ms en moyenne, %.1f ms au pire (%d images)\n", frameSum / frameN, frameMax, frameN);
 #if defined(__APPLE__)
     bool saved = false;
     if (CGImageRef img = CGBitmapContextCreateImage(ctx)) {
