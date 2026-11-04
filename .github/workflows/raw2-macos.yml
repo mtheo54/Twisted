@@ -77,7 +77,7 @@ jobs:
           for k in vst3 au; do
             pkgbuild --analyze --root root-$k comp-$k.plist
             # jamais « déplacé » vers une ancienne copie : toujours installé dans /Library/Audio/Plug-Ins
-            /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" comp-$k.plist
+            python3 -c 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); [e.update(BundleIsRelocatable=False) for e in d]; plistlib.dump(d,open(p,"wb"))' comp-$k.plist
             pkgbuild --root root-$k --component-plist comp-$k.plist --identifier dev.abrasion.raw2.$k --version "$VER" --install-location / raw2-$k.pkg
           done
           productbuild --package raw2-vst3.pkg --package raw2-au.pkg "Installer RAW 2.pkg"
@@ -87,6 +87,14 @@ jobs:
           cp raw2/packaging/mac/LISEZ-MOI.txt dmg/
           hdiutil create -volname "RAW 2" -srcfolder dmg -ov -format UDZO "RAW2-macOS-$VER.dmg"
           ls -la *.dmg
+
+      - name: Image disque à télécharger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RAW2-macOS-dmg
+          path: RAW2-macOS-*.dmg
+          compression-level: 0
 
       - name: Résultats
         if: always()
