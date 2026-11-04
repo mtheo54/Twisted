@@ -70,7 +70,8 @@ jobs:
       - name: Installeur .pkg et image .dmg
         if: always()
         run: |
-          VER=$(grep -m1 -o 'VERSION [0-9.]*' raw2/CMakeLists.txt | cut -d' ' -f2)
+          VER=$(sed -n 's/^project(RAW2 VERSION \([0-9.]*\).*/\1/p' raw2/CMakeLists.txt)
+          echo "version : $VER"
           mkdir -p root-vst3/Library/Audio/Plug-Ins/VST3 root-au/Library/Audio/Plug-Ins/Components
           cp -R build/VST3/RAW2.vst3 root-vst3/Library/Audio/Plug-Ins/VST3/
           cp -R build/AU/RAW2.component root-au/Library/Audio/Plug-Ins/Components/
