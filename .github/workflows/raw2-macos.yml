@@ -1,0 +1,89 @@
+# RAW 2 (dossier raw2/) : version macOS, compilée et vérifiée sur un vrai Mac.
+#   - binaire universel arm64 + x86_64, VST3 et Audio Unit v2 ;
+#   - tests du moteur, hôte VST3 minimal (éditeur ouvert dans une NSWindow), auval ;
+#   - captures de l'interface rendues par CoreGraphics (même code que le plugin) ;
+#   - installeur .pkg et image disque .dmg.
+name: raw2-macos
+
+on:
+  push:
+    paths:
+      - 'raw2/**'
+      - '.github/workflows/raw2-macos.yml'
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universel arm64 + x86_64)
+        run: cmake -S raw2 -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DRAW2_BUILD_TRAINER=OFF
+
+      - name: Build
+        run: cmake --build build --parallel 2>&1 | tee build.log
+
+      - name: Tests (moteur, effets, IA, mastering, hôte VST3 avec éditeur)
+        run: ctest --test-dir build --output-on-failure 2>&1 | tee tests.log
+
+      - name: Architectures et signature ad hoc
+        run: |
+          lipo -info build/VST3/RAW2.vst3/Contents/MacOS/RAW2 build/AU/RAW2.component/Contents/MacOS/RAW2 | tee lipo.log
+          codesign --force --deep --sign - build/VST3/RAW2.vst3
+          codesign --force --deep --sign - build/AU/RAW2.component
+          codesign -dv build/AU/RAW2.component 2>&1 | tee -a lipo.log
+
+      - name: Validation Audio Unit (auval)
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/AU/RAW2.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          sleep 2
+          auval -a | grep -i abrs || true
+          auval -v aumu Raw2 Abrs 2>&1 | tee auval.log
+          grep -q "AU VALIDATION SUCCEEDED" auval.log
+
+      - name: Captures de l'interface (CoreGraphics)
+        if: always()
+        run: |
+          mkdir -p shots
+          for t in 0 1 2 3 4 5 6 7; do RAW2_SNAP_PRESET=5 RAW2_SNAP_RETINA=1 ./build/raw2_snap shots/tab$t.png $t 0 || echo "capture $t en échec"; done
+          for th in 1 2 3 4 5; do RAW2_SNAP_PRESET=5 ./build/raw2_snap shots/theme$th.png 0 $th || true; done
+          ./build/raw2_snap shots/presets.png 0 0 presets || true
+          ls -la shots
+
+      - name: Installeur .pkg et image .dmg
+        run: |
+          VER=$(grep -m1 -o 'VERSION [0-9.]*' raw2/CMakeLists.txt | cut -d' ' -f2)
+          mkdir -p root-vst3/Library/Audio/Plug-Ins/VST3 root-au/Library/Audio/Plug-Ins/Components
+          cp -R build/VST3/RAW2.vst3 root-vst3/Library/Audio/Plug-Ins/VST3/
+          cp -R build/AU/RAW2.component root-au/Library/Audio/Plug-Ins/Components/
+          for k in vst3 au; do
+            pkgbuild --analyze --root root-$k comp-$k.plist
+            # jamais « déplacé » vers une ancienne copie : toujours installé dans /Library/Audio/Plug-Ins
+            /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" comp-$k.plist
+            pkgbuild --root root-$k --component-plist comp-$k.plist --identifier dev.abrasion.raw2.$k --version "$VER" --install-location / raw2-$k.pkg
+          done
+          productbuild --package raw2-vst3.pkg --package raw2-au.pkg "Installer RAW 2.pkg"
+          mkdir -p "dmg/Installation manuelle"
+          cp "Installer RAW 2.pkg" dmg/
+          cp -R build/VST3/RAW2.vst3 build/AU/RAW2.component "dmg/Installation manuelle/"
+          cp raw2/packaging/mac/LISEZ-MOI.txt dmg/
+          hdiutil create -volname "RAW 2" -srcfolder dmg -ov -format UDZO "RAW2-macOS-$VER.dmg"
+          ls -la *.dmg
+
+      - name: Résultats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw2-macos
+          path: |
+            RAW2-macOS-*.dmg
+            shots/
+            build.log
+            tests.log
+            auval.log
+            lipo.log
+          if-no-files-found: warn
