@@ -149,10 +149,31 @@ AudioStreamBasicDescription streamFormat(double sr) {
 }
 
 // --- propriétés ---------------------------------------------------------------------------------
+// propriétés qui n'existent qu'en portée globale (auval vérifie qu'elles sont refusées ailleurs)
+bool globalOnly(AudioUnitPropertyID id) {
+    switch (id) {
+        case kAudioUnitProperty_ClassInfo:
+        case kAudioUnitProperty_Latency:
+        case kAudioUnitProperty_TailTime:
+        case kAudioUnitProperty_MaximumFramesPerSlice:
+        case kAudioUnitProperty_ParameterStringFromValue:
+        case kAudioUnitProperty_SupportedNumChannels:
+        case kAudioUnitProperty_HostCallbacks:
+        case kAudioUnitProperty_CocoaUI:
+        case kAudioUnitProperty_FactoryPresets:
+        case kAudioUnitProperty_PresentPreset:
+        case kAudioUnitProperty_LastRenderError:
+        case kInstanceProperty: return true;
+        default: return false;
+    }
+}
+
 OSStatus getPropertyInfo(void* p, AudioUnitPropertyID id, AudioUnitScope scope, AudioUnitElement el, UInt32* size, Boolean* writable) {
     (void)p;
     UInt32 sz = 0;
     Boolean w = false;
+    if (globalOnly(id) && scope != kAudioUnitScope_Global) return kAudioUnitErr_InvalidScope;
+    if (globalOnly(id) && el != 0) return kAudioUnitErr_InvalidElement;
     switch (id) {
         case kAudioUnitProperty_ClassInfo: sz = sizeof(CFPropertyListRef); w = true; break;
         case kAudioUnitProperty_SampleRate: sz = sizeof(Float64); w = true; break;
@@ -200,6 +221,7 @@ OSStatus getProperty(void* p, AudioUnitPropertyID id, AudioUnitScope scope, Audi
         return noErr;
     }
     if (!out || !ioSize || *ioSize < need) return kAudioUnitErr_InvalidPropertyValue;
+    *ioSize = need;  // taille réellement écrite (l'hôte peut proposer un tampon plus grand)
     switch (id) {
         case kAudioUnitProperty_ClassInfo: {
             const std::string state = in->model.saveState();
@@ -320,6 +342,15 @@ OSStatus setProperty(void* p, AudioUnitPropertyID id, AudioUnitScope scope, Audi
             if (!blob || CFGetTypeID(blob) != CFDataGetTypeID()) return kAudioUnitErr_InvalidPropertyValue;
             const std::string state((const char*)CFDataGetBytePtr(blob), (size_t)CFDataGetLength(blob));
             if (!in->model.loadState(state, nullptr)) return kAudioUnitErr_InvalidPropertyValue;
+            // nom donné par l'hôte (preset .aupreset) : gardé tel quel
+            auto nm = (CFStringRef)CFDictionaryGetValue(d, CFSTR(kAUPresetNameKey));
+            if (nm && CFGetTypeID(nm) == CFStringGetTypeID()) {
+                char buf[512];
+                if (CFStringGetCString(nm, buf, sizeof buf, kCFStringEncodingUTF8)) {
+                    std::lock_guard<std::mutex> lk(in->model.presetMutex);
+                    in->model.presetName = buf;
+                }
+            }
             AudioUnitParameter all{in->ci, kAUParameterListener_AnyParameter, kAudioUnitScope_Global, 0};
             AUParameterListenerNotify(nullptr, nullptr, &all);
             return noErr;

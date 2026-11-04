@@ -9,8 +9,6 @@
 namespace raw2::ui {
 
 namespace {
-constexpr double kPi = 3.14159265358979323846;
-
 uint64_t fontKey(Face f, float size) { return ((uint64_t)f << 32) | (uint64_t)(uint32_t)std::lround(size * 64.f); }
 
 uint64_t hashColor(uint64_t h, Color c) {
