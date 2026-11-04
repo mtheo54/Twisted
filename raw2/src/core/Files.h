@@ -17,6 +17,7 @@ bool isDir(const std::string& path);
 std::string baseName(const std::string& path);  // dernier élément du chemin
 bool copyFile(const std::string& from, const std::string& to);
 bool copyTree(const std::string& fromDir, const std::string& toDir);  // copie récursive
+bool removeFile(const std::string& path);       // suppression définitive d'un fichier
 bool moveToTrash(const std::string& path);      // corbeille (Windows, macOS), suppression ailleurs
 bool openFolder(const std::string& dir);        // ouvre l'Explorateur / le Finder sur un dossier
 std::string documentsDir();      // Documents de l'utilisateur

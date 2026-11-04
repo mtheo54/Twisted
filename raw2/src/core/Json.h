@@ -38,6 +38,7 @@ public:
     const Value& operator[](size_t i) const;
     Value& push(Value v) { if (type_ != Type::Array) *this = array(); arr_.push_back(std::move(v)); return arr_.back(); }
     const std::vector<Value>& items() const { return arr_; }
+    std::vector<Value>& items() { return arr_; }  // modification d'un tableau (édition des packs)
 
     // objet (ordre d'insertion conservé)
     const Value& operator[](const char* key) const;

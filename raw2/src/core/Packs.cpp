@@ -12,8 +12,11 @@
 #include "dsp/Wavetable.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <set>
 
 namespace raw2 {
 
@@ -46,11 +49,14 @@ std::string clean(const std::string& s, size_t n) {
 
 bool readJson(const std::string& path, json::Value& v) {
     std::string text;
-    if (!files::readText(path, text) || text.size() > 4 * 1024 * 1024) return false;
+    if (!files::readText(path, text) || text.size() > 32 * 1024 * 1024) return false;
     return json::Value::parse(text, v);
 }
 
-bool isPackJson(const json::Value& v) { return v.isObject() && v["presets"].isArray() && v["presets"].size() > 0; }
+bool isPackJson(const json::Value& v) {
+    if (!v.isObject() || !v["presets"].isArray()) return false;
+    return v["presets"].size() > 0 || v["format"].str() == "raw2-pack";  // un pack créé vide reste visible
+}
 
 const char* kCats[6] = {"basse", "lead", "pad", "pluck", "arp", "fx"};
 
@@ -106,7 +112,7 @@ bool loadPackFile(const std::string& path, Pack& pk) {
         if (p.name.empty()) p.name = "Preset " + std::to_string(k + 1);
         pk.presets.push_back(std::move(p));
     }
-    return !pk.presets.empty();
+    return !pk.presets.empty() || v["format"].str() == "raw2-pack";
 }
 
 // clés de la maquette (raw2-pack) -> paramètres du plugin
@@ -151,7 +157,312 @@ int userNumber(const std::string& name) {
     return std::atoi(name.c_str() + 5);
 }
 
+std::string fmtCount(size_t n) { return " (" + std::to_string(n) + " presets)"; }
+
+// nom de fichier valable sous Windows et macOS (mêmes interdits que saveUserPreset)
+std::string safeFileName(const std::string& raw) {
+    std::string n;
+    for (char ch : raw)
+        if (!std::strchr("<>:\"/\\|?*", ch) && (unsigned char)ch >= 0x20) n += ch;
+    while (!n.empty() && (n.back() == ' ' || n.back() == '.')) n.pop_back();
+    while (!n.empty() && n.front() == ' ') n.erase(n.begin());
+    return n.empty() ? std::string("sans nom") : n;
+}
+
+// chemin libre : « nom.ext », sinon « nom 2.ext », « nom 3.ext »…
+std::string freePath(const std::string& dir, const std::string& base, const char* ext, const std::string& keep = std::string()) {
+    std::string p = files::join(dir, base + ext);
+    for (int k = 2; files::exists(p) && p != keep && k < 1000; ++k) p = files::join(dir, base + " " + std::to_string(k) + ext);
+    return p;
+}
+
+bool writeJson(const std::string& path, const json::Value& v) { return files::writeText(path, v.dump(true)); }
+
 } // namespace
+
+int Model::findPack(const std::string& path) const {
+    for (size_t i = 0; i < packs.size(); ++i)
+        if (packs[i].path == path) return (int)i;
+    return -1;
+}
+
+int Model::createPack(const std::string& rawName, std::string& msg) {
+    const std::string root = files::raw2Dir();
+    files::makeDirs(root);
+    const std::string name = clean(rawName.empty() ? std::string("NOUVEAU PACK") : rawName, 40);
+    const std::string path = freePath(root, safeFileName(name), ".raw2pack");
+    json::Value v = json::Value::object();
+    v.set("format", "raw2-pack");
+    v.set("name", fileBaseName(path));
+    v.set("author", "");
+    v.set("version", "1.0");
+    v.set("presets", json::Value::array());
+    if (!writeJson(path, v)) {
+        msg = "\xC3\xA9" "chec : dossier Documents \xE2\x80\xBA Raw 2 inaccessible";
+        return -1;
+    }
+    scanPacks();
+    msg = "pack cr\xC3\xA9\xC3\xA9 \xC2\xB7 " + fileBaseName(path) + " \xC2\xB7 ajoute des sons avec \xC2\xAB + SON ACTUEL \xC2\xBB";
+    return findPack(path);
+}
+
+bool Model::addCurrentToPack(int pi, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size()) return false;
+    const Pack pk = packs[(size_t)pi];
+    std::string name;
+    {
+        std::lock_guard<std::mutex> lk(presetMutex);
+        name = clean(presetName.empty() ? std::string("sans nom") : presetName, 40);
+    }
+    // nom déjà pris dans ce pack : « nom 2 », « nom 3 »…
+    auto taken = [&](const std::string& n) {
+        for (const PackPreset& p : pk.presets)
+            if (p.name == n) return true;
+        return false;
+    };
+    const std::string base = name;
+    for (int k = 2; taken(name) && k < 1000; ++k) name = clean(base, 36) + " " + std::to_string(k);
+    json::Value entry = presetJson(false);
+    entry.set("name", name);
+    bool ok;
+    if (!pk.folder) {
+        json::Value v;
+        ok = readJson(pk.path, v) && isPackJson(v);
+        if (ok && v["presets"].size() >= kMaxPackPresets) {
+            msg = "pack plein (500 presets)";
+            return false;
+        }
+        if (ok) {
+            json::Value arr = v["presets"];
+            arr.push(entry);
+            v.set("presets", arr);
+            ok = writeJson(pk.path, v);
+        }
+    } else {
+        ok = writeJson(freePath(pk.path, safeFileName(name), ".raw"), entry);
+    }
+    if (!ok) {
+        msg = "\xC3\xA9" "chec : \xC3\xA9" "criture impossible";
+        return false;
+    }
+    scanPacks();
+    msg = "ajout\xC3\xA9 \xC2\xB7 " + pk.name + " \xE2\x80\xBA " + name;
+    return true;
+}
+
+bool Model::replacePackPreset(int pi, int ui, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size() || ui < 0 || ui >= (int)packs[(size_t)pi].presets.size()) return false;
+    const Pack pk = packs[(size_t)pi];
+    const PackPreset p = pk.presets[(size_t)ui];
+    json::Value entry = presetJson(false);
+    entry.set("name", p.name);  // le son change, le nom reste
+    bool ok;
+    if (!p.path.empty()) {
+        ok = writeJson(p.path, entry);
+    } else {
+        json::Value v;
+        ok = readJson(pk.path, v) && isPackJson(v) && p.entry >= 0 && p.entry < (int)v["presets"].size();
+        if (ok) {
+            json::Value arr = v["presets"];
+            arr.items()[(size_t)p.entry] = entry;
+            v.set("presets", arr);
+            ok = writeJson(pk.path, v);
+        }
+    }
+    scanPacks();
+    msg = ok ? "\xC3\xA9" "cras\xC3\xA9 avec le son actuel \xC2\xB7 " + p.name : std::string("\xC3\xA9" "chec : \xC3\xA9" "criture impossible");
+    return ok;
+}
+
+bool Model::renamePackPreset(int pi, int ui, const std::string& rawName, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size() || ui < 0 || ui >= (int)packs[(size_t)pi].presets.size()) return false;
+    const Pack pk = packs[(size_t)pi];
+    const PackPreset p = pk.presets[(size_t)ui];
+    const std::string name = clean(rawName, 40);
+    if (name.empty()) {
+        msg = "nom vide";
+        return false;
+    }
+    bool ok;
+    if (!p.path.empty()) {
+        json::Value v;
+        ok = readJson(p.path, v) && v.isObject();
+        if (ok) {
+            v.set("name", name);
+            // le fichier prend le nouveau nom (numéro de rangement « 01 » gardé s'il y en a un)
+            std::string prefix;
+            const std::string old = fileBaseName(p.path);
+            if (old.size() > 3 && std::isdigit((unsigned char)old[0]) && std::isdigit((unsigned char)old[1]) && old[2] == ' ') prefix = old.substr(0, 3);
+            const std::string dir = p.path.substr(0, p.path.find_last_of("/\\"));
+            const std::string to = freePath(dir, prefix + safeFileName(name), ".raw", p.path);
+            ok = writeJson(to, v);
+            if (ok && to != p.path) files::removeFile(p.path);
+        }
+    } else {
+        json::Value v;
+        ok = readJson(pk.path, v) && isPackJson(v) && p.entry >= 0 && p.entry < (int)v["presets"].size();
+        if (ok) {
+            json::Value arr = v["presets"];
+            arr.items()[(size_t)p.entry].set("name", name);
+            v.set("presets", arr);
+            ok = writeJson(pk.path, v);
+        }
+    }
+    if (ok) {
+        // favori et preset chargé suivent le nouveau nom
+        const std::string oldKey = "p:" + pk.name + "/" + p.name;
+        if (favorites.erase(oldKey)) {
+            favorites.insert("p:" + pk.name + "/" + name);
+            saveGlobalSettings();
+        }
+        std::lock_guard<std::mutex> lk(presetMutex);
+        if (presetIndex == kPresetPack && presetPack == pk.name && presetName == p.name) presetName = name;
+    }
+    scanPacks();
+    msg = ok ? "renomm\xC3\xA9 \xC2\xB7 " + name : std::string("\xC3\xA9" "chec : \xC3\xA9" "criture impossible");
+    return ok;
+}
+
+bool Model::deletePackPreset(int pi, int ui, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size() || ui < 0 || ui >= (int)packs[(size_t)pi].presets.size()) return false;
+    const Pack pk = packs[(size_t)pi];
+    const PackPreset p = pk.presets[(size_t)ui];
+    bool ok;
+    if (!p.path.empty()) {
+        ok = files::moveToTrash(p.path);
+    } else {
+        json::Value v;
+        ok = readJson(pk.path, v) && isPackJson(v) && p.entry >= 0 && p.entry < (int)v["presets"].size();
+        if (ok) {
+            json::Value arr = v["presets"];
+            arr.items().erase(arr.items().begin() + p.entry);
+            v.set("presets", arr);
+            ok = writeJson(pk.path, v);
+        }
+    }
+    scanPacks();
+    msg = ok ? "preset retir\xC3\xA9 \xC2\xB7 " + p.name : std::string("\xC3\xA9" "chec : \xC3\xA9" "criture impossible");
+    return ok;
+}
+
+bool Model::movePackPreset(int pi, int ui, int delta) {
+    if (pi < 0 || pi >= (int)packs.size() || packs[(size_t)pi].folder) return false;
+    const Pack pk = packs[(size_t)pi];
+    if (ui < 0 || ui >= (int)pk.presets.size()) return false;
+    const int to = ui + delta;
+    if (to < 0 || to >= (int)pk.presets.size()) return false;
+    const int a = pk.presets[(size_t)ui].entry, b = pk.presets[(size_t)to].entry;
+    json::Value v;
+    if (!readJson(pk.path, v) || !isPackJson(v) || a < 0 || b < 0 || a >= (int)v["presets"].size() || b >= (int)v["presets"].size()) return false;
+    json::Value arr = v["presets"];
+    std::swap(arr.items()[(size_t)a], arr.items()[(size_t)b]);
+    v.set("presets", arr);
+    const bool ok = writeJson(pk.path, v);
+    scanPacks();
+    return ok;
+}
+
+bool Model::setPackInfo(int pi, const std::string& rawName, const std::string& author, const std::string& version, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size()) return false;
+    const Pack pk = packs[(size_t)pi];
+    if (pk.mine || (pk.folder && pk.path == files::raw2Dir())) {
+        msg = "MES PRESETS et DIVERS gardent leur nom";
+        return false;
+    }
+    const std::string name = clean(rawName.empty() ? pk.name : rawName, 40);
+    bool ok;
+    if (!pk.folder) {
+        json::Value v;
+        ok = readJson(pk.path, v) && isPackJson(v);
+        if (ok) {
+            v.set("name", name);
+            v.set("author", clean(author, 40));
+            v.set("version", clean(version, 12));
+            ok = writeJson(pk.path, v);
+        }
+    } else {
+        json::Value meta;
+        if (!readJson(files::join(pk.path, "pack.json"), meta) || !meta.isObject()) meta = json::Value::object();
+        meta.set("name", name);
+        meta.set("author", clean(author, 40));
+        meta.set("version", clean(version, 12));
+        ok = writeJson(files::join(pk.path, "pack.json"), meta);
+    }
+    if (ok && name != pk.name) {  // favoris de ce pack : nouveau nom
+        std::set<std::string> fav;
+        for (const std::string& f : favorites)
+            fav.insert(f.rfind("p:" + pk.name + "/", 0) == 0 ? "p:" + name + f.substr(2 + pk.name.size()) : f);
+        favorites.swap(fav);
+        saveGlobalSettings();
+    }
+    scanPacks();
+    msg = ok ? "infos du pack enregistr\xC3\xA9" "es \xC2\xB7 " + name : std::string("\xC3\xA9" "chec : \xC3\xA9" "criture impossible");
+    return ok;
+}
+
+namespace {
+// tout le pack en un seul JSON raw2-pack (les .raw d'un pack dossier deviennent des entrées complètes)
+bool bundlePack(const Pack& pk, json::Value& out) {
+    out = json::Value::object();
+    out.set("format", "raw2-pack");
+    out.set("name", pk.name);
+    out.set("author", pk.author);
+    out.set("version", pk.version.empty() ? std::string("1.0") : pk.version);
+    json::Value arr = json::Value::array();
+    json::Value src;
+    if (!pk.folder && (!readJson(pk.path, src) || !isPackJson(src))) return false;
+    for (const PackPreset& p : pk.presets) {
+        if (!p.path.empty()) {
+            json::Value e;
+            if (!readJson(p.path, e) || !e.isObject()) continue;
+            e.set("name", p.name);
+            if (!p.tags.empty() && p.tags != "user") e.set("tags", p.tags);
+            arr.push(e);
+        } else if (p.entry >= 0 && p.entry < (int)src["presets"].size()) {
+            arr.push(src["presets"][(size_t)p.entry]);
+        }
+    }
+    out.set("presets", arr);
+    return true;
+}
+} // namespace
+
+int Model::duplicatePack(int pi, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size()) return -1;
+    json::Value v;
+    if (!bundlePack(packs[(size_t)pi], v)) {
+        msg = "lecture du pack impossible";
+        return -1;
+    }
+    const std::string name = clean(packs[(size_t)pi].name, 33) + " (copie)";
+    const std::string path = freePath(files::raw2Dir(), safeFileName(name), ".raw2pack");
+    v.set("name", fileBaseName(path));
+    if (!writeJson(path, v)) {
+        msg = "\xC3\xA9" "chec : \xC3\xA9" "criture impossible";
+        return -1;
+    }
+    scanPacks();
+    msg = "copie cr\xC3\xA9\xC3\xA9" "e \xC2\xB7 " + fileBaseName(path);
+    return findPack(path);
+}
+
+std::string Model::exportPack(int pi, std::string& msg) {
+    if (pi < 0 || pi >= (int)packs.size()) return {};
+    json::Value v;
+    if (!bundlePack(packs[(size_t)pi], v) || v["presets"].size() == 0) {
+        msg = "rien \xC3\xA0 exporter (pack vide ou illisible)";
+        return {};
+    }
+    const std::string dir = files::exportsDir();
+    files::makeDirs(dir);
+    const std::string path = files::join(dir, safeFileName(packs[(size_t)pi].name) + ".raw2pack");
+    if (!writeJson(path, v)) {
+        msg = "\xC3\xA9" "chec : \xC3\xA9" "criture impossible";
+        return {};
+    }
+    msg = "export\xC3\xA9 \xC2\xB7 Raw 2 \xE2\x80\xBA Exports \xE2\x80\xBA " + files::baseName(path) + fmtCount(v["presets"].size());
+    return path;
+}
 
 void Model::scanPacks() {
     const std::string root = files::raw2Dir(), mine = files::myPresetsDir();

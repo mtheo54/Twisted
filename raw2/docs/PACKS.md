@@ -29,9 +29,39 @@ Documents\Raw 2\
 - Copier le dossier du pack (ou le fichier `.raw2pack`) dans `Documents\Raw 2`.
 - Ou **glisser-déposer** le dossier, le `.raw2pack` ou des `.raw` sur la fenêtre CHOIX DU
   PRESET : le plugin les copie au bon endroit. Un `.raw` isolé est rangé dans MES PRESETS.
-- Le bouton **[ INSTALLER UN PACK… ]** ouvre le dossier `Documents\Raw 2` dans l'explorateur.
+- Le bouton **[ INSTALLER… ]** ouvre le dossier `Documents\Raw 2` dans l'Explorateur (Windows)
+  ou le Finder (macOS : `~/Documents/Raw 2`).
 - **[ RETIRER ]** envoie le pack à la corbeille de Windows (deuxième clic pour confirmer).
-- **[ PACKS DÉMO ]** installe deux packs d'exemple, un de chaque format.
+- **[ DÉMO ]** installe deux packs d'exemple, un de chaque format.
+
+## Créer et modifier un pack dans le plugin
+
+Tout se fait dans la fenêtre CHOIX DU PRESET, onglet **USER** :
+
+- **[ + NOUVEAU PACK ]** crée un `.raw2pack` vide (« NOUVEAU PACK », puis « NOUVEAU PACK 2 »…)
+  et l'ouvre en édition.
+- **ÉDITER** (sur la ligne d'un pack) ouvre sa barre d'édition, **FINI** la referme :
+  - **NOM DU PACK**, **AUTEUR**, **VERSION**, puis **OK** (ou Entrée) ;
+  - **[ + SON ACTUEL ]** ajoute le son en cours, sous le nom du preset chargé (« nom 2 » si le
+    nom est déjà pris dans le pack) : on règle un son, on clique, on passe au suivant ;
+  - **[ DUPLIQUER ]** fait une copie éditable du pack en `.raw2pack` (pratique pour retoucher un
+    pack installé sans toucher à l'original) ;
+  - **[ EXPORTER .raw2pack ]** écrit le pack entier en un seul fichier dans
+    `Documents/Raw 2/Exports` et ouvre ce dossier : c'est le fichier à partager ou à vendre
+    (un pack dossier est converti, chaque `.raw` devient une entrée).
+- Sur chaque preset d'un pack en édition :
+  - **▴ ▾** change l'ordre (packs `.raw2pack`) ;
+  - **ÉCRASER** remplace le son de ce preset par le son actuel (second clic : « SÛR ? ») ;
+  - **RENOMMER** transforme le nom en champ : Entrée valide, Échap annule ;
+  - **X** retire le preset (second clic : « OK? ») ; dans un pack dossier, le `.raw` part à la
+    corbeille.
+- Les favoris suivent les renommages. MES PRESETS et DIVERS gardent leur nom de pack, mais
+  leurs presets se modifient de la même façon.
+
+Un `.raw2pack` créé ou modifié par le plugin reste un fichier texte JSON (format ci-dessous) :
+les presets ajoutés depuis le plugin y sont des presets complets (le contenu d'un `.raw`), ceux
+écrits à la main peuvent rester sous la forme « preset d'usine + retouches ». Le même fichier
+fonctionne sous Windows et macOS.
 
 ## Format `.raw` (un preset)
 
@@ -78,5 +108,6 @@ change quelques réglages.
   `wt` (`[["saw", 0, 1], ["glass", 0.2, 0.8]]` : forme, début et fin du morphing, pour les deux oscillateurs).
 - Une entrée peut aussi être un preset complet (le contenu d'un fichier `.raw`).
 
-Limites : 500 presets par pack, fichier de 4 Mo au plus. Les textes sont nettoyés (40 caractères
+Limites : 500 presets par pack, fichier de 32 Mo au plus (un preset complet dont les tables ont
+été redessinées pèse environ 200 Ko). Les textes sont nettoyés (40 caractères
 pour un nom).

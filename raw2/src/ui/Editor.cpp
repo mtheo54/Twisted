@@ -230,6 +230,9 @@ void Editor::frame(Canvas& c, const Input& in) {
     // touches globales
     if (in.keyEsc && pbOpen_ && pbGenreOpen_) {
         pbGenreOpen_ = false;  // Échap ferme d'abord le menu GENRE
+    } else if (in.keyEsc && pbOpen_ && (ui_.focus != 0 || !pbRenKey_.empty())) {
+        ui_.focus = 0;  // puis la saisie en cours (recherche, renommage, infos du pack)
+        pbRenKey_.clear();
     } else if (in.keyEsc) {
         pbOpen_ = false;
         thOpen_ = false;
@@ -680,6 +683,19 @@ void Editor::drawInstBrowser() {
     ui_.setLayer(0);
 }
 
+// barre d'édition d'un pack : champs remplis avec ses infos, pack déroulé
+void Editor::startPackEdit(int pack) {
+    if (pack < 0 || pack >= (int)m_.packs.size()) return;
+    const Pack& pk = m_.packs[(size_t)pack];
+    pbEdit_ = pk.path;
+    pbEdName_ = pk.name;
+    pbEdAuthor_ = pk.author;
+    pbEdVer_ = pk.version.empty() ? std::string("1.0") : pk.version;
+    pbRenKey_.clear();
+    pbDelKey_.clear();
+    pbExp_.insert(pk.name);
+}
+
 void Editor::drawPresetBrowser() {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
@@ -795,17 +811,24 @@ void Editor::drawPresetBrowser() {
             x += w + 6.f;
             return clicked;
         };
-        if (act("pbInstall", "[ INSTALLER UN PACK\xE2\x80\xA6 ]")) {
+        if (act("pbNew", "[ + NOUVEAU PACK ]")) {
+            const int ni = m_.createPack("NOUVEAU PACK", pbMsg_);
+            if (ni >= 0) {
+                startPackEdit(ni);
+                ui_.focus = makeId("pbEdName");
+            }
+        }
+        if (act("pbInstall", "[ INSTALLER\xE2\x80\xA6 ]")) {
             files::makeDirs(files::raw2Dir());
             const bool opened = files::openFolder(files::raw2Dir());
             pbMsg_ = std::string(opened ? "dossier ouvert : " : "d\xC3\xA9pose tes packs dans ") + "Documents \xE2\x80\xBA Raw 2 (.raw2pack ou dossier de .raw), ou glisse-les ici";
         }
-        if (act("pbDemo", "[ PACKS D\xC3\x89MO ]")) {
+        if (act("pbDemo", "[ D\xC3\x89MO ]")) {
             m_.installDemoPacks(pbMsg_);
             pbExp_.insert("D\xC3\x89MO \xC2\xB7 NUIT FROIDE");
             pbExp_.insert("D\xC3\x89MO \xC2\xB7 RAGE LOURDE");
         }
-        if (act("pbSaveNow", "[ + SAUVER LE SON ACTUEL ]")) {
+        if (act("pbSaveNow", "[ + SAUVER LE SON ]")) {
             const std::string nm = m_.nextUserName();
             std::string path;
             if (m_.saveUserPreset(nm, path)) {
@@ -842,7 +865,9 @@ void Editor::drawPresetBrowser() {
             if ((!q.empty() || filtered || pbFav_) && hits.empty()) continue;
             rows.push_back({1, pi, 0});
             heights.push_back(42.f);
-            const bool open = !q.empty() || filtered || pbFav_ || pbExp_.count(pk.name) > 0;
+            const bool editing = pbEdit_ == pk.path;
+            if (editing) { rows.push_back({3, pi, 0}); heights.push_back(98.f); }
+            const bool open = editing || !q.empty() || filtered || pbFav_ || pbExp_.count(pk.name) > 0;
             if (open)
                 for (int ui : hits) { rows.push_back({2, pi, ui}); heights.push_back(38.f); }
         }
@@ -890,19 +915,34 @@ void Editor::drawPresetBrowser() {
             c.fillRect(r, T.scr);
             c.fillRect(Rect{r.x, r.b() - 1.f, r.w, 1.f}, T.rule);
             ui_.text(open ? "\xE2\x96\xBE" : "\xE2\x96\xB8", 348.f, r.y + 12.f, Font{Face::Mono, 13.f, 0.f}, T.hl);
-            ui_.text(ui_.fit(pk.name, nameF, 190.f), 382.f, r.y + 11.5f, nameF, T.scrText);
-            const std::string st = (pk.author.empty() ? std::string() : pk.author + " \xC2\xB7 ") + fmt("%d presets", (int)pk.presets.size()) +
+            ui_.text(ui_.fit(pk.name, nameF, 168.f), 382.f, r.y + 11.5f, nameF, T.scrText);
+            const std::string kind = pk.mine ? "dossier" : (pk.folder ? "dossier" : ".raw2pack");
+            const std::string st = kind + " \xC2\xB7 " + (pk.author.empty() ? std::string() : pk.author + " \xC2\xB7 ") + fmt("%d presets", (int)pk.presets.size()) +
                                    (pk.version.empty() ? std::string() : " \xC2\xB7 v" + pk.version);
-            ui_.textRight(ui_.fit(st, sf, 180.f), 753.4f, r.y + 14.f, sf, T.scrMuted);
-            const Rect badge{765.4f, r.y + 11.f, 66.f, 19.f};
-            ui_.box(badge, Color{0, 0, 0, 0}, here ? T.hl : T.scrMuted);
-            ui_.textCenter(pk.mine ? "MES" : (pk.folder ? "PACK" : "FICHIER"), badge, bf, here ? T.hl : T.scrMuted);
+            ui_.textRight(ui_.fit(st, sf, 200.f), 753.4f, r.y + 14.f, sf, here ? T.hl : T.scrMuted);
             bool rmHit = false;
+            {  // ÉDITER / FINI : ouvre la barre d'édition du pack
+                const bool editing = pbEdit_ == pk.path;
+                const Rect eb{765.4f, r.y + 10.f, 66.f, 21.f};
+                const Ui::Interact ie = ui_.interact(makeId("pbEd", rw.a), eb);
+                rmHit = ie.hovered || ie.pressed || ie.held;
+                ui_.box(eb, editing ? T.hl : Color{0, 0, 0, 0}, editing ? T.hl : T.scrMuted);
+                ui_.textCenter(editing ? "FINI" : "\xC3\x89" "DITER", Rect{eb.x, eb.y + 4.f, eb.w, 13.f}, Font{Face::Mono, 10.f, 0.6f}, editing ? T.onAcc : T.scrText);
+                if (ie.clicked) {
+                    if (editing) {
+                        pbEdit_.clear();
+                        pbRenKey_.clear();
+                        ui_.focus = 0;
+                    } else {
+                        startPackEdit(rw.a);
+                    }
+                }
+            }
             if (!pk.mine) {
                 const Rect rb{843.4f, r.y + 10.f, 88.6f, 21.f};
                 const bool confirm = pbRmPath_ == pk.path && now_ - pbRmT_ < 3000.0;
                 const Ui::Interact ir = ui_.interact(makeId("pbRm", rw.a), rb);
-                rmHit = ir.hovered || ir.pressed || ir.held;
+                rmHit = rmHit || ir.hovered || ir.pressed || ir.held;
                 ui_.box(rb, confirm ? T.hl : Color{0, 0, 0, 0}, confirm ? T.hl : T.scrMuted);
                 ui_.textCenter(confirm ? "[ CONFIRMER ]" : "[ RETIRER ]", Rect{rb.x, rb.y + 4.f, rb.w, 13.f}, Font{Face::Mono, 10.f, 0.6f}, confirm ? T.onAcc : T.scrText);
                 if (ir.clicked) {
@@ -920,6 +960,59 @@ void Editor::drawPresetBrowser() {
                 if (pbExp_.count(pk.name)) pbExp_.erase(pk.name);
                 else pbExp_.insert(pk.name);
             }
+            continue;
+        }
+        if (rw.kind == 3) {  // barre d'édition du pack : nom, auteur, version, actions
+            const Pack& pk = m_.packs[(size_t)rw.a];
+            c.fillRect(r, T.railBg);
+            c.fillRect(Rect{r.x, r.b() - 1.f, r.w, 1.f}, T.rule);
+            const bool fixedName = pk.mine || (pk.folder && pk.path == files::raw2Dir());
+            const Font lf{Face::Mono, 9.f, 0.9f}, ff{Face::Mono, 12.f, 0.f};
+            bool changed = false;
+            if (!fixedName) {
+                ui_.text("NOM DU PACK", 352.f, r.y + 8.f, lf, T.muted);
+                ui_.text("AUTEUR", 610.f, r.y + 8.f, lf, T.muted);
+                ui_.text("VERSION", 800.f, r.y + 8.f, lf, T.muted);
+                bool enter = ui_.textField(makeId("pbEdName"), Rect{352.f, r.y + 22.f, 248.f, 30.f}, pbEdName_, "nom du pack", ff, T.inputBg, T.ink, T.rule, T.muted);
+                enter = ui_.textField(makeId("pbEdAuth"), Rect{610.f, r.y + 22.f, 180.f, 30.f}, pbEdAuthor_, "auteur", ff, T.inputBg, T.ink, T.rule, T.muted) || enter;
+                enter = ui_.textField(makeId("pbEdVer"), Rect{800.f, r.y + 22.f, 62.f, 30.f}, pbEdVer_, "1.0", ff, T.inputBg, T.ink, T.rule, T.muted) || enter;
+                if (ui_.button(makeId("pbEdOk"), Rect{870.f, r.y + 22.f, 62.f, 30.f}, "OK", ui_.miniStyle(false)) || enter) {
+                    const std::string path = pk.path;
+                    m_.setPackInfo(rw.a, pbEdName_, pbEdAuthor_, pbEdVer_, pbMsg_);
+                    const int ni = m_.findPack(path);
+                    if (ni >= 0) pbExp_.insert(m_.packs[(size_t)ni].name);
+                    ui_.focus = 0;
+                    changed = true;
+                }
+            } else {
+                ui_.text(pk.mine ? "MES PRESETS : le nom du pack est fixe, ses presets se modifient"
+                                 : "DIVERS : presets pos\xC3\xA9s \xC3\xA0 la racine de Raw 2",
+                         352.f, r.y + 26.f, ff, T.muted);
+            }
+            float bx = 352.f;
+            auto eact = [&](const char* id, const std::string& label) {
+                const Font f{Face::Mono, 10.f, 0.7f};
+                const float w = std::round(ui_.width(label, f) + 22.f);
+                ButtonStyle bs = ui_.miniStyle(false);
+                bs.font = f;
+                const bool clicked = ui_.button(makeId(id, rw.a), Rect{bx, r.y + 62.f, w, 26.f}, label, bs);
+                bx += w + 6.f;
+                return clicked;
+            };
+            if (!changed && eact("pbEdAdd", "[ + SON ACTUEL ]")) {
+                m_.addCurrentToPack(rw.a, pbMsg_);
+                changed = true;
+            }
+            if (!changed && eact("pbEdDup", "[ DUPLIQUER ]")) {
+                const int d = m_.duplicatePack(rw.a, pbMsg_);
+                if (d >= 0) startPackEdit(d);
+                changed = true;
+            }
+            if (!changed && eact("pbEdExp", "[ EXPORTER .raw2pack ]")) {
+                if (!m_.exportPack(rw.a, pbMsg_).empty()) files::openFolder(files::exportsDir());
+                changed = true;
+            }
+            if (changed) break;  // la liste a changé
             continue;
         }
         bool on;
@@ -947,7 +1040,11 @@ void Editor::drawPresetBrowser() {
             if (p.base >= 0) style += fmt(" \xC2\xB7 base %02d", p.base + 1);
             cat = "user";
             starKey = favKey(1, 0, pk.name, p.name);
-            if (hitR.h > 0 && ui_.interact(makeId("pbUrow", rw.a * 1000 + rw.b), Rect{hitR.x + 28.f, hitR.y, hitR.w - 28.f, hitR.h}).clicked) loadPack(rw.a, rw.b);
+            const bool editRow = pbEdit_ == pk.path;
+            const bool renaming = editRow && pbRenKey_ == pk.path + "#" + std::to_string(rw.b);
+            if (hitR.h > 0 && !renaming &&
+                ui_.interact(makeId("pbUrow", rw.a * 1000 + rw.b), Rect{hitR.x + 28.f, hitR.y, editRow ? 680.f - hitR.x : hitR.w - 28.f, hitR.h}).clicked)
+                loadPack(rw.a, rw.b);
         }
         if (on) c.fillRect(r, T.tabBg);
         c.fillRect(Rect{r.x, r.b() - 1.f, r.w, 1.f}, T.rule);
@@ -964,11 +1061,74 @@ void Editor::drawPresetBrowser() {
             drawStar(Pt{sr.cx(), sr.cy()}, 6.5f, fav ? T.hl : (on ? T.tabFg : T.rule), fav);
         }
         ui_.text(num, 366.f + ix, r.y + 11.5f, numF, on ? T.tabFg : T.hl);
-        ui_.text(ui_.fit(name, nameF, 290.f), 396.f + ix, r.y + 9.5f, nameF, fg);
-        ui_.textRight(ui_.fit(style, sf, 220.f), 854.f, r.y + 12.f, sf, on ? T.tabFg : T.muted);
-        const Rect badge{866.f, r.y + 9.f, 66.f, 19.f};
-        ui_.box(badge, Color{0, 0, 0, 0}, on ? T.tabFg : T.rule);
-        ui_.textCenter(upper(cat.empty() ? std::string("?") : cat), badge, bf, fg);
+        const bool editRow = rw.kind == 2 && pbEdit_ == m_.packs[(size_t)rw.a].path;
+        if (!editRow) {
+            ui_.text(ui_.fit(name, nameF, 290.f), 396.f + ix, r.y + 9.5f, nameF, fg);
+            ui_.textRight(ui_.fit(style, sf, 220.f), 854.f, r.y + 12.f, sf, on ? T.tabFg : T.muted);
+            const Rect badge{866.f, r.y + 9.f, 66.f, 19.f};
+            ui_.box(badge, Color{0, 0, 0, 0}, on ? T.tabFg : T.rule);
+            ui_.textCenter(upper(cat.empty() ? std::string("?") : cat), badge, bf, fg);
+        } else {
+            // édition : ▴ ▾ (ordre, .raw2pack), ÉCRASER (son actuel), RENOMMER, X (supprimer) ;
+            // ÉCRASER et X demandent un second clic de confirmation
+            const Pack& pk = m_.packs[(size_t)rw.a];
+            const std::string key = pk.path + "#" + std::to_string(rw.b);
+            bool changed = false;
+            auto mini = [&](const char* id, const Rect& br, const std::string& label, bool hot) {
+                const Ui::Interact ii = ui_.interact(makeId(id, rw.a * 1000 + rw.b), br);
+                ui_.box(br, hot ? T.hl : Color{0, 0, 0, 0}, hot ? T.hl : (on ? T.tabFg : T.rule));
+                const bool arrow = label.rfind("\xE2\x96", 0) == 0;  // ▴ ▾ : plus grands que le texte
+                ui_.textCenter(label, Rect{br.x, br.y + (arrow ? 1.f : 4.f), br.w, arrow ? 18.f : 13.f}, Font{Face::Mono, arrow ? 15.f : 10.f, 0.4f},
+                               hot ? T.onAcc : fg);
+                return ii.clicked && hitR.h > 0;
+            };
+            const bool delOk = pbDelKey_ == "x:" + key && now_ - pbDelT_ < 3000.0;
+            if (mini("pbEdDel", Rect{904.f, r.y + 8.f, 28.f, 22.f}, delOk ? "OK?" : "X", delOk)) {
+                if (delOk) {
+                    m_.deletePackPreset(rw.a, rw.b, pbMsg_);
+                    pbDelKey_.clear();
+                    changed = true;
+                } else {
+                    pbDelKey_ = "x:" + key;
+                    pbDelT_ = now_;
+                }
+            }
+            if (!changed && mini("pbEdRen", Rect{830.f, r.y + 8.f, 68.f, 22.f}, "RENOMMER", pbRenKey_ == key)) {
+                pbRenKey_ = key;
+                pbRenText_ = name;
+                ui_.focus = makeId("pbRen");
+            }
+            const bool wOk = pbDelKey_ == "w:" + key && now_ - pbDelT_ < 3000.0;
+            if (!changed && mini("pbEdOver", Rect{756.f, r.y + 8.f, 68.f, 22.f}, wOk ? "S\xC3\x9bR ?" : "\xC3\x89" "CRASER", wOk)) {
+                if (wOk) {
+                    m_.replacePackPreset(rw.a, rw.b, pbMsg_);
+                    pbDelKey_.clear();
+                    changed = true;
+                } else {
+                    pbDelKey_ = "w:" + key;
+                    pbDelT_ = now_;
+                }
+            }
+            if (!pk.folder && !changed) {
+                if (mini("pbEdUp", Rect{696.f, r.y + 8.f, 25.f, 22.f}, "\xE2\x96\xB4", false)) changed = m_.movePackPreset(rw.a, rw.b, -1) || true;
+                if (!changed && mini("pbEdDn", Rect{725.f, r.y + 8.f, 25.f, 22.f}, "\xE2\x96\xBE", false)) changed = m_.movePackPreset(rw.a, rw.b, 1) || true;
+            }
+            if (!changed && pbRenKey_ == key) {  // renommage : le nom devient un champ (Entrée valide, Échap annule)
+                const Id rid = makeId("pbRen");
+                const bool enter = ui_.textField(rid, Rect{392.f + ix, r.y + 5.f, 690.f - 392.f - ix, 28.f}, pbRenText_, "nouveau nom", nameF, T.inputBg, T.ink, T.rule, T.muted);
+                if (enter) {
+                    m_.renamePackPreset(rw.a, rw.b, pbRenText_, pbMsg_);
+                    pbRenKey_.clear();
+                    ui_.focus = 0;
+                    changed = true;
+                } else if (ui_.focus != rid) {
+                    pbRenKey_.clear();  // clic ailleurs : renommage abandonné
+                }
+            } else if (!changed) {
+                ui_.text(ui_.fit(name, nameF, 690.f - 400.f - ix), 396.f + ix, r.y + 9.5f, nameF, fg);
+            }
+            if (changed) break;  // la liste a changé
+        }
     }
     if (rows.empty()) {
         const Font ef{Face::Mono, 12.f, 0.f};
@@ -987,7 +1147,9 @@ void Editor::drawPresetBrowser() {
         const float yy = list.y + (list.h - h) * (pbScroll_ / maxScroll);
         c.fillRect(Rect{list.r() - 4.f, yy, 3.f, h}, T.muted);
     }
-    ui_.text("clic : charger et \xC3\xA9" "couter \xC2\xB7 pack : cliquer pour d\xC3\xA9rouler \xC2\xB7 \xC3\x89" "chap : fermer", 335.f, 844.f, Font{Face::Mono, 10.f, 0.8f}, T.muted);
+    ui_.text(user ? "clic : charger \xC2\xB7 \xC3\x89" "DITER : renommer, r\xC3\xA9ordonner, \xC3\xA9" "craser, exporter \xC2\xB7 \xC3\x89" "chap : fermer"
+                  : "clic : charger et \xC3\xA9" "couter \xC2\xB7 pack : cliquer pour d\xC3\xA9rouler \xC2\xB7 \xC3\x89" "chap : fermer",
+             335.f, 844.f, Font{Face::Mono, 10.f, 0.8f}, T.muted);
 
     // menu GENRE (au-dessus de la liste)
     if (pbGenreOpen_) {

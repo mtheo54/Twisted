@@ -235,6 +235,11 @@ private:
     Rect pbGenreRect_{};
     double pbRmT_ = 0.0;
     std::set<std::string> pbExp_;     // packs déroulés
+    // édition d'un pack (chemin du pack en cours d'édition, champs, renommage, suppression)
+    std::string pbEdit_, pbEdName_, pbEdAuthor_, pbEdVer_;
+    std::string pbRenKey_, pbRenText_, pbDelKey_;
+    double pbDelT_ = 0.0;
+    void startPackEdit(int pack);
     bool saveOpen_ = false;
     std::string saveName_;
     std::string saveMsg_;

@@ -207,6 +207,20 @@ public:
     int installPackFile(const std::string& path, std::string& msg);  // copie un pack déposé ; presets ajoutés
     int installDemoPacks(std::string& msg);       // deux packs d'exemple (dossier + .raw2pack)
     bool removePack(int pack);                    // vers la corbeille
+    // --- édition des packs par l'utilisateur (fil de l'interface) ---------------------------------
+    // .raw2pack (un fichier : chaque preset est une entrée) ou pack dossier / MES PRESETS (un .raw
+    // par preset). Chaque opération réécrit le fichier puis relit Documents/Raw 2 ; msg dit ce qui
+    // s'est passé (affiché dans la fenêtre des presets).
+    int createPack(const std::string& name, std::string& msg);       // nouveau .raw2pack vide -> indice
+    bool addCurrentToPack(int pack, std::string& msg);                // ajoute le son actuel (nom du preset)
+    bool replacePackPreset(int pack, int preset, std::string& msg);   // écrase avec le son actuel
+    bool renamePackPreset(int pack, int preset, const std::string& name, std::string& msg);
+    bool deletePackPreset(int pack, int preset, std::string& msg);    // entrée retirée / .raw à la corbeille
+    bool movePackPreset(int pack, int preset, int delta);             // ordre (.raw2pack seulement)
+    bool setPackInfo(int pack, const std::string& name, const std::string& author, const std::string& version, std::string& msg);
+    int duplicatePack(int pack, std::string& msg);                    // copie éditable en .raw2pack -> indice
+    std::string exportPack(int pack, std::string& msg);               // .raw2pack autonome dans Raw 2/Exports
+    int findPack(const std::string& path) const;
     json::Value presetJson(bool withSamples = false);  // withSamples : sons déposés inclus (état)
     bool applyPresetJson(const json::Value& v, ParamSink* sink);
     void resetLifeAfterPreset();

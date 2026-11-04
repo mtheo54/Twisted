@@ -220,6 +220,14 @@ bool copyTree(const std::string& fromDir, const std::string& toDir) {
     return ok;
 }
 
+bool removeFile(const std::string& path) {
+#ifdef _WIN32
+    return DeleteFileW(widen(path).c_str()) != 0;
+#else
+    return std::remove(path.c_str()) == 0;
+#endif
+}
+
 bool moveToTrash(const std::string& path) {
     if (!exists(path)) return false;
 #ifdef _WIN32

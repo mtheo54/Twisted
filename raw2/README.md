@@ -152,7 +152,10 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
 - **Banque de presets** (maquette mise à jour) : **FACTORY** (INIT, preset vierge, puis les 72
   presets d'usine, filtres par catégorie et menu **GENRE**) et **USER** (les packs du dossier
   `Documents\Raw 2`, voir « Presets et fichiers »), avec [ INSTALLER UN PACK… ], [ PACKS DÉMO ] et
-  [ + SAUVER LE SON ACTUEL ]. En v8, l'étoile de chaque ligne marque un **favori** (onglet
+  [ + SAUVER LE SON ACTUEL ]. Les packs se créent et se modifient dans le plugin (v8.1) :
+  **+ NOUVEAU PACK**, puis **ÉDITER** sur un pack (nom, auteur, version, + SON ACTUEL, DUPLIQUER,
+  EXPORTER .raw2pack ; par preset : ordre, ÉCRASER, RENOMMER, supprimer), voir `docs/PACKS.md`.
+  En v8, l'étoile de chaque ligne marque un **favori** (onglet
   FAVORIS, gardé d'une session à l'autre) et **HASARD** charge un preset au hasard dans la liste
   filtrée.
 - **→ GLISSER EN .WAV** (carte SORTIE) : le son joué, avec ses effets, accords et arpège, est
