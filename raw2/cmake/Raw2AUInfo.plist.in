@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>French</string>
+	<key>CFBundleExecutable</key>
+	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+	<key>CFBundleIdentifier</key>
+	<string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>RAW 2</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>ABRASION</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>AudioComponents</key>
+	<array>
+		<dict>
+			<key>name</key>
+			<string>ABRASION: RAW 2</string>
+			<key>description</key>
+			<string>RAW 2, synthé à tables d'ondes et automate de vie</string>
+			<key>manufacturer</key>
+			<string>Abrs</string>
+			<key>type</key>
+			<string>aumu</string>
+			<key>subtype</key>
+			<string>Raw2</string>
+			<key>version</key>
+			<integer>${RAW2_AU_VERSION}</integer>
+			<key>factoryFunction</key>
+			<string>RAW2AUFactory</string>
+			<key>sandboxSafe</key>
+			<true/>
+			<key>tags</key>
+			<array>
+				<string>Synthesizer</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

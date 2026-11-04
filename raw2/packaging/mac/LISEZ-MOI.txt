@@ -1,0 +1,36 @@
+RAW 2 pour macOS (ABRASION)
+===========================
+
+Contenu
+-------
+- « Installer RAW 2.pkg » : installe les deux formats du plugin
+    VST3        -> /Library/Audio/Plug-Ins/VST3/RAW2.vst3
+    Audio Unit  -> /Library/Audio/Plug-Ins/Components/RAW2.component
+- « Installation manuelle » : les mêmes plugins, à copier soi-même si on préfère
+  (dans ~/Library/Audio/Plug-Ins/VST3 et ~/Library/Audio/Plug-Ins/Components).
+
+Compatibilité : macOS 10.15 ou plus récent, Mac Apple Silicon (M1 à M4) et Intel.
+Ableton Live 11 et 12 : VST3 ou AU. Live 10, Logic Pro, GarageBand : AU.
+
+Installation
+------------
+1. Double-cliquer sur « Installer RAW 2.pkg ».
+   Le paquet n'est pas signé par un compte développeur Apple : macOS le bloque la
+   première fois. Ouvrir Réglages Système > Confidentialité et sécurité, descendre jusqu'au
+   message sur « Installer RAW 2.pkg » et cliquer sur « Ouvrir quand même ».
+   (Sur macOS 14 et plus ancien : clic droit sur le paquet > Ouvrir > Ouvrir.)
+2. Suivre l'installeur (mot de passe administrateur demandé).
+3. Dans Ableton Live : Réglages > Plug-ins, activer « Utiliser les plug-ins VST3 système »
+   et/ou « Utiliser les Audio Units », puis cliquer sur « Relancer l'analyse ».
+   RAW 2 apparaît dans Plug-ins > VST3 > ABRASION, ou Plug-ins > Audio Units > ABRASION.
+
+Installation manuelle : après la copie, si Live refuse de charger le plugin, ouvrir
+Terminal et taper (retire la quarantaine posée par le téléchargement) :
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/RAW2.vst3
+    xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/RAW2.component
+
+Fichiers de RAW 2
+-----------------
+Packs, presets, instruments et exports : ~/Documents/Raw 2 (créé au premier lancement).
+La banque d'instruments (RAW2-instruments.zip) se décompresse dans ~/Documents/Raw 2,
+exactement comme sous Windows ; les packs de presets sont communs aux deux systèmes.
