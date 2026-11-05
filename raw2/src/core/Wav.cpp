@@ -56,7 +56,7 @@ bool parseWavMulti(const std::vector<unsigned char>& b, std::vector<float>& out,
             else if (bits == 16) v = (int16_t)u16(q) / 32768.0;
             else if (bits == 24) { int32_t x = q[0] | (q[1] << 8) | (q[2] << 16); if (x & 0x800000) x -= 0x1000000; v = x / 8388608.0; }
             else if (bits == 32) v = (int32_t)u32(q) / 2147483648.0;
-            out[i * (size_t)keep + (size_t)c] = std::isfinite(v) ? (float)v : 0.f;
+            out[i * (size_t)keep + (size_t)c] = std::isfinite(v) ? (float)std::clamp(v, -4.0, 4.0) : 0.f;  // float hors norme borné
         }
     channels = keep;
     return n > 0;

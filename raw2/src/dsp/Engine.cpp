@@ -197,10 +197,11 @@ float Engine::lfoValue(int n, float dt) {
     const float f = (float)(ph - std::floor(ph));
     float y;
     if (P.get(lfoP(n, kLfDraw)) > 0.5f) {  // ÉDITION / DRAW : forme dessinée (table d'un cycle)
-        const float* t = m_.lfoShapes.table(n);
+        const LfoShapes& sh = m_.lfoShapes;
         const float q = f * (float)kLfoTab;
-        const int i0 = std::min((int)q, kLfoTab - 1);
-        y = t[i0] + (t[i0 + 1] - t[i0]) * (q - (float)i0);
+        const int i0 = std::clamp((int)q, 0, kLfoTab - 1);
+        const float y0 = sh.tableAt(n, i0), y1 = sh.tableAt(n, i0 + 1);
+        y = y0 + (y1 - y0) * (q - (float)i0);
     } else {
         switch (shape) {
             case kLfoSine: y = std::sin(2.f * kPi * f); break;
@@ -796,10 +797,14 @@ void Engine::controlUpdate(int n) {
         }
         const float common = (float)v.note + v.glide + v.uniDet + pOff;
         const float pitchA = common + semA + D(0) * 6.f + v.driftA, pitchB = common + semB + D(1) * 6.f + v.driftB;
-        v.incS = (float)(noteHz(common + bend - subOct) / sr_);
+        // incréments bornés sous Nyquist (note très aiguë + octaves + transpositions, ou fréquence
+        // d'échantillonnage basse) ; NaN -> 0 : la phase ne peut plus sortir de [0, 1)
+        auto safeRate = [](double x) { return x > 0.0 && x < 64.0 ? (float)x : (x >= 64.0 ? 64.f : 0.f); };
+        auto safeInc = [](double x) { return x > 0.0 && x < 0.49 ? (float)x : (x >= 0.49 ? 0.49f : 0.f); };
+        v.incS = safeInc(noteHz(common + bend - subOct) / sr_);
         const double fA = noteHz(pitchA), fB = noteHz(pitchB);
         // FREE : la phase dérive lentement (+0.15 Hz), comme un oscillateur libre
-        const float incA = (float)((fA + (modeA == 4 ? 0.15 : 0.0)) / sr_), incB = (float)((fB + (modeB == 4 ? 0.15 : 0.0)) / sr_);
+        const float incA = safeInc((fA + (modeA == 4 ? 0.15 : 0.0)) / sr_), incB = safeInc((fB + (modeB == 4 ? 0.15 : 0.0)) / sr_);
         float oct = D(4) * 4.f + h * 2.f + 0.5f * (float)(v.note - 60) / 12.f + v.driftCut + velCut * 4.f * (v.vel - 1.f);
         if (target == 0) oct += lifeMod_ * 3.f;
         const float fc = std::clamp(cutoffToHz(cutBase) * std::pow(2.f, oct), 20.f, (float)sr_ * 0.45f);
@@ -832,10 +837,10 @@ void Engine::controlUpdate(int n) {
         v.levelA = lvA;
         v.levelB = lvB;
         // SAMPLE : pas de lecture (taux du son / taux du moteur, transposition restante)
-        if (v.zoneA) v.inRateA = (float)(v.zoneA->sr / sr_ * std::pow(2.0, (pitchA - (float)v.zoneA->root + v.zoneA->tune * 0.01f) / 12.0));
-        if (v.zoneB) v.inRateB = (float)(v.zoneB->sr / sr_ * std::pow(2.0, (pitchB - (float)v.zoneB->root + v.zoneB->tune * 0.01f) / 12.0));
-        if (v.smpA && smpSet_[0]) v.smpRateA = (float)(smpSet_[0]->sr / sr_ * std::pow(2.0, (pitchA - P.get(kASmpRoot) - (float)v.smpDA) / 12.0));
-        if (v.smpB && smpSet_[1]) v.smpRateB = (float)(smpSet_[1]->sr / sr_ * std::pow(2.0, (pitchB - P.get(kBSmpRoot) - (float)v.smpDB) / 12.0));
+        if (v.zoneA) v.inRateA = safeRate(v.zoneA->sr / sr_ * std::pow(2.0, (pitchA - (float)v.zoneA->root + v.zoneA->tune * 0.01f) / 12.0));
+        if (v.zoneB) v.inRateB = safeRate(v.zoneB->sr / sr_ * std::pow(2.0, (pitchB - (float)v.zoneB->root + v.zoneB->tune * 0.01f) / 12.0));
+        if (v.smpA && smpSet_[0]) v.smpRateA = safeRate(smpSet_[0]->sr / sr_ * std::pow(2.0, (pitchA - P.get(kASmpRoot) - (float)v.smpDA) / 12.0));
+        if (v.smpB && smpSet_[1]) v.smpRateB = safeRate(smpSet_[1]->sr / sr_ * std::pow(2.0, (pitchB - P.get(kBSmpRoot) - (float)v.smpDB) / 12.0));
         // cibles de fin de bloc (rampe linéaire dans renderBlock)
         v.incA = incA;
         v.incB = incB;
@@ -910,6 +915,12 @@ inline float adaaTanh(float x, double& x1d) {
 // sans boucle : silence. pos est ramenée dans la boucle ici.
 inline void readInst(const InstZone& z, double& pos, float& l, float& r) {
     const int n = z.frames;
+    if (!(pos >= -4.0)) pos = 0.0;  // NaN
+    if (!z.loop && pos > (double)n + 4.0) {  // fin du son : silence, la position ne grandit plus
+        pos = (double)n + 4.0;
+        l = r = 0.f;
+        return;
+    }
     if (z.loop && pos >= (double)z.loopEnd) pos -= (double)(z.loopEnd - z.loopStart) * std::floor((pos - (double)z.loopStart) / (double)(z.loopEnd - z.loopStart));
     const int k = (int)pos;
     const float f = (float)(pos - (double)k);
@@ -930,6 +941,7 @@ inline void readInst(const InstZone& z, double& pos, float& l, float& r) {
 }
 // lecture cubique d'un son (zéros hors du son)
 inline float readSmp(const float* d, int n, double pos) {
+    if (!(pos >= -4.0) || pos > (double)n + 4.0) return 0.f;  // NaN, avant ou après le son
     const int k = (int)pos;
     const float f = (float)(pos - (double)k);
     auto at = [&](int i) { return i >= 0 && i < n ? d[i] : 0.f; };
@@ -983,9 +995,10 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
     auto readPhase = [&](double ph, bool loop, float w) {
         float u = (float)ph;
         if (loop) { u *= 2.f; u -= std::floor(u); }
+        if (!(u >= 0.f && u < 1.f)) u = u >= 1.f && u < 1e6f ? u - std::floor(u) : 0.f;  // NaN, hors cycle
         if (w > 0.0005f) {
             const float q = u * 1024.f;
-            const int i0 = (int)q;
+            const int i0 = std::clamp((int)q, 0, 1023);
             const float s0 = sin_[(size_t)i0] + (sin_[(size_t)(i0 + 1)] - sin_[(size_t)i0]) * (q - (float)i0);
             u += w * 0.22f * s0;
             u -= std::floor(u);
@@ -1051,17 +1064,17 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
         // sous-oscillateur sinus (au centre), avant le drive : la 808 sature avec le reste
         if (sub > 0.00001f || dSub != 0.f) {
             const float q = (float)phS * 1024.f;
-            const int i0 = std::min((int)q, 1023);
+            const int i0 = std::clamp((int)q, 0, 1023);
             const float ss = (sin_[(size_t)i0] + (sin_[(size_t)(i0 + 1)] - sin_[(size_t)i0]) * (q - (float)i0)) * sub * eA;
             xl += ss;
             xr += ss;
         }
         phS += incS;
-        if (phS >= 1.0) phS -= 1.0;
+        if (phS >= 1.0) phS -= std::floor(phS);
         phA += v.incA;
-        if (phA >= 1.0) phA -= 1.0;
+        if (phA >= 1.0) phA -= std::floor(phA);
         phB += v.incB;
-        if (phB >= 1.0) phB -= 1.0;
+        if (phB >= 1.0) phB -= std::floor(phB);
         // drive (HARMONIQUES) : tanh anti-crénelée (ADAA d'ordre 1) ; la part linéaire est
         // moyennée sur deux échantillons pour rester alignée sur le demi-échantillon de l'ADAA
         if (dr > 1.01f) {

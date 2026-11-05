@@ -148,7 +148,7 @@ void LfoShapes::set(int lfo, const std::vector<LfoNode>& p) {
     pts[(size_t)lfo] = p;
     const int next = 1 - cur_[(size_t)lfo].load(std::memory_order_relaxed);
     auto& t = tab_[(size_t)lfo][(size_t)next];
-    for (int i = 0; i <= kLfoTab; ++i) t[(size_t)i] = std::clamp(eval(p, (float)i / (float)kLfoTab * 0.999999f), -1.f, 1.f);
+    for (int i = 0; i <= kLfoTab; ++i) t[(size_t)i].store(std::clamp(eval(p, (float)i / (float)kLfoTab * 0.999999f), -1.f, 1.f), std::memory_order_relaxed);
     cur_[(size_t)lfo].store(next, std::memory_order_release);
 }
 

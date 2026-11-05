@@ -19,6 +19,7 @@ option(RAW2_BUILD_AU "Plugin Audio Unit (macOS)" ON)
 option(RAW2_BUILD_PREVIEW "Appli RAW2Preview : l'interface et le son sans DAW" ON)
 option(RAW2_BUILD_TESTS "Tests du moteur" ON)
 option(RAW2_BUILD_TRAINER "Outil raw2_train : ré-entraîne les réseaux de l'IA" ON)
+option(RAW2_BUILD_AUDIT "Bancs d'audit (torture, course entre fils, fuzzing) : à compiler avec les sanitizers" OFF)
 option(RAW2_DEPLOY "Copie RAW2.vst3 dans %CommonProgramFiles%\\VST3 après compilation (droits admin)" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -118,6 +119,15 @@ if(RAW2_BUILD_TESTS)
   add_executable(raw2_master_test tests/master_test.cpp)
   target_link_libraries(raw2_master_test PRIVATE raw2_core)
   add_test(NAME raw2_master_test COMMAND raw2_master_test)
+endif()
+
+# ---- bancs d'audit (tools/audit, voir docs/AUDIT.md) ---------------------------------------
+if(RAW2_BUILD_AUDIT AND NOT WIN32)
+  find_package(Threads REQUIRED)
+  foreach(t torture race fuzz)
+    add_executable(raw2_${t} tools/audit/${t}.cpp)
+    target_link_libraries(raw2_${t} PRIVATE raw2_core Threads::Threads)
+  endforeach()
 endif()
 
 # ---- entraînement de l'IA (outil, pas nécessaire au plugin) -------------------------------

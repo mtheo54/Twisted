@@ -19,7 +19,9 @@
 #include "ui/Editor.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -45,6 +47,54 @@ constexpr OSType kType = 'aumu', kSubtype = 'Raw2', kManufacturer = 'Abrs';
 constexpr AudioUnitPropertyID kInstanceProperty = 64001;  // privé : la vue retrouve l'instance
 constexpr UInt32 kDefaultMaxFrames = 4096;
 constexpr int kMaxMidi = 2048;
+
+// File MIDI sans verrou, plusieurs producteurs (MusicDeviceMIDIEvent, quel que soit le fil de
+// l'hôte) et un consommateur (le rendu) : file bornée de Vyukov, chaque case porte un numéro de
+// séquence. Pleine : la note est perdue plutôt que d'attendre (le rendu ne bloque jamais).
+class MidiQueue {
+public:
+    MidiQueue() {
+        for (size_t i = 0; i < kCap; ++i) cells_[i].seq.store(i, std::memory_order_relaxed);
+    }
+    bool push(const NoteEvent& e) {
+        size_t pos = head_.load(std::memory_order_relaxed);
+        for (;;) {
+            Cell& c = cells_[pos & (kCap - 1)];
+            const size_t seq = c.seq.load(std::memory_order_acquire);
+            const intptr_t dif = (intptr_t)seq - (intptr_t)pos;
+            if (dif == 0) {
+                if (head_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+                    c.ev = e;
+                    c.seq.store(pos + 1, std::memory_order_release);
+                    return true;
+                }
+            } else if (dif < 0) {
+                return false;  // pleine
+            } else {
+                pos = head_.load(std::memory_order_relaxed);
+            }
+        }
+    }
+    bool pop(NoteEvent& e) {  // un seul consommateur : le fil de rendu
+        Cell& c = cells_[tail_ & (kCap - 1)];
+        const size_t seq = c.seq.load(std::memory_order_acquire);
+        if ((intptr_t)seq - (intptr_t)(tail_ + 1) < 0) return false;  // vide
+        e = c.ev;
+        c.seq.store(tail_ + kCap, std::memory_order_release);
+        ++tail_;
+        return true;
+    }
+
+private:
+    static constexpr size_t kCap = 2048;  // puissance de deux
+    struct Cell {
+        std::atomic<size_t> seq{0};
+        NoteEvent ev;
+    };
+    std::array<Cell, kCap> cells_;
+    std::atomic<size_t> head_{0};
+    size_t tail_ = 0;
+};
 
 struct Listener {
     AudioUnitPropertyID id;
@@ -77,8 +127,8 @@ struct Instance : ParamSink {
     std::vector<Listener> listeners;
     std::vector<RenderNotify> notifies;
     std::vector<float> bufL, bufR;
-    std::vector<NoteEvent> midi = std::vector<NoteEvent>(kMaxMidi);
-    std::atomic<int> nMidi{0};
+    MidiQueue midiIn;                                       // notes reçues (tous fils)
+    std::vector<NoteEvent> midi = std::vector<NoteEvent>(kMaxMidi);  // notes de ce rendu (fil de rendu)
     std::vector<AUPreset> factory;  // noms des presets d'usine (CFString gardées)
     AUPreset present{0, nullptr};
     MacView* liveView = nullptr;    // vue ouverte (fermée si l'instance disparaît avant elle)
@@ -448,11 +498,8 @@ OSStatus midiEvent(void* p, UInt32 status, UInt32 d1, UInt32 d2, UInt32 offset) 
     Instance* in = self(p);
     const UInt32 kind = status & 0xF0;
     if (kind == 0x90 || kind == 0x80) {
-        const int n = in->nMidi.load(std::memory_order_relaxed);
-        if (n >= kMaxMidi) return noErr;
         const bool on = kind == 0x90 && d2 > 0;
-        in->midi[(size_t)n] = NoteEvent{(int)offset, (int)(d1 & 0x7F), on ? (float)(d2 & 0x7F) / 127.f : 0.f, on};
-        in->nMidi.store(n + 1, std::memory_order_release);
+        in->midiIn.push(NoteEvent{(int)offset, (int)(d1 & 0x7F), on ? (float)(d2 & 0x7F) / 127.f : 0.f, on});
     } else if (kind == 0xB0 && d1 == 1) {  // molette de modulation
         in->model.params.set(kModWheel, fromNormalized(kModWheel, (float)(d2 & 0x7F) / 127.f));
     } else if (kind == 0xE0) {  // pitch bend 14 bits
@@ -489,9 +536,10 @@ OSStatus render(void* p, AudioUnitRenderActionFlags* flags, const AudioTimeStamp
         if (in->host.transportStateProc(in->host.hostUserData, &playing, &changed, &sampleInTime, &cycling, &cs, &ce) == noErr)
             m.hostPlaying.store(playing && in->host.beatAndTempoProc, std::memory_order_relaxed);
     }
-    // notes reçues avant ce rendu (même fil que l'hôte) : triées par position
-    const int nev = in->nMidi.exchange(0, std::memory_order_acquire);
+    // notes reçues avant ce rendu (file sans verrou, quel que soit le fil de l'hôte) : triées par position
+    int nev = 0;
     NoteEvent* ev = in->midi.data();
+    while (nev < kMaxMidi && in->midiIn.pop(ev[nev])) ++nev;
     for (int i = 0; i < nev; ++i) ev[i].offset = std::clamp(ev[i].offset, 0, (int)frames - 1);
     for (int i = 1; i < nev; ++i)
         for (int j = i; j > 0 && ev[j].offset < ev[j - 1].offset; --j) std::swap(ev[j], ev[j - 1]);
@@ -526,7 +574,8 @@ OSStatus render(void* p, AudioUnitRenderActionFlags* flags, const AudioTimeStamp
 
 OSStatus reset(void* p, AudioUnitScope, AudioUnitElement) {
     Instance* in = self(p);
-    in->nMidi.store(0);
+    NoteEvent drop;
+    while (in->midiIn.pop(drop)) {}
     in->engine.reset();
     return noErr;
 }

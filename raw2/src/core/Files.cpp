@@ -62,11 +62,24 @@ bool read(const std::string& path, std::vector<unsigned char>& out) {
     return true;
 }
 
+// Écriture sûre : le contenu va d'abord dans « fichier.tmp~ », puis remplace l'ancien fichier
+// d'un coup (renommage). Disque plein, coupure, plantage pendant l'écriture : l'ancien preset ou
+// pack reste intact au lieu d'être tronqué.
 bool write(const std::string& path, const std::vector<unsigned char>& data) {
-    FILE* f = openFile(path, "wb");
+    const std::string tmp = path + ".tmp~";
+    FILE* f = openFile(tmp, "wb");
     if (!f) return false;
-    const bool ok = data.empty() || std::fwrite(data.data(), 1, data.size(), f) == data.size();
-    return std::fclose(f) == 0 && ok;
+    bool ok = data.empty() || std::fwrite(data.data(), 1, data.size(), f) == data.size();
+    ok = std::fflush(f) == 0 && ok;
+    ok = std::fclose(f) == 0 && ok;
+#ifdef _WIN32
+    ok = ok && MoveFileExW(widen(tmp).c_str(), widen(path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    if (!ok) DeleteFileW(widen(tmp).c_str());
+#else
+    ok = ok && std::rename(tmp.c_str(), path.c_str()) == 0;
+    if (!ok) std::remove(tmp.c_str());
+#endif
+    return ok;
 }
 
 bool writeText(const std::string& path, const std::string& text) {

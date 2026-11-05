@@ -179,7 +179,10 @@ public:
     ParamStore(const ParamStore&) = delete;
     ParamStore& operator=(const ParamStore&) = delete;
     float get(uint32_t id) const { return values_[id].load(std::memory_order_relaxed); }
-    void set(uint32_t id, float plain) { values_[id].store(clampParam(id, plain), std::memory_order_relaxed); }
+    // valeur non numérique (NaN venu d'un hôte, d'un preset abîmé) : ignorée, l'ancienne reste
+    void set(uint32_t id, float plain) {
+        if (plain == plain) values_[id].store(clampParam(id, plain), std::memory_order_relaxed);
+    }
     int geti(uint32_t id) const { return (int)(get(id) + (get(id) >= 0.f ? 0.5f : -0.5f)); }
     void resetDefaults();
 

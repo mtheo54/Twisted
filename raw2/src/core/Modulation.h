@@ -57,10 +57,11 @@ public:
     json::Value save() const;
     void load(const json::Value& v);
     // fil audio : table d'un cycle (kLfoTab + 1 valeurs)
-    const float* table(int lfo) const { return tab_[(size_t)lfo][(size_t)cur_[(size_t)lfo].load(std::memory_order_acquire)].data(); }
+    // (valeurs atomiques : l'interface peut republier une forme pendant que l'audio la lit)
+    float tableAt(int lfo, int i) const { return tab_[(size_t)lfo][(size_t)cur_[(size_t)lfo].load(std::memory_order_acquire)][(size_t)i].load(std::memory_order_relaxed); }
 
 private:
-    std::array<std::array<std::array<float, kLfoTab + 1>, 2>, kNumLfos> tab_{};
+    std::array<std::array<std::array<std::atomic<float>, kLfoTab + 1>, 2>, kNumLfos> tab_{};
     std::array<std::atomic<int>, kNumLfos> cur_{};
 };
 

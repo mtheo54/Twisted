@@ -299,7 +299,8 @@ public:
             for (int i = 1; i < nev; ++i)
                 for (int j = i; j > 0 && events_[(size_t)j].offset < events_[(size_t)j - 1].offset; --j) std::swap(events_[(size_t)j], events_[(size_t)j - 1]);
         }
-        if (data.numSamples <= 0 || data.numOutputs < 1 || data.outputs[0].numChannels < 1) {
+        if (data.numSamples <= 0 || data.numOutputs < 1 || !data.outputs || data.outputs[0].numChannels < 1 || !data.outputs[0].channelBuffers32 ||
+            !data.outputs[0].channelBuffers32[0]) {
             // appel « flush » sans audio : les automations sont quand même prises en compte
             for (int i = 0; i < npev; ++i) m.params.set(pevents_[(size_t)i].id, pevents_[(size_t)i].value);
             return kResultOk;
@@ -323,7 +324,8 @@ public:
             done += len;
         }
         if (data.outputs[0].numChannels > 2)  // canaux en trop : silence
-            for (int32 c = 2; c < data.outputs[0].numChannels; ++c) std::fill(data.outputs[0].channelBuffers32[c], data.outputs[0].channelBuffers32[c] + total, 0.f);
+            for (int32 c = 2; c < data.outputs[0].numChannels; ++c)
+                if (float* x = data.outputs[0].channelBuffers32[c]) std::fill(x, x + total, 0.f);
         data.outputs[0].silenceFlags = 0;
         return kResultOk;
     }
