@@ -56,12 +56,12 @@ jobs:
           mkdir -p shots
           # 60 s au plus par capture (alarm de perl : macOS n'a pas « timeout »)
           snap() { local t0=$(date +%s); perl -e 'alarm 60; exec @ARGV' ./build/raw2_snap "$@" || echo "  -> code $?"; echo "$1 : $(( $(date +%s) - t0 )) s"; }
-          for t in 0 1 2 3 4 5 6 7; do RAW2_SNAP_PRESET=5 snap shots/tab$t.png $t 0; done
+          for t in 0 1 2 3 4 5 6 7 8; do RAW2_SNAP_PRESET=5 snap shots/tab$t.png $t 0; done
           for th in 1 2 3 4 5; do RAW2_SNAP_PRESET=5 snap shots/theme$th.png 0 $th; done
           snap shots/presets.png 0 0 presets
           ls -la shots
           # aperçus réduits imprimés dans le journal (lisibles sans télécharger l'artefact)
-          for f in tab0 tab7 tab1 theme4; do
+          for f in tab0 tab8 tab6 theme4; do
             [ -f shots/$f.png ] || continue
             sips -Z 960 -s format jpeg -s formatOptions 45 shots/$f.png --out /tmp/$f.jpg >/dev/null
             echo "IMG-BEGIN $f"; base64 -b 4000 -i /tmp/$f.jpg; echo "IMG-END $f"
