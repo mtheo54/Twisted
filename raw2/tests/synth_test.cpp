@@ -342,6 +342,30 @@ int main() {
             CHECK(std::norm(a[1]) > 50.0 * std::norm(a[2]) / 4.0 || std::norm(a[1]) > std::norm(a[3]));
         }
     }
+    // --- preset d'une version plus récente : chargé, l'interface prévient ; zoom des anciens réglages
+    {
+        Model m(Model::Mode::Offline);
+        json::Value v = m.presetJson(false);
+        CHECK(v["app"].str() == RAW2_VERSION_STRING && (int)v["version"].num() == Model::kPresetFormat);
+        v.set("version", Model::kPresetFormat + 1);
+        v.set("app", "1.4.0");
+        json::Value prm = v["params"];
+        prm.set("cutoff", 0.33);
+        prm.set("unParametreDuFutur", 1.0);
+        v.set("params", prm);
+        CHECK(m.applyPresetJson(v, nullptr));
+        CHECK(m.presetNewer == "RAW 2 v1.4.0");
+        CHECK(std::fabs(m.params.get(kCutoff) - 0.33f) < 1e-6f);
+        m.applyFactoryPreset(0, nullptr);
+        CHECK(m.presetNewer.empty());
+        json::Value z = json::Value::object();
+        z.set("zoom", 100);
+        CHECK(Model::zoomFrom(z) == 85);  // réglage d'avant la v1.0.0
+        z.set("zoomV", 1);
+        CHECK(Model::zoomFrom(z) == 100);  // choisi en v1.0.0 : gardé
+        z.set("zoom", 75);
+        CHECK(Model::zoomFrom(z) == 75);
+    }
     std::printf(failures ? "%d échec(s)\n" : "synthèse v6 : tout passe\n", failures);
     return failures ? 1 : 0;
 }

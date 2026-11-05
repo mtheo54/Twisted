@@ -212,6 +212,8 @@ public:
     std::string presetName = "verre givré";
     std::string presetCategory = "lead", presetStyle = "dream pop";
     std::string presetPack;                       // pack du preset chargé (kPresetPack)
+    // preset fait avec une version plus récente de RAW 2 (vide sinon) : l'interface prévient
+    std::string presetNewer;
     std::vector<Pack> packs;                      // fil de l'interface uniquement
     void scanPacks();                             // relit Documents/Raw 2 (crée les dossiers au besoin)
     void applyFactoryPreset(int i, ParamSink* sink);
@@ -246,13 +248,21 @@ public:
 
     // --- réglages d'affichage (sauvés avec l'instance, et comme défaut global) --------------
     std::atomic<int> theme{0};
-    std::atomic<int> zoomPct{100};
+    // tailles de la fenêtre (% de 1280 x 960) ; 85 % par défaut depuis la v1.0.0
+    static constexpr int kZooms[5] = {75, 85, 100, 125, 150};
+    static constexpr int kDefaultZoom = 85;
+    std::atomic<int> zoomPct{kDefaultZoom};
+    static int zoomFrom(const json::Value& o);  // zoom d'un réglage enregistré (anciens 100 % -> 85 %)
     std::atomic<int> tab{0};  // 0 SON, 1 VIE, 2 MODULES, 3 ENV / LFO, 4 EFX, 5 MIX IA, 6 WAVETABLE, 7 JEU, 8 SYNTH
     std::atomic<bool> bpmDisplay{false};
     void setTab(int t);
     std::set<std::string> favorites;  // presets favoris (« f:12 » usine, « p:pack/nom » pack), fil de l'interface
     void loadGlobalSettings();
     void saveGlobalSettings();
+
+    // format des presets écrits par cette version (« version » dans les .raw)
+    static constexpr int kPresetFormat = 6;
+    void log(const std::string& msg) const;  // journal (Documents/Raw 2), sauf en mode Offline
 
     // --- état complet de l'instance (getState / setState VST3) -----------------------------
     std::string saveState();

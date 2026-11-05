@@ -112,6 +112,13 @@ bool tableFromJson(const json::Value& o, Wavetable& t, bool& mounted) {
 } // namespace
 
 Model::Model(Mode mode) : life(params, mode == Mode::Live), samples(mode == Mode::Offline), instruments(mode == Mode::Offline), offline_(mode == Mode::Offline) {
+#if defined(_WIN32)
+    log("RAW 2 v" RAW2_VERSION_STRING " (Windows) ouvert");
+#elif defined(__APPLE__)
+    log("RAW 2 v" RAW2_VERSION_STRING " (macOS) ouvert");
+#else
+    log("RAW 2 v" RAW2_VERSION_STRING " ouvert");
+#endif
     samples.bindEpoch(&audioEpoch_, &inProcess_);
     instruments.bindEpoch(&audioEpoch_, &inProcess_);
     resetFxOrder();
@@ -436,6 +443,10 @@ void Model::applyFactoryVoice(int i, ParamSink* sink) {
 
 void Model::applyFactoryPreset(int i, ParamSink* sink) {
     if (i < 0 || i >= kNumFactoryPresets) return;
+    {
+        std::lock_guard<std::mutex> lk(presetMutex);
+        presetNewer.clear();
+    }
     const FactoryPreset& b = kFactoryPresets[i];
     setParam(sink, kAPos, b.aPos);
     setParam(sink, kBPos, b.bPos);
@@ -514,7 +525,8 @@ void Model::applyFactoryPreset(int i, ParamSink* sink) {
 json::Value Model::presetJson(bool withSamples) {
     json::Value v = json::Value::object();
     v.set("format", "RAW2-preset");
-    v.set("version", 6);
+    v.set("version", kPresetFormat);
+    v.set("app", RAW2_VERSION_STRING);  // version de RAW 2 qui a écrit le preset
     {
         std::lock_guard<std::mutex> lk(presetMutex);
         v.set("name", presetName);
@@ -556,8 +568,23 @@ json::Value Model::presetJson(bool withSamples) {
     return v;
 }
 
+void Model::log(const std::string& msg) const {
+    if (!offline_) files::logLine(msg);
+}
+
 bool Model::applyPresetJson(const json::Value& v, ParamSink* sink) {
     if (!v.isObject() || !v["params"].isObject()) return false;
+    {
+        // preset d'une version plus récente : chargé quand même (réglages inconnus ignorés), l'interface prévient
+        std::lock_guard<std::mutex> lk(presetMutex);
+        if (v["version"].num(1) > kPresetFormat) {
+            const std::string app = v["app"].str();
+            presetNewer = app.empty() ? std::string("une version plus r\xC3\xA9" "cente") : "RAW 2 v" + app;
+        } else {
+            presetNewer.clear();
+        }
+    }
+    if (!presetNewer.empty()) log("preset d'une version plus r\xC3\xA9" "cente (" + presetNewer + ") : " + v["name"].str());
     if (v["version"].num(1) < 2) {  // preset d'avant la page EFX : nouveaux réglages par défaut, effets coupés
         for (uint32_t id = kAWarp; id < kNumParams; ++id)
             if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
@@ -661,13 +688,22 @@ void Model::setTab(int t) {
     life.setSoundWorld(t == 1 ? LifeEngine::Big : LifeEngine::Small);
 }
 
+int Model::zoomFrom(const json::Value& o) {
+    int z = (int)o["zoom"].num(kDefaultZoom);
+    // avant la v1.0.0, la taille de base (100 %) était trop grande sur un écran de bureau : elle
+    // devient 85 % (les autres tailles, dont 75 %, ne changent pas)
+    if (!o["zoomV"].isNumber() && z == 100) z = kDefaultZoom;
+    for (int k : kZooms)
+        if (z == k) return z;
+    return kDefaultZoom;
+}
+
 void Model::loadGlobalSettings() {
     std::string text;
     json::Value v;
     if (!files::readText(files::settingsPath(), text) || !json::Value::parse(text, v)) return;
     theme = std::clamp((int)v["theme"].num(0), 0, kNumThemes - 1);
-    const int z = (int)v["zoom"].num(100);
-    zoomPct = (z == 75 || z == 100 || z == 125 || z == 150) ? z : 100;
+    zoomPct = zoomFrom(v);
     favorites.clear();
     if (v["favorites"].isArray())
         for (const auto& f : v["favorites"].items())
@@ -678,6 +714,7 @@ void Model::saveGlobalSettings() {
     json::Value v = json::Value::object();
     v.set("theme", theme.load());
     v.set("zoom", zoomPct.load());
+    v.set("zoomV", 1);
     json::Value fav = json::Value::array();
     for (const auto& f : favorites) fav.push(f);
     v.set("favorites", fav);
@@ -718,6 +755,7 @@ std::string Model::saveState() {
     json::Value ui = json::Value::object();
     ui.set("theme", theme.load());
     ui.set("zoom", zoomPct.load());
+    ui.set("zoomV", 1);
     // « tab » : 5 pages (v1), « tab2 » : 6 pages (v2, EFX en 3), « tab3 » : 7 pages (ENV / LFO en 3)
     {
         // « tab4 » : 8 pages (JEU en 7) ; les anciens lecteurs reçoivent SON pour la page JEU
@@ -742,7 +780,10 @@ std::string Model::saveState() {
 
 bool Model::loadState(const std::string& s, ParamSink* sink) {
     json::Value v;
-    if (!json::Value::parse(s, v) || !v.isObject() || v["format"].str() != "RAW2-state") return false;
+    if (!json::Value::parse(s, v) || !v.isObject() || v["format"].str() != "RAW2-state") {
+        log("\xC3\xA9tat du projet illisible (" + std::to_string(s.size()) + " octets) : RAW 2 garde le son actuel");
+        return false;
+    }
     applyPresetJson(v["preset"], sink);
     {
         std::lock_guard<std::mutex> lk(presetMutex);
@@ -774,8 +815,7 @@ bool Model::loadState(const std::string& s, ParamSink* sink) {
     const json::Value& ui = v["ui"];
     if (ui.isObject()) {
         theme = std::clamp((int)ui["theme"].num(0), 0, kNumThemes - 1);
-        const int z = (int)ui["zoom"].num(100);
-        zoomPct = (z == 75 || z == 100 || z == 125 || z == 150) ? z : 100;
+        zoomPct = zoomFrom(ui);
         // « tab2 » : 6 pages (EFX ajoutée en 3) ; les anciens états n'ont que « tab » sur 5 pages
         if (ui["tab5"].isNumber()) setTab(std::clamp((int)ui["tab5"].num(0), 0, 8));
         else if (ui["tab4"].isNumber()) setTab(std::clamp((int)ui["tab4"].num(0), 0, 7));

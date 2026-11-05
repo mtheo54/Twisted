@@ -5,20 +5,20 @@ SetCompressor /SOLID lzma
 !include "x64.nsh"
 
 Name "RAW 2"
-Caption "RAW 2 v9.1 - installation"
-OutFile "RAW2-Setup-v9.1.exe"
+Caption "RAW 2 v1.0.0 - installation"
+OutFile "RAW2-Setup-v1.0.0.exe"
 InstallDir "$PROGRAMFILES64\ABRASION\RAW 2"
 RequestExecutionLevel admin
-BrandingText "ABRASION · RAW 2 v9.1"
-VIProductVersion "9.1.0.0"
+BrandingText "ABRASION · RAW 2 v1.0.0"
+VIProductVersion "1.0.0.0"
 VIAddVersionKey "ProductName" "RAW 2"
 VIAddVersionKey "CompanyName" "ABRASION"
 VIAddVersionKey "FileDescription" "Installateur de RAW 2"
-VIAddVersionKey "FileVersion" "9.1"
+VIAddVersionKey "FileVersion" "1.0.0"
 VIAddVersionKey "LegalCopyright" "ABRASION"
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "RAW 2 v9.1"
+!define MUI_WELCOMEPAGE_TITLE "RAW 2 v1.0.0"
 !define MUI_WELCOMEPAGE_TEXT "Ce programme installe RAW 2, le synthé VST3 d'ABRASION :$\r$\n$\r$\n  - le plugin VST3 (C:\Program Files\Common Files\VST3)$\r$\n  - RAW 2 sans DAW (menu Démarrer)$\r$\n  - 23 vrais instruments et 34 presets dans Documents\Raw 2$\r$\n$\r$\nFerme ta DAW avant de continuer."
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\LISEZ-MOI.txt"
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Lire le mode d'emploi (faire des presets et des packs)"
@@ -57,7 +57,7 @@ Section "RAW 2 (plugin VST3 + appli sans DAW)" SecCore
   CreateShortcut "$SMPROGRAMS\RAW 2\Désinstaller RAW 2.lnk" "$INSTDIR\Desinstaller.exe"
   WriteUninstaller "$INSTDIR\Desinstaller.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "DisplayName" "RAW 2 (ABRASION)"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "DisplayVersion" "9.1"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "DisplayVersion" "1.0.0"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "Publisher" "ABRASION"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "DisplayIcon" "$INSTDIR\RAW2Preview.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "UninstallString" '"$INSTDIR\Desinstaller.exe"'

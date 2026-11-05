@@ -350,6 +350,7 @@ bool InstrumentBank::loadByName(int osc, const std::string& name) {
         std::lock_guard<std::mutex> lk(mu_);
         wantName_[(size_t)osc] = name;
         error_[(size_t)osc] = "instrument introuvable : installe la banque de sons dans Documents \xE2\x80\xBA Raw 2 \xE2\x80\xBA Instruments";
+        if (!offline_) files::logLine("instrument introuvable : " + name);
         return false;
     }
     load(osc, path);
@@ -406,7 +407,11 @@ void InstrumentBank::workerMain() {
         lk.lock();
         if (job.ticket != ticket_[(size_t)job.osc]) continue;  // remplacé ou annulé entre-temps
         pending_[(size_t)job.osc] = false;
-        if (!in) { error_[(size_t)job.osc] = err; continue; }
+        if (!in) {
+            error_[(size_t)job.osc] = err;
+            files::logLine("instrument illisible : " + job.path + " (" + err + ")");
+            continue;
+        }
         wantName_[(size_t)job.osc] = in->name;
         publish(job.osc, in.release());
     }

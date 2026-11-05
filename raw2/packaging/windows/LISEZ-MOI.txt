@@ -1,4 +1,4 @@
-﻿RAW 2 v9.1 (ABRASION) - synthé VST3 pour Windows
+﻿RAW 2 v1.0.0 (ABRASION) - synthé VST3 pour Windows
 =================================================
 
 CE QUE L'INSTALLATEUR A MIS EN PLACE
@@ -21,8 +21,8 @@ FAIRE DES PRESETS
   2. Règle ton son. Pages utiles : SON, SYNTH (filtre, warps, bruit, unison),
      ENV / LFO, EFX, JEU. Un vrai instrument : page SYNTH > INSTRUMENT, ou page
      WAVETABLE > INSTRUMENT.
-  3. ENREGISTRER (bouton orange en haut à droite) : le preset va dans
-     Documents\Raw 2\Mes presets.
+  3. Clique sur le nom du preset (en haut à droite) puis sur le bouton orange
+     ENREGISTRER LE SON : le preset va dans Documents\Raw 2\Mes presets.
 
 FAIRE UN PACK ET ME L'ENVOYER
   1. Fenêtre des presets (clic sur le nom du preset) > onglet USER.
@@ -33,6 +33,14 @@ FAIRE UN PACK ET ME L'ENVOYER
      Documents\Raw 2\Exports. C'est ce fichier qu'il faut m'envoyer.
   Pour installer un pack reçu : fenêtre des presets > USER > INSTALLER...,
   ou glisse le fichier .raw2pack sur la fenêtre des presets.
+
+EN CAS DE SOUCI
+  Envoie-moi le fichier Documents\Raw 2\RAW2-journal.txt (versions, presets
+  chargés, erreurs). Il est aussi accessible par À PROPOS (bas de la fenêtre,
+  « RAW 2 v1.0.0 // À PROPOS »).
+
+TAILLE DE LA FENÊTRE
+  Le petit bouton à droite du logo : thème et ZOOM (75, 85, 100, 125, 150 %).
 
 SI WINDOWS BLOQUE L'INSTALLATEUR
   « Windows a protégé votre ordinateur » : clique « Informations complémentaires »

@@ -18,6 +18,9 @@ std::string baseName(const std::string& path);  // dernier élément du chemin
 bool copyFile(const std::string& from, const std::string& to);
 bool copyTree(const std::string& fromDir, const std::string& toDir);  // copie récursive
 bool removeFile(const std::string& path);       // suppression définitive d'un fichier
+// Journal de RAW 2 (Documents/Raw 2/RAW2-journal.txt) : une ligne datée par évènement (version,
+// hôte, presets chargés, erreurs). Jamais depuis le fil audio. Le fichier reste sous 512 Ko.
+void logLine(const std::string& msg);
 bool moveToTrash(const std::string& path);      // corbeille (Windows, macOS), suppression ailleurs
 bool openFolder(const std::string& dir);        // ouvre l'Explorateur / le Finder sur un dossier
 std::string documentsDir();      // Documents de l'utilisateur

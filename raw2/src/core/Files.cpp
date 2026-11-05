@@ -4,6 +4,8 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
+#include <mutex>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -101,6 +103,29 @@ std::string join(const std::string& a, const std::string& b) {
     const char sep = '/';
 #endif
     return (a.back() == '/' || a.back() == '\\') ? a + b : a + sep + b;
+}
+
+void logLine(const std::string& msg) {
+    static std::mutex mu;
+    std::lock_guard<std::mutex> lk(mu);
+    const std::string dir = raw2Dir();
+    makeDirs(dir);
+    const std::string path = join(dir, "RAW2-journal.txt");
+    // au-delà de 512 Ko : on garde la seconde moitié
+    std::vector<unsigned char> old;
+    if (read(path, old) && old.size() > 512 * 1024) {
+        size_t cut = old.size() / 2;
+        while (cut < old.size() && old[cut] != '\n') ++cut;
+        std::vector<unsigned char> keep(old.begin() + (long)std::min(old.size(), cut + 1), old.end());
+        write(path, keep);
+    }
+    const std::time_t t = std::time(nullptr);
+    char stamp[32] = "";
+    if (const std::tm* tm = std::localtime(&t)) std::strftime(stamp, sizeof stamp, "%Y-%m-%d %H:%M:%S", tm);
+    if (FILE* f = openFile(path, "ab")) {
+        std::fprintf(f, "%s  %s\n", stamp, msg.c_str());
+        std::fclose(f);
+    }
 }
 
 bool exists(const std::string& path) {

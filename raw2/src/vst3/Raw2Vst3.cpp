@@ -40,7 +40,7 @@
 #include <vector>
 
 #ifndef RAW2_VERSION_STRING
-#define RAW2_VERSION_STRING "2.0.0"
+#define RAW2_VERSION_STRING "1.0.0"
 #endif
 
 using namespace Steinberg;

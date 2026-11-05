@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
         st.routeSel = i;
     }
     if (opt == "env34") st.envAlt = {true, true};  // page ENV / LFO : ENV 3 et ENV 4
+    if (opt == "about") st.openAbout = true;
     ui::Editor ed(m, sink, st);
 #if defined(__APPLE__)
     // contexte bitmap 1280 x 960 (x2 si RAW2_SNAP_RETINA), axe y retourné vers le bas

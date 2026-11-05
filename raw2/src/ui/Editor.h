@@ -79,6 +79,7 @@ struct EditorState {
     bool wtImpTable = false;
     int wtImpMode = 0;     // import : 0 AUTO, 1 CYCLES, 2 RESYNTHÈSE (ImportMode)
     int wtImpFrames = 64;  // frames voulues pour un son quelconque (64, 128, 256)
+    bool openAbout = false;        // demande d'ouverture de la fenêtre À PROPOS (captures)
     std::array<bool, 2> envAlt{};  // page ENV / LFO : la carte du haut montre ENV 3, celle du bas ENV 4
     float pSm = 0.5f, pDist = 0.35f, pTsm = 0.4f;
     bool autoNorm = false;
@@ -109,7 +110,7 @@ public:
     void frame(Canvas& c, const Input& in);
     Cursor cursor() const { return ui_.cursor(); }
     bool wantsKeyboard() const { return ui_.wantsKeyboard(); }
-    bool anyOverlayOpen() const { return pbOpen_ || thOpen_ || saveOpen_ || instOpen_; }
+    bool anyOverlayOpen() const { return pbOpen_ || thOpen_ || saveOpen_ || instOpen_ || aboutOpen_; }
 
 private:
     // pages
@@ -143,6 +144,7 @@ private:
     void drawPresetBrowser();
     void drawInstBrowser();  // choix d'un instrument multi-échantillonné pour un oscillateur
     void drawSaveDialog();
+    void drawAbout();  // À PROPOS : version, ONIRIQUE, crédits des instruments, journal
     void drawThemePanel();
     void drawFx();
     void drawFooter();
@@ -249,6 +251,8 @@ private:
     double pbDelT_ = 0.0;
     void startPackEdit(int pack);
     bool saveOpen_ = false;
+    bool saveFromPb_ = false;  // ENREGISTRER ouvert depuis la fenêtre des presets (on y revient après)
+    bool aboutOpen_ = false;   // fenêtre À PROPOS
     std::string saveName_;
     std::string saveMsg_;
     bool seedOpen_ = false;

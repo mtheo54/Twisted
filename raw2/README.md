@@ -9,6 +9,12 @@ dossier de passation : les pages (dont ENV / LFO, et JEU ajoutée en v6), les 6 
 72 presets (avec leurs effets, enveloppes et LFO), les packs de presets, les superpositions et
 les comportements, avec un vrai moteur audio derrière.
 
+**Version 1.0.0** (sortie) : c'est la version finale de RAW 2, qui réunit tout le travail des
+versions de développement « v1 » à « v9 » listées ci-dessous (les numéros de ces étapes ne sont
+pas des numéros de version publique). Le bouton ENREGISTRER est dans la fenêtre des presets, la
+taille par défaut de la fenêtre est 85 %, la fenêtre À PROPOS (en bas à gauche) donne la version,
+les crédits et le journal `Documents/Raw 2/RAW2-journal.txt`.
+
 **Nouveautés v6 à v8, pensées pour les beatmakers :**
 
 - **v6, jeu** : POLY / MONO / LEGATO, glide, unison jusqu'à 8 voix, 16 voix de polyphonie, mode

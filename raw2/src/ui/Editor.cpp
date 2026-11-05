@@ -15,6 +15,7 @@ namespace {
 const Rect kPbPanel{320.f, 90.f, 640.f, 780.f};    // fenêtre de choix des presets
 const Rect kInstPanel{370.f, 120.f, 540.f, 720.f};  // fenêtre de choix des instruments
 const Rect kSavePanel{320.f, 330.f, 640.f, 236.f};  // fenêtre ENREGISTRER
+const Rect kAboutPanel{290.f, 200.f, 700.f, 530.f};  // fenêtre À PROPOS
 constexpr float kPi = 3.14159265358979f;
 const char* kTabs[9] = {"SON", "VIE", "MODULES", "ENV / LFO", "EFX", "MIX IA", "WAVETABLE", "JEU", "SYNTH"};
 // ordre d'affichage des onglets : JEU et SYNTH juste après SON (leurs numéros 7 et 8 gardent la
@@ -218,9 +219,13 @@ void Editor::frame(Canvas& c, const Input& in) {
     if (pbOpen_) ui_.addBlocker(kPbPanel, 11);
     if (pbOpen_ && pbGenreOpen_) ui_.addBlocker(Rect{pbGenreRect_.x, pbGenreRect_.y, pbGenreRect_.w + 3.f, pbGenreRect_.h + 3.f}, 12);
     if (saveOpen_) ui_.addBlocker(kSavePanel, 11);
+    if (aboutOpen_) {
+        ui_.addBlocker(Rect{0, 0, (float)kWidth, (float)kHeight}, 10);
+        ui_.addBlocker(kAboutPanel, 11);
+    }
     if (thOpen_) {
         ui_.addBlocker(Rect{0, 0, (float)kWidth, (float)kHeight}, 5);
-        ui_.addBlocker(Rect{190.1f, 68.5f, 216.f, 112.f}, 6);
+        ui_.addBlocker(Rect{190.1f, 68.5f, 252.f, 146.f}, 6);
     }
     if (roleOpen_ && tab_ == 0) ui_.addBlocker(Rect{1061.f, 707.2f, 174.f, 190.f}, 3);
     if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(Rect{889.f, 164.f, 153.f, 185.f}, 3);
@@ -228,6 +233,7 @@ void Editor::frame(Canvas& c, const Input& in) {
     if (seedOpen_ && tab_ == 0) ui_.addBlocker(Rect{877.2f, 313.2f, 134.f, 128.f}, 3);
     if (fxMenu_ != 0 && tab_ == 4) ui_.addBlocker(Rect{fxMenuRect_.x, fxMenuRect_.y, fxMenuRect_.w + 3.f, fxMenuRect_.h + 3.f}, 3);
 
+    if (st_.openAbout) { aboutOpen_ = true; st_.openAbout = false; }
     // touches globales
     if (in.keyEsc && pbOpen_ && pbGenreOpen_) {
         pbGenreOpen_ = false;  // Échap ferme d'abord le menu GENRE
@@ -238,6 +244,8 @@ void Editor::frame(Canvas& c, const Input& in) {
         pbOpen_ = false;
         thOpen_ = false;
         saveOpen_ = false;
+        saveFromPb_ = false;
+        aboutOpen_ = false;
         instOpen_ = false;
         roleOpen_ = seedOpen_ = false;
         mixMenu_ = 0;
@@ -294,6 +302,7 @@ void Editor::frame(Canvas& c, const Input& in) {
     if (pbOpen_) drawPresetBrowser();
     if (instOpen_) drawInstBrowser();
     if (saveOpen_) drawSaveDialog();
+    if (aboutOpen_) drawAbout();
     c.restore();
     drawFx();
     ui_.endFrame();
@@ -319,7 +328,12 @@ void Editor::drawFooter() {
     {
         const Font sf{Face::Mono, 7.5f, 1.35f};
         const Color mc = T.muted.withAlpha(0.85f);
-        ui_.text("SPEC.NO: RAW-02 // PCB REV.C", 38.f, 944.5f, sf, mc, 7.5f);
+        // version et À PROPOS (sérigraphie cliquable)
+        const std::string ver = "RAW 2 v" RAW2_VERSION_STRING " // \xC3\x80 PROPOS";
+        const Rect vr{34.f, 938.f, ui_.width(ver, sf) + 8.f, 16.f};
+        const Ui::Interact vi = ui_.interact(makeId("footAbout"), vr);
+        if (vi.clicked) aboutOpen_ = true;
+        ui_.text(ver, 38.f, 944.5f, sf, vi.hovered ? T.hl : mc, 7.5f);
         const std::string tp1 = "[TP1]", tp2 = "[TP2]";
         const float w2 = ui_.width(tp2, sf), w1 = ui_.width(tp1, sf), w0 = ui_.width("MIL-STD", sf);
         float x = 1242.f - (w0 + 5.f + 6.f + 5.f + w1 + 5.f + 6.f + 5.f + w2);
@@ -498,9 +512,10 @@ void Editor::drawHeader() {
         }
         // < > parcourent les presets d'usine (depuis INIT ou un pack : vers 01 ou 72, comme la maquette)
         const int N = kNumFactoryPresets;
-        if (ui_.button(makeId("prev"), Rect{917.6f, 23.5f, 32.f, 38.f}, "<", ui_.keyStyle())) loadPreset(((idx < 0 ? 0 : idx) - 1 + N) % N);
-        if (ui_.button(makeId("next"), Rect{1103.6f, 23.5f, 32.f, 38.f}, ">", ui_.keyStyle())) loadPreset(((idx < 0 ? -1 : idx) + 1) % N);
-        const Rect pill{955.6f, 22.5f, 142.f, 40.f};
+        if (ui_.button(makeId("prev"), Rect{917.6f, 23.5f, 34.f, 38.f}, "<", ui_.keyStyle())) loadPreset(((idx < 0 ? 0 : idx) - 1 + N) % N);
+        if (ui_.button(makeId("next"), Rect{1222.f, 23.5f, 34.f, 38.f}, ">", ui_.keyStyle())) loadPreset(((idx < 0 ? -1 : idx) + 1) % N);
+        // nom du preset : un clic ouvre la fenêtre des presets (choisir, enregistrer, packs)
+        const Rect pill{957.6f, 22.5f, 258.4f, 40.f};
         const Ui::Interact it = ui_.interact(makeId("pill"), pill);
         if (it.clicked) {
             pbOpen_ = !pbOpen_;
@@ -511,15 +526,15 @@ void Editor::drawHeader() {
             }
         }
         ui_.box(pill, T.scr, T.scrLine);
-        const Font f{Face::Mono, 12.f, 0.f};
+        const Font f{Face::Mono, 13.f, 0.f};
         const std::string num = idx >= 0 ? fmt("%02d", idx + 1) : (idx == Model::kPresetInit ? std::string("INIT") : std::string("USR"));
         std::string rest = " \xC2\xB7 " + (idx == Model::kPresetInit ? std::string("preset vierge") : name);
         const float wn = ui_.width(num, f);
         const float wTri = ui_.width(" \xE2\x96\xBE", f);
         float wr = ui_.width(rest, f);
         bool showTri = true;
-        if (wn + wr + wTri > 126.f) {
-            rest = ui_.fit(rest, f, 126.f - wn);
+        if (wn + wr + wTri > 238.f) {
+            rest = ui_.fit(rest, f, 238.f - wn);
             wr = ui_.width(rest, f);
             showTri = false;
         }
@@ -528,10 +543,19 @@ void Editor::drawHeader() {
         ui_.text(num, x, top, f, T.hl);
         ui_.text(rest, x + wn, top, f, T.scrText);
         if (showTri) ui_.text(" \xE2\x96\xBE", x + wn + wr, top, f, T.muted);
-        if (ui_.button(makeId("save"), Rect{1141.6f, 22.5f, 114.4f, 40.f}, "ENREGISTRER", ui_.accentStyle())) {
-            saveOpen_ = true;
-            saveMsg_.clear();
-            saveName_ = m_.nextUserName();  // range le son dans USER › MES PRESETS (nom modifiable)
+        // preset fait avec une version plus récente de RAW 2 : prévenir (il est chargé quand même)
+        std::string newer;
+        {
+            std::lock_guard<std::mutex> lk(m_.presetMutex);
+            newer = m_.presetNewer;
+        }
+        if (!newer.empty()) {
+            const std::string msg = "preset cr\xC3\xA9\xC3\xA9 avec " + newer + " : mets RAW 2 \xC3\xA0 jour pour l'entendre tel quel";
+            const Font nf{Face::Mono, 10.f, 0.3f};
+            const float nw = ui_.width(msg, nf) + 20.f;
+            const Rect nr{1256.f - nw, 66.f, nw, 20.f};
+            c.fillRect(nr, T.acc);
+            ui_.text(msg, nr.x + 10.f, nr.y + 4.f, nf, T.onAcc);
         }
     }
 }
@@ -548,7 +572,7 @@ void Editor::drawThemePanel() {
         return;
     }
     ui_.setLayer(6);
-    const Rect panel{190.1f, 68.5f, 216.f, 112.f};
+    const Rect panel{190.1f, 68.5f, 252.f, 146.f};
     const int st = std::min(5, (int)((now_ - thT_) / 160.0 * 6.0));
     c.save();
     c.clip(Rect{panel.x, panel.y, panel.w + 6.f, (panel.h + 6.f) * (float)st / 5.f});
@@ -571,15 +595,19 @@ void Editor::drawThemePanel() {
     ui_.text(T.name, 205.1f, 115.5f, f, T.muted);
     // zoom de la fenêtre (homothétique, §2)
     ui_.text("ZOOM", 205.1f, 146.f, f, T.muted);
-    const int zooms[4] = {75, 100, 125, 150};
-    for (int k = 0; k < 4; ++k) {
-        const Rect r{249.1f + (float)k * 36.f, 140.f, 32.f, 24.f};
-        ButtonStyle s = ui_.miniStyle(m_.zoomPct.load() == zooms[k]);
+    for (int k = 0; k < 5; ++k) {
+        const int z = Model::kZooms[k];
+        const Rect r{249.1f + (float)k * 37.f, 140.f, 33.f, 24.f};
+        ButtonStyle s = ui_.miniStyle(m_.zoomPct.load() == z);
         s.font = Font{Face::Mono, 10.f, 0.4f};
-        if (ui_.button(makeId("zoom", k), r, std::to_string(zooms[k]), s)) {
-            m_.zoomPct = zooms[k];
+        if (ui_.button(makeId("zoom", k), r, std::to_string(z), s)) {
+            m_.zoomPct = z;
             m_.saveGlobalSettings();
         }
+    }
+    if (ui_.button(makeId("thAbout"), Rect{205.1f, 176.f, 222.f, 26.f}, "\xC3\x80 PROPOS \xC2\xB7 RAW 2 v" RAW2_VERSION_STRING, ui_.miniStyle(false))) {
+        thOpen_ = false;
+        aboutOpen_ = true;
     }
     c.restore();
 }
@@ -754,6 +782,17 @@ void Editor::drawPresetBrowser() {
         xs.shadow = false;
         xs.font = Font{Face::Mono, 12.f, 0.48f};
         if (ui_.button(makeId("pbX"), Rect{902.6f, 105.5f, 42.4f, 16.f}, "[ X ]", xs)) { pbOpen_ = false; return; }
+        // ENREGISTRER : le son actuel va dans USER › MES PRESETS (nom modifiable)
+        ButtonStyle ss = ui_.accentStyle();
+        ss.font = Font{Face::MonoBold, 12.f, 0.8f};
+        if (ui_.button(makeId("pbSave"), Rect{536.f, 99.f, 196.f, 34.f}, "ENREGISTRER LE SON", ss)) {
+            pbOpen_ = false;
+            saveOpen_ = true;
+            saveFromPb_ = true;
+            saveMsg_.clear();
+            saveName_ = m_.nextUserName();
+            return;
+        }
         const int nFac = (int)facRows.size() - ((!facRows.empty() && facRows[0] == -1) ? 1 : 0);
         const std::string count = user ? fmt("%d packs", (int)m_.packs.size()) + fmt(" \xC2\xB7 %d presets", nUser) + (filtered ? " \xC2\xB7 filtre" : "")
                                        : fmt("%d", nFac) + fmt(" / %d presets", kNumFactoryPresets);
@@ -830,16 +869,7 @@ void Editor::drawPresetBrowser() {
             pbExp_.insert("D\xC3\x89MO \xC2\xB7 NUIT FROIDE");
             pbExp_.insert("D\xC3\x89MO \xC2\xB7 RAGE LOURDE");
         }
-        if (act("pbSaveNow", "[ + SAUVER LE SON ]")) {
-            const std::string nm = m_.nextUserName();
-            std::string path;
-            if (m_.saveUserPreset(nm, path)) {
-                pbMsg_ = "enregistr\xC3\xA9 \xC2\xB7 USER \xE2\x80\xBA MES PRESETS \xE2\x80\xBA " + nm;
-                pbExp_.insert("MES PRESETS");
-            } else {
-                pbMsg_ = "\xC3\xA9" "chec : dossier Documents \xE2\x80\xBA Raw 2 inaccessible";
-            }
-        }
+
         if (!pbMsg_.empty()) ui_.text(ui_.fit(pbMsg_, Font{Face::Mono, 11.f, 0.66f}, 610.f), 335.f, 314.f, Font{Face::Mono, 11.f, 0.66f}, T.hl);
         listTop = pbMsg_.empty() ? 318.f : 340.f;
     }
@@ -1224,6 +1254,18 @@ void Editor::drawSaveDialog() {
         std::string path;
         if (m_.saveUserPreset(saveName_, path)) {
             saveMsg_ = "> enregistr\xC3\xA9 : " + path;
+            m_.log("preset enregistr\xC3\xA9 : " + path);
+            if (saveFromPb_) {  // retour à la fenêtre des presets, sur MES PRESETS
+                saveOpen_ = false;
+                saveFromPb_ = false;
+                ui_.focus = 0;
+                pbOpen_ = true;
+                pbView_ = 1;
+                m_.scanPacks();
+                pbExp_.insert("MES PRESETS");
+                pbMsg_ = "enregistr\xC3\xA9 \xC2\xB7 USER \xE2\x80\xBA MES PRESETS \xE2\x80\xBA " + saveName_;
+                return;
+            }
         } else {
             saveMsg_ = "> \xC3\xA9" "chec : nom vide ou dossier inaccessible";
         }
@@ -1236,6 +1278,77 @@ void Editor::drawSaveDialog() {
     ui_.text(ui_.fit(saveName_ + ".raw", pf, pathBox.w - 32.f - w), pathBox.x + 16.f + w, pathBox.y + 13.f, pf, T.hl);
     if (!saveMsg_.empty()) ui_.text(ui_.fit(saveMsg_, Font{Face::Mono, 10.f, 0.6f}, 594.f), 343.f, 514.f, Font{Face::Mono, 10.f, 0.6f}, T.hl);
     else ui_.text("Entr\xC3\xA9" "e : enregistrer \xC2\xB7 \xC3\x89" "chap : fermer", 343.f, 514.f, Font{Face::Mono, 10.f, 0.8f}, T.muted);
+}
+
+// --- À PROPOS -----------------------------------------------------------------------------------------
+void Editor::drawAbout() {
+    Canvas& c = ui_.c();
+    const Theme& T = *T_;
+    ui_.setLayer(10);
+    const Rect all{0, 0, (float)kWidth, (float)kHeight};
+    const Rect panel = kAboutPanel;
+    c.fillRect(all, Color{0, 0, 0, 0.55f});
+    if (ui_.interact(makeId("abBack"), all, Cursor::Arrow).clicked && !panel.contains(ui_.in().mouse)) {
+        aboutOpen_ = false;
+        return;
+    }
+    ui_.setLayer(11);
+    c.fillRect(panel.moved(6.f, 6.f), T.btnEdge);
+    ui_.card(panel);
+    ui_.cardHeader(panel, "\xC3\x80 PROPOS", false, 22.f, 20.f);
+    {
+        ButtonStyle xs;
+        xs.bg = Color{0, 0, 0, 0};
+        xs.fg = T.hl;
+        xs.border = Color{0, 0, 0, 0};
+        xs.shadow = false;
+        xs.font = Font{Face::Mono, 12.f, 0.48f};
+        if (ui_.button(makeId("abX"), Rect{panel.r() - 64.f, panel.y + 18.f, 42.f, 16.f}, "[ X ]", xs)) { aboutOpen_ = false; return; }
+    }
+    const float x = panel.x + 22.f, w = panel.w - 44.f;
+    float y = panel.y + 70.f;
+    {
+        const Font lf{Face::Pixel, 40.f, 2.f};
+        const float rw = ui_.text("RAW", x, y, lf, T.ink, 40.f);
+        ui_.text("2", x + rw, y, lf, T.acc, 40.f);
+        ui_.text("v" RAW2_VERSION_STRING, x + rw + 40.f, y + 18.f, Font{Face::MonoBold, 16.f, 0.6f}, T.ink);
+        y += 62.f;
+    }
+    const Font tf{Face::Mono, 12.f, 0.2f}, sf{Face::Mono, 10.f, 0.2f}, hf{Face::MonoBold, 11.f, 1.f};
+    ui_.text("Synth\xC3\xA9 wavetable, instruments r\xC3\xA9" "els et vie cellulaire, par ABRASION.", x, y, tf, T.ink);
+    y += 20.f;
+    ui_.text("Distribu\xC3\xA9 par ONIRIQUE \xC2\xB7 installation et mises \xC3\xA0 jour : ONIRIQUE Central", x, y, tf, T.ink);
+    y += 28.f;
+    if (ui_.button(makeId("abSite"), Rect{x, y, 200.f, 30.f}, "onirique.store", ui_.miniStyle(false))) files::openFolder("https://onirique.store");
+    y += 50.f;
+    c.fillRect(Rect{x, y, w, 1.f}, T.rule);
+    y += 14.f;
+    ui_.text("CR\xC3\x89" "DITS DES INSTRUMENTS", x, y, hf, T.muted);
+    y += 20.f;
+    static const char* credits[] = {
+        "Wurlitzer EP200, Yamaha CP80 et Hohner Pianet T : \xC3\xA9" "chantillons de Greg Sullivan",
+        "(sullivang.net), mapping SFZ de kinwie, licence CC BY 3.0. Modifi\xC3\xA9s : coup\xC3\xA9s,",
+        "convertis et r\xC3\xA9" "organis\xC3\xA9s pour RAW 2.",
+        "Remerciements (CC0) : Versilian Studios (VCSL), Karoryfer Samples,",
+        "cc0-obxf-multisamples, XSXB Band Samples.",
+        "Chaque instrument garde son LICENSE.txt dans Documents \xE2\x80\xBA Raw 2 \xE2\x80\xBA Instruments.",
+    };
+    for (const char* l : credits) {
+        ui_.text(l, x, y, sf, T.ink);
+        y += 17.f;
+    }
+    y += 12.f;
+    c.fillRect(Rect{x, y, w, 1.f}, T.rule);
+    y += 14.f;
+    ui_.text("JOURNAL", x, y, hf, T.muted);
+    y += 20.f;
+    ui_.text("En cas de souci, envoie ce fichier : Documents \xE2\x80\xBA Raw 2 \xE2\x80\xBA RAW2-journal.txt", x, y, sf, T.ink);
+    y += 24.f;
+    if (ui_.button(makeId("abLog"), Rect{x, y, 220.f, 30.f}, "[ OUVRIR LE DOSSIER ]", ui_.miniStyle(false))) {
+        files::makeDirs(files::raw2Dir());
+        files::openFolder(files::raw2Dir());
+    }
+    ui_.textRight(fmt("presets : format %d \xC2\xB7 ", Model::kPresetFormat) + "ABRASION \xC2\xA9 2026", panel.r() - 22.f, panel.b() - 26.f, sf, T.muted);
 }
 
 // --- effet du clic long ----------------------------------------------------------------------------------
