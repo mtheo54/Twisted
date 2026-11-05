@@ -1,0 +1,53 @@
+﻿RAW 2 v9.1 (ABRASION) - synthé VST3 pour Windows
+=================================================
+
+CE QUE L'INSTALLATEUR A MIS EN PLACE
+  - Le plugin :           C:\Program Files\Common Files\VST3\RAW2.vst3
+  - Jouer sans DAW :      menu Démarrer > RAW 2 > RAW 2 (sans DAW)
+  - Tes presets, packs, instruments :  Documents\Raw 2\
+        Instruments\           23 vrais instruments (pianos, Wurlitzer, cuivres, sax...)
+        RAW 2 · INSTRUMENTS\   34 presets faits avec ces instruments (dont 10 FUSION)
+        Mes presets\           tes presets (créé au premier lancement)
+        Exports\               les packs que tu exportes
+
+DANS TA DAW
+  Relance une recherche de plugins, puis cherche « RAW 2 » (fabricant ABRASION,
+  instrument / synthé).
+  FL Studio : Options > Manage plugins > Find installed plugins.
+  Ableton Live : Préférences > Plug-ins > VST3 activé, puis Rescan.
+
+FAIRE DES PRESETS
+  1. Pars d'un preset (clic sur le nom du preset en haut à droite) ou d'INIT.
+  2. Règle ton son. Pages utiles : SON, SYNTH (filtre, warps, bruit, unison),
+     ENV / LFO, EFX, JEU. Un vrai instrument : page SYNTH > INSTRUMENT, ou page
+     WAVETABLE > INSTRUMENT.
+  3. ENREGISTRER (bouton orange en haut à droite) : le preset va dans
+     Documents\Raw 2\Mes presets.
+
+FAIRE UN PACK ET ME L'ENVOYER
+  1. Fenêtre des presets (clic sur le nom du preset) > onglet USER.
+  2. « + NOUVEAU PACK », donne-lui un nom.
+  3. Sur ton pack : ÉDITER > « + SON ACTUEL » pour ajouter le son en cours
+     (tu peux aussi renommer, réordonner, écraser, supprimer).
+  4. ÉDITER > EXPORTER .raw2pack : le fichier est créé dans
+     Documents\Raw 2\Exports. C'est ce fichier qu'il faut m'envoyer.
+  Pour installer un pack reçu : fenêtre des presets > USER > INSTALLER...,
+  ou glisse le fichier .raw2pack sur la fenêtre des presets.
+
+SI WINDOWS BLOQUE L'INSTALLATEUR
+  « Windows a protégé votre ordinateur » : clique « Informations complémentaires »
+  puis « Exécuter quand même » (l'installateur n'est pas signé, c'est normal).
+
+DÉSINSTALLER
+  Paramètres > Applications > RAW 2 > Désinstaller. Documents\Raw 2 (tes presets
+  et les instruments) est gardé : supprime-le à la main si tu veux tout enlever.
+
+LICENCES DES INSTRUMENTS
+  Chaque dossier d'instrument contient son LICENSE.txt (CC0, CC BY 3.0 ou domaine
+  public). Attribution (CC BY 3.0) : Wurlitzer EP200, Yamaha CP80 and Hohner
+  Pianet T samples by Greg Sullivan (http://www.sullivang.net/), SFZ mapping by
+  kinwie (https://github.com/sfzinstruments/GregSullivan.E-Pianos), licensed under
+  CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). Modified: trimmed,
+  converted, re-mapped for RAW 2.
+  Remerciements (CC0) : Versilian Studios (VCSL), Karoryfer Samples,
+  cc0-obxf-multisamples, XSXB Band Samples.
