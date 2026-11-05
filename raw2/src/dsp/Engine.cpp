@@ -72,6 +72,10 @@ void Engine::prepare(double sr, int maxBlock) {
     mono_.assign((size_t)maxBlock_, 0.f);
     gbuf_.assign((size_t)1 << 17, 0.f);
     for (auto& d : dl_) d.assign(4096, 0.f);
+    // COMB : une période à 20 Hz au plus (puissance de deux pour le masque circulaire)
+    combLen_ = 64;
+    while (combLen_ < (int)(sr_ / 20.0) + 8) combLen_ <<= 1;
+    combPool_.assign((size_t)(kVoices + kGhosts) * 2 * (size_t)combLen_, 0.f);
     fx_.prepare(sr_, maxBlock_);
     master_.prepare(sr_, maxBlock_);
     m_.meters.prepare(sr_);
@@ -137,6 +141,13 @@ void Engine::reset() {
     arpNext_ = -1.0;
     arpWasOn_ = false;
     lastPitch_ = -1.f;
+    chBend_.fill(0.f);
+    chPress_.fill(0.f);
+    chTimbre_.fill(0.f);
+    curChan_ = 0;
+    curNoteId_ = -1;
+    nVr_ = 0;
+    newest_ = nullptr;
 }
 
 float Engine::smoothed(SmoothId k, float x, float a) {
@@ -164,6 +175,17 @@ float Engine::EnvGen::step(float dt, const EnvShape& s) {
 
 Engine::EnvShape Engine::envShape(int osc) const {
     const ParamStore& P = m_.params;
+    if (osc >= 2) {  // ENV 3 / ENV 4 (modulation)
+        const uint32_t b = osc == 2 ? (uint32_t)kEnv3Attack : (uint32_t)kEnv4Attack;
+        EnvShape e;
+        e.ta = attackSeconds(pv(b));
+        e.td = decaySeconds(pv(b + 1));
+        e.sus = pv(b + 2);
+        e.tr = releaseSeconds(pv(b + 3));
+        e.q = envCurveQ(pv(b + 4));
+        e.invq = 1.f / e.q;
+        return e;
+    }
     // LIER A<->B : l'enveloppe B suit l'enveloppe A
     const bool b = osc == 1 && P.get(kEnvLink) < 0.5f;
     EnvShape e;
@@ -232,10 +254,56 @@ float Engine::pv(uint32_t id) const {
     return fromNormalized(id, toNormalized(id, v) + off);
 }
 
-// Routes libres « LFO → potard » : recalculées à chaque bloc de contrôle depuis les LFO.
+// Réglage calculé voix par voix (destination d'une route par note), ou -1.
+int Engine::voiceDst(uint32_t id) {
+    switch (id) {
+        case kAPos: return kVdAPos;
+        case kBPos: return kVdBPos;
+        case kALvl: return kVdALvl;
+        case kBLvl: return kVdBLvl;
+        case kAPan: return kVdAPan;
+        case kBPan: return kVdBPan;
+        case kAWarp: return kVdAWarp;
+        case kBWarp: return kVdBWarp;
+        case kCutoff: return kVdCut;
+        case kReso: return kVdReso;
+        case kFiltDrive: return kVdDrive;
+        case kFiltMorph: return kVdMorph;
+        case kFiltMix: return kVdMix;
+        case kNoiseLvl: return kVdNoise;
+        case kSubLvl: return kVdSub;
+        case kBlend: return kVdBlend;
+        default: return -1;
+    }
+}
+
+// Valeur d'une source de route : LFO -1..1, les autres 0..1. Sources par note : celles de la
+// voix v (sinon de la note la plus récente).
+float Engine::srcValue(int s, const Voice* v) const {
+    const ParamStore& P = m_.params;
+    if (!v) v = newest_;
+    if (s >= 0 && s < kNumLfos) return lfoNow_[s];
+    if (s >= kRouteSrcMacro && s < kRouteSrcVel) return P.get(kMacro1 + (uint32_t)(s - kRouteSrcMacro));
+    switch (s) {
+        case kRouteSrcVel: return v ? v->vel : lastVel_;
+        case kRouteSrcWheel: return P.get(kModWheel);
+        case kRouteSrcPress: return std::max(P.get(kAftertouch), v ? std::max(v->press, v->polyPress) : 0.f);
+        case kRouteSrcTimbre: return std::max(P.get(kTimbre), v ? v->timbre : 0.f);
+        case kRouteSrcEnv3: return v ? v->e3 : 0.f;
+        case kRouteSrcEnv4: return v ? v->e4 : 0.f;
+        case kRouteSrcKey: return v ? std::clamp((float)v->note / 127.f, 0.f, 1.f) : 0.5f;
+        case kRouteSrcRnd: return v ? v->rnd : 0.f;
+        default: return 0.f;
+    }
+}
+
+// Routes libres « source → potard » : recalculées à chaque bloc de contrôle. Une route dont la
+// source (ou la source qui la dose) change d'une note à l'autre, vers un réglage calculé par voix,
+// est appliquée voix par voix (liste vr_) ; les autres décalent le réglage pour toutes les voix.
 void Engine::applyRoutes() {
     for (int i = 0; i < nRouted_; ++i) modOff_[routed_[(size_t)i]] = 0.f;
     nRouted_ = 0;
+    nVr_ = 0;
     const FreeRoutes& R = m_.routes;
     for (int i = 0; i < kMaxFreeRoutes; ++i) {
         const int src = R.r[(size_t)i].src.load(std::memory_order_acquire);
@@ -243,14 +311,56 @@ void Engine::applyRoutes() {
         const int id = R.r[(size_t)i].id.load(std::memory_order_relaxed);
         if (src >= kNumRouteSrcs || id < 0 || (uint32_t)id >= kNumParams) continue;
         const float amt = (float)R.r[(size_t)i].amt.load(std::memory_order_relaxed) / 100.f;
-        // LFO : -1..1 ; MACRO, VÉLOCITÉ (dernière note), MOLETTE : 0..1
-        float val;
-        if (src < kNumLfos) val = lfoNow_[src];
-        else if (src < kRouteSrcVel) val = m_.params.get(kMacro1 + (uint32_t)(src - kRouteSrcMacro));
-        else if (src == kRouteSrcVel) val = lastVel_;
-        else val = m_.params.get(kModWheel);
+        const int curve = R.r[(size_t)i].curve.load(std::memory_order_relaxed);
+        int aux = R.r[(size_t)i].aux.load(std::memory_order_relaxed);
+        if (aux >= kNumRouteSrcs) aux = -1;
+        const int vd = voiceDst((uint32_t)id);
+        if (vd >= 0 && (routeSrcPerNote(src) || (aux >= 0 && routeSrcPerNote(aux)))) {
+            vr_[(size_t)nVr_++] = VRoute{src, aux, curve, vd, amt};
+            continue;
+        }
+        float val = routeCurve(srcValue(src, nullptr), curve);
+        if (aux >= 0) {
+            const float a = srcValue(aux, nullptr);
+            val *= routeSrcBipolar(aux) ? 0.5f + 0.5f * a : a;
+        }
         if (modOff_[(size_t)id] == 0.f && nRouted_ < kMaxFreeRoutes) routed_[(size_t)nRouted_++] = (uint32_t)id;
         modOff_[(size_t)id] += amt * val;
+    }
+}
+
+// Expression (MPE, aftertouch polyphonique, Note Expression VST3) : appliquée aux voix concernées.
+void Engine::expression(const NoteEvent& e) {
+    const int ch = std::clamp((int)e.channel, 0, 15);
+    const float mpeRange = m_.params.get(kMpeRange);
+    auto each = [&](auto&& match, auto&& apply) {
+        for (auto& v : voices_)
+            if (v.active && match(v)) apply(v);
+    };
+    switch (e.kind) {
+        case kEvChanPress:
+            chPress_[(size_t)ch] = std::clamp(e.value, 0.f, 1.f);
+            each([&](const Voice& v) { return v.chan == ch; }, [&](Voice& v) { v.press = chPress_[(size_t)ch]; });
+            break;
+        case kEvChanBend:
+            chBend_[(size_t)ch] = std::clamp(e.value, -1.f, 1.f) * mpeRange;
+            each([&](const Voice& v) { return v.chan == ch; }, [&](Voice& v) { v.bendSt = chBend_[(size_t)ch]; });
+            break;
+        case kEvChanTimbre:
+            chTimbre_[(size_t)ch] = std::clamp(e.value, 0.f, 1.f);
+            each([&](const Voice& v) { return v.chan == ch; }, [&](Voice& v) { v.timbre = chTimbre_[(size_t)ch]; });
+            break;
+        case kEvPolyPress:
+            each([&](const Voice& v) { return e.noteId >= 0 ? v.noteId == e.noteId : v.note == e.note; },
+                 [&](Voice& v) { v.polyPress = std::clamp(e.value, 0.f, 1.f); });
+            break;
+        case kEvNoteTune:
+            each([&](const Voice& v) { return e.noteId >= 0 && v.noteId == e.noteId; }, [&](Voice& v) { v.bendSt = std::clamp(e.value, -96.f, 96.f); });
+            break;
+        case kEvNoteTimbre:
+            each([&](const Voice& v) { return e.noteId >= 0 && v.noteId == e.noteId; }, [&](Voice& v) { v.timbre = std::clamp(e.value, 0.f, 1.f); });
+            break;
+        default: break;
     }
 }
 
@@ -277,6 +387,8 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
             if (ghosts_[(size_t)k].ghost < ghosts_[(size_t)gi].ghost) gi = k;
         ghosts_[(size_t)gi] = *v;
         ghosts_[(size_t)gi].ghost = stealLen_;
+        if (filtType_ == kFtCombP || filtType_ == kFtCombN)  // le fantôme garde la résonance du COMB
+            std::copy(combOf((int)(v - voices_.data())), combOf((int)(v - voices_.data())) + 2 * (size_t)combLen_, combOf(kVoices + gi));
         ghostTargets_[(size_t)gi] = voiceTargets_[(size_t)(v - voices_.data())];
         v->active = false;
     }
@@ -296,10 +408,27 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
         const float sp = U > 1 ? 2.f * (float)u / (float)(U - 1) - 1.f : 0.f;
         v->uni = u;
         v->uniN = U;
-        v->uniDet = sp * 0.5f * P.get(kUniDetune);  // écart total : 0..1 demi-ton
+        v->uniDet = sp * 0.5f * P.get(kUniDetune) * uniRangeSemis(P.geti(kUniRange));  // écart total : DÉSACCORD x ÉCART MAX
         v->uniPan = sp * P.get(kUniWidth);
         v->glide = glideFrom >= 0.f ? glideFrom - (float)note : 0.f;
         v->punchT = 0.f;
+        // expression : la note reprend l'état de son canal (MPE) ; aléa propre à la note
+        const int ch = std::clamp(curChan_, 0, 15);
+        const bool mpe = P.get(kMpe) > 0.5f;
+        v->chan = ch;
+        v->noteId = curNoteId_;
+        v->bendSt = mpe ? chBend_[(size_t)ch] : 0.f;
+        v->press = mpe ? chPress_[(size_t)ch] : 0.f;
+        v->timbre = mpe ? chTimbre_[(size_t)ch] : 0.f;
+        v->polyPress = 0.f;
+        if (u == 0) {  // les copies d'unison d'une note partagent son aléa (tiré à part : le reste du hasard ne change pas)
+            uint32_t hsh = (uint32_t)(order_ * 2654435761u) ^ 0x5bd1e995u;
+            hsh ^= hsh >> 15;
+            hsh *= 0x2c1b3c6du;
+            hsh ^= hsh >> 12;
+            noteRnd_ = (float)(hsh & 0xFFFFFF) / 16777216.f;
+        }
+        v->rnd = noteRnd_;
     }
     // RETRIG : l'enveloppe repart (du niveau courant si la voix sonnait, sans clic) ;
     // FREE : jouée en legato, la nouvelle note reprend l'enveloppe de la note tenue
@@ -316,6 +445,8 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
     else v->envA.start(wasActive);
     if (freeB && held) v->envB = held->envB;
     else v->envB.start(wasActive);
+    v->env3.start(wasActive);
+    v->env4.start(wasActive);
     // legato FREE sur une voix muette : elle rejoint le niveau de la note tenue en 2 ms, sans clic
     if (!wasActive && held && (freeA || freeB)) v->envSpan = std::max(8, (int)(0.002 * sr_));
     if (!held) {
@@ -339,13 +470,31 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
         v->dcInit = true;
         v->adX[0] = v->adX[1] = 0.0;
         v->lin1[0] = v->lin1[1] = 0.f;
+        // filtre multimode, bruit, warps croisés : départ propre
+        for (auto& side : v->fs) std::fill(side, side + 8, 0.f);
+        v->cLp[0] = v->cLp[1] = 0.f;
+        v->cw = 0;
+        if (filtType_ == kFtCombP || filtType_ == kFtCombN) {
+            float* cb = combOf((int)(v - voices_.data()));
+            std::fill(cb, cb + 2 * (size_t)combLen_, 0.f);
+        }
+        v->lastA = v->lastB = 0.f;
+        v->nz[0] = 0x9E3779B9u ^ (uint32_t)(order_ * 2654435761u);
+        v->nz[1] = 0x85EBCA6Bu ^ (uint32_t)(order_ * 40503u + 17u);
+        if (!v->nz[0]) v->nz[0] = 1u;
+        if (!v->nz[1]) v->nz[1] = 2u;
+        for (auto& p3 : v->pk) std::fill(p3, p3 + 3, 0.f);
+        v->nzF[0] = v->nzF[1] = 0.f;
+        v->crk = v->nzHold = 0.f;
+        v->nzPh = 0.0;
+        v->e3 = v->e4 = 0.f;
         // dérive analogique : ±3 cents par oscillateur, ±4 % de coupure, tirés à chaque note
         v->driftA = (frand() - 0.5f) * 0.06f;
         v->driftB = (frand() - 0.5f) * 0.06f;
         v->driftCut = (frand() - 0.5f) * 0.11f;
         // lecture SAMPLE : la version et la position partent de la note jouée
         const ParamStore& P = m_.params;
-        const float bend = 2.f * P.get(kPitchBend);
+        const float bend = P.get(kBendRange) * P.get(kPitchBend) + v->bendSt;
         startSample(*v, 0, (float)note + 12.f * P.get(kAOct) + P.get(kASt) + bend);
         startSample(*v, 1, (float)note + 12.f * P.get(kBOct) + P.get(kBSt) + bend);
     }
@@ -390,7 +539,7 @@ void Engine::startSample(Voice& v, int osc, float semis) {
 // sonne reprend les mêmes voix et glisse (MONO relance les enveloppes, LEGATO non).
 void Engine::noteOn(int note, float vel) {
     const ParamStore& P = m_.params;
-    const int mode = P.geti(kPolyMode), U = std::clamp(P.geti(kUnison), 1, 8);
+    const int mode = P.geti(kPolyMode), U = std::clamp(P.geti(kUnison), 1, 16);
     const bool glideOn = P.get(kGlide) > 0.001f, legatoOnly = P.get(kGlideMode) > 0.5f;
     lastVel_ = std::clamp(vel, 0.f, 1.f);
     bool held = false;
@@ -431,6 +580,8 @@ void Engine::retarget(int note, float vel, bool retrigger) {
             v.envB.lv = v.eB;
             v.envA.start(true);
             v.envB.start(true);
+            v.env3.start(true);
+            v.env4.start(true);
             v.envCnt = 0;
             v.punchT = 0.f;
         }
@@ -454,7 +605,7 @@ void Engine::noteOff(int note) {
         if (nMono_ > 0) return;
     }
     for (auto& v : voices_)
-        if (v.active && !v.released && (v.note == note || mode != 0)) { v.released = true; v.envA.release(); v.envB.release(); }
+        if (v.active && !v.released && (v.note == note || mode != 0)) { v.released = true; v.envA.release(); v.envB.release(); v.env3.release(); v.env4.release(); }
 }
 
 // --- couche d'entrée : accords (strum) et arpégiateur, calés sur le tempo de l'hôte ---------
@@ -470,7 +621,7 @@ void Engine::schedule(int64_t t, int note, float vel, bool on) {
         else noteOff(note);
         return;
     }
-    pend_[(size_t)nPend_++] = Pending{t, note, vel, on};
+    pend_[(size_t)nPend_++] = Pending{t, note, vel, on, curChan_};
 }
 
 void Engine::inputOn(int note, float vel, int64_t t) {
@@ -569,6 +720,8 @@ void Engine::arpStep(int64_t t) {
     for (int i = 0; i < nPool_; ++i)
         if (pool_[(size_t)i] == base[idx % nb]) vel = poolVel_[(size_t)i];
     if (arpNote_ >= 0) noteOff(arpNote_);
+    curChan_ = 0;
+    curNoteId_ = -1;
     noteOn(note, vel);
     arpNote_ = note;
     m_.readouts.arpStep.store((int)(arpIdx_ & 15), std::memory_order_relaxed);
@@ -600,8 +753,11 @@ void Engine::fireInternal(int64_t t) {
         for (int j = 0; j < nPend_; ++j) {
             const Pending& q = pend_[(size_t)j];
             if (q.t <= t && q.on == (pass == 1)) {
-                if (q.on) noteOn(q.note, q.vel);
-                else {
+                if (q.on) {
+                    curChan_ = q.chan;
+                    curNoteId_ = -1;
+                    noteOn(q.note, q.vel);
+                } else {
                     noteOff(q.note);
                     if (q.note == arpNote_) arpNote_ = -1;
                 }
@@ -624,7 +780,7 @@ void Engine::fireInternal(int64_t t) {
             for (int i = 0; i < chordN_[(size_t)n] && keyDown_[(size_t)n]; ++i)
                 if (nPool_ < (int)pool_.size()) { pool_[(size_t)nPool_] = chordOut_[(size_t)n][(size_t)i]; poolVel_[(size_t)nPool_] = 0.8f; ++nPool_; }
         for (auto& v : voices_)
-            if (v.active && !v.released) { v.released = true; v.envA.release(); v.envB.release(); }
+            if (v.active && !v.released) { v.released = true; v.envA.release(); v.envB.release(); v.env3.release(); v.env4.release(); }
     }
     if (nPool_ == 0) {
         m_.readouts.arpStep.store(-1, std::memory_order_relaxed);
@@ -653,7 +809,7 @@ void Engine::allOff(bool hard) {
         for (auto& g : ghosts_) g.ghost = 0;
     for (auto& v : voices_) {
         if (hard) v.active = false;
-        else if (v.active) { v.released = true; v.envA.release(); v.envB.release(); }
+        else if (v.active) { v.released = true; v.envA.release(); v.envB.release(); v.env3.release(); v.env4.release(); }
     }
 }
 
@@ -699,6 +855,19 @@ void Engine::controlUpdate(int n) {
     lifeMod_ = std::clamp(qty * (0.6f * (2.f * liveSm_ - 1.f) + 0.8f * pulse_), -1.f, 1.f);
     liveNow_ = liveSm_;
 
+    // --- ENV 3 / ENV 4 de chaque voix, note la plus récente ---------------------------------
+    {
+        const EnvShape s3 = envShape(2), s4 = envShape(3);
+        for (auto& v : voices_)
+            if (v.active) {
+                v.e3 = v.env3.step(dt, s3);
+                v.e4 = v.env4.step(dt, s4);
+            }
+    }
+    newest_ = nullptr;
+    for (const auto& v : voices_)
+        if (v.active && (!newest_ || v.order > newest_->order)) newest_ = &v;
+
     // --- sources globales -------------------------------------------------------------------
     // 8 LFO (les réglages routés utilisent les routes du bloc précédent), puis les routes libres
     for (int k = 0; k < kNumLfos; ++k) lfoNow_[k] = lfoValue(k, dt);
@@ -730,9 +899,7 @@ void Engine::controlUpdate(int n) {
     };
 
     // voix la plus récente : sert aux affichages et aux destinations globales (GRAIN, MASTER)
-    const Voice* newest = nullptr;
-    for (const auto& v : voices_)
-        if (v.active && (!newest || v.order > newest->order)) newest = &v;
+    const Voice* newest = newest_;
     const float envN = newest ? newest->env : 0.f;
     const float keyN = newest ? std::clamp((float)(newest->note - 48) / 24.f, -1.f, 1.f) : 0.f;
     srcNow_[3] = envN;
@@ -753,12 +920,27 @@ void Engine::controlUpdate(int n) {
     const float aPos = smoothed(kSmAPos, pv(kAPos), smA), bPos = smoothed(kSmBPos, pv(kBPos), smA);
     const float gA0 = smoothed(kSmALvl, levelToGain(pv(kALvl)), smA), gB0 = smoothed(kSmBLvl, levelToGain(pv(kBLvl)), smA);
     const float lvlMod = target == 2 ? std::clamp(1.f + 0.6f * lifeMod_, 0.f, 1.6f) : 1.f;
-    const float bend = 2.f * P.get(kPitchBend);  // molette PITCH : +/- 2 demi-tons
+    const float bend = P.get(kBendRange) * P.get(kPitchBend);  // molette PITCH : +/- AMPLITUDE (2 demi-tons par défaut)
     const float semA = 12.f * P.get(kAOct) + P.get(kASt) + bend, semB = 12.f * P.get(kBOct) + P.get(kBSt) + bend;
     // warp (déformation de phase, + molette MOD), panoramique et mode de chaque oscillateur
     const float wA = std::clamp(smoothed(kSmAWarp, pv(kAWarp), smA) + modWheel * 0.3f, 0.f, 1.f);
     const float wB = std::clamp(smoothed(kSmBWarp, pv(kBWarp), smA) + modWheel * 0.3f, 0.f, 1.f);
     const int modeA = P.geti(kAMode), modeB = P.geti(kBMode);
+    const int wmA = std::clamp(P.geti(kAWarpMode), 0, kNumWarpModes - 1), wmB = std::clamp(P.geti(kBWarpMode), 0, kNumWarpModes - 1);
+    // largeur de bande ajoutée par le warp (choix du niveau de mipmap : pas de repliement)
+    auto warpWidth = [](int wm, float w) {
+        if (w <= 0.0005f) return 1.f;
+        switch (wm) {
+            case kWmClassic: return 1.f + 1.4f * w;
+            case kWmSync: return 1.f + 7.f * w;
+            case kWmBendP: case kWmBendN: return 1.f + 3.f * w;
+            case kWmPwm: return 1.f / (1.f - 0.95f * w);
+            case kWmAsym: return 0.5f / (0.5f - 0.45f * w);
+            case kWmMirror: { const float p = 1.f - 0.5f * w; return std::min(16.f, 1.f / std::max(0.0625f, std::min(p, 1.f - p))); }
+            case kWmFm: return 1.f + 12.f * w * w;
+            default: return 1.f;
+        }
+    };
     auto panGains = [](float p, float& l, float& r) {
         l = std::cos(std::clamp(p, 0.f, 1.f) * kPi * 0.5f) * 1.41421f;
         r = std::sin(std::clamp(p, 0.f, 1.f) * kPi * 0.5f) * 1.41421f;
@@ -768,9 +950,22 @@ void Engine::controlUpdate(int n) {
     panGains(smoothed(kSmBPan, pv(kBPan), smA), pBL, pBR);
     const float cutBase = smoothed(kSmCutoff, pv(kCutoff), smA), reso = smoothed(kSmReso, pv(kReso), smA);
     const float drive = 1.f + 3.f * std::max(h, 0.f);
-    // page JEU
+    // page JEU, page SYNTH (filtre multimode, bruit)
     slope24_ = P.get(kFiltSlope) > 0.5f;
     fdrive_ = pv(kFiltDrive);
+    filtType_ = std::clamp(P.geti(kFiltType), 0, kNumFiltTypes - 1);
+    const float fKey = pv(kFiltKey), fMorph = pv(kFiltMorph), fMix = pv(kFiltMix);
+    nzType_ = std::clamp(P.geti(kNoiseType), 0, kNumNoiseTypes - 1);
+    {
+        const float c = pv(kNoiseColor);
+        if (std::fabs(c - 0.5f) < 0.01f) nzMode_ = 2;
+        else {
+            nzMode_ = c < 0.5f ? 0 : 1;
+            const float hzc = c < 0.5f ? 200.f * std::pow(100.f, c * 2.f) : 20.f * std::pow(400.f, (c - 0.5f) * 2.f);
+            nzA_ = 1.f - std::exp(-2.f * kPi * std::min(hzc, (float)sr_ * 0.45f) / (float)sr_);
+        }
+    }
+    const float noiseLvl = pv(kNoiseLvl), uniBlend = pv(kUniBlend);
     const float glideT = glideSeconds(pv(kGlide));
     const float glideK = glideT > 0.001f ? std::exp(-dt / (glideT * 0.3f)) : 0.f;
     const float punch = pv(kPunch) * 36.f, punchTau = punchSeconds(pv(kPunchTime));
@@ -785,8 +980,19 @@ void Engine::controlUpdate(int n) {
         if (!v.active) continue;
         const float key = std::clamp((float)(v.note - 48) / 24.f, -1.f, 1.f);
         auto D = [&](int d) { return voiceDst(d, v.env, key); };
-        const float pA = std::clamp(aPos + D(2) * 0.35f + (target == 1 ? lifeMod_ * 0.25f : 0.f), 0.f, 1.f);
-        const float pB = std::clamp(bPos + D(3) * 0.35f + (target == 1 ? lifeMod_ * 0.375f : 0.f), 0.f, 1.f);
+        // routes par note (vélocité, pression, timbre, ENV 3 / 4, clavier, aléa) vers cette voix
+        float vo[kNumVd] = {};
+        for (int r = 0; r < nVr_; ++r) {
+            const VRoute& q = vr_[(size_t)r];
+            float val = routeCurve(srcValue(q.src, &v), q.curve);
+            if (q.aux >= 0) {
+                const float a = srcValue(q.aux, &v);
+                val *= routeSrcBipolar(q.aux) ? 0.5f + 0.5f * a : a;
+            }
+            vo[q.vd] += q.amt * val;
+        }
+        const float pA = std::clamp(aPos + vo[kVdAPos] + D(2) * 0.35f + (target == 1 ? lifeMod_ * 0.25f : 0.f), 0.f, 1.f);
+        const float pB = std::clamp(bPos + vo[kVdBPos] + D(3) * 0.35f + (target == 1 ? lifeMod_ * 0.375f : 0.f), 0.f, 1.f);
         // glide (rapproche la hauteur de la note), punch 808 (chute de hauteur à l'attaque), unison
         v.glide *= glideK;
         if (std::fabs(v.glide) < 0.002f) v.glide = 0.f;
@@ -795,7 +1001,7 @@ void Engine::controlUpdate(int n) {
             pOff = punch * std::exp(-v.punchT / punchTau);
             v.punchT += dt;
         }
-        const float common = (float)v.note + v.glide + v.uniDet + pOff;
+        const float common = (float)v.note + v.glide + v.uniDet + pOff + v.bendSt;
         const float pitchA = common + semA + D(0) * 6.f + v.driftA, pitchB = common + semB + D(1) * 6.f + v.driftB;
         // incréments bornés sous Nyquist (note très aiguë + octaves + transpositions, ou fréquence
         // d'échantillonnage basse) ; NaN -> 0 : la phase ne peut plus sortir de [0, 1)
@@ -805,31 +1011,59 @@ void Engine::controlUpdate(int n) {
         const double fA = noteHz(pitchA), fB = noteHz(pitchB);
         // FREE : la phase dérive lentement (+0.15 Hz), comme un oscillateur libre
         const float incA = safeInc((fA + (modeA == 4 ? 0.15 : 0.0)) / sr_), incB = safeInc((fB + (modeB == 4 ? 0.15 : 0.0)) / sr_);
-        float oct = D(4) * 4.f + h * 2.f + 0.5f * (float)(v.note - 60) / 12.f + v.driftCut + velCut * 4.f * (v.vel - 1.f);
+        float oct = D(4) * 4.f + h * 2.f + fKey * (float)(v.note - 60) / 12.f + v.driftCut + velCut * 4.f * (v.vel - 1.f);
         if (target == 0) oct += lifeMod_ * 3.f;
-        const float fc = std::clamp(cutoffToHz(cutBase) * std::pow(2.f, oct), 20.f, (float)sr_ * 0.45f);
+        const float fc = std::clamp(cutoffToHz(std::clamp(cutBase + vo[kVdCut], 0.f, 1.f)) * std::pow(2.f, oct), 20.f, (float)sr_ * 0.45f);
         const float g = std::tan(kPi * fc / (float)sr_);
-        const float rs = std::clamp(reso + D(5) * 0.5f, 0.f, 1.f);
+        const float rs = std::clamp(reso + D(5) * 0.5f + vo[kVdReso], 0.f, 1.f);
         const float k = 2.f - 1.94f * rs;
         // panoramique vivant : suit le centre de masse de la grille, dosé par ESPACE
-        const float spread = ((vi & 1) ? 1.f : -1.f) * (0.3f + 0.7f * (float)vi / (float)kVoices);
+        const float spread = ((vi & 1) ? 1.f : -1.f) * (0.3f + 0.7f * (float)(vi % 16) / 16.f);  // même étalement qu'avec 16 voix
         const float pan = std::clamp(space_ * (0.75f * centroidSm_ + 0.35f * spread) + v.uniPan, -1.f, 1.f);
         const float pl = std::cos((pan + 1.f) * kPi / 4.f) * 1.41421f, pr = std::sin((pan + 1.f) * kPi / 4.f) * 1.41421f;
-        const float amp = 0.32f * ((1.f - velAmt) + velAmt * v.vel) / std::sqrt((float)v.uniN);
-        const float gA = gA0 * lvlMod * amp * blA, gB = gB0 * lvlMod * amp * blB;
+        // unison : les voix du centre à plein, les autres dosées par BLEND, puissance totale constante
+        {
+            const int U = std::max(1, v.uniN);
+            const int nC = U == 1 ? 1 : (U % 2 ? 1 : 2);
+            const bool center = U == 1 || (U % 2 ? v.uni == (U - 1) / 2 : (v.uni == U / 2 - 1 || v.uni == U / 2));
+            const float b = std::clamp(uniBlend, 0.f, 1.f);
+            const float sum = (float)nC + (float)(U - nC) * b * b;
+            v.uniG = (center ? 1.f : b) / std::sqrt(std::max(sum, 1e-6f));
+        }
+        const float amp = 0.32f * ((1.f - velAmt) + velAmt * v.vel) * v.uniG;
+        float vblA = blA, vblB = blB;
+        if (vo[kVdBlend] != 0.f) {
+            const float bl = std::clamp(blend + vo[kVdBlend], 0.f, 1.f);
+            vblA = std::min(1.f, 2.f * (1.f - bl));
+            vblB = std::min(1.f, 2.f * bl);
+        }
+        const float gAv = vo[kVdALvl] != 0.f ? levelToGain(std::clamp(pv(kALvl) + vo[kVdALvl], 0.f, 1.f)) : gA0;
+        const float gBv = vo[kVdBLvl] != 0.f ? levelToGain(std::clamp(pv(kBLvl) + vo[kVdBLvl], 0.f, 1.f)) : gB0;
+        const float gA = gAv * lvlMod * amp * vblA, gB = gBv * lvlMod * amp * vblB;
+        float vAL = pAL, vAR = pAR, vBL = pBL, vBR = pBR;
+        if (vo[kVdAPan] != 0.f) panGains(smoothed(kSmAPan, pv(kAPan), 0.f) + vo[kVdAPan], vAL, vAR);
+        if (vo[kVdBPan] != 0.f) panGains(smoothed(kSmBPan, pv(kBPan), 0.f) + vo[kVdBPan], vBL, vBR);
+        const float wAv = std::clamp(wA + vo[kVdAWarp], 0.f, 1.f), wBv = std::clamp(wB + vo[kVdBWarp], 0.f, 1.f);
         // LOOP lit la table deux fois par cycle, le warp ajoute des harmoniques : niveau de mipmap adapté,
         // fondu vers le niveau suivant pour que le timbre suive la hauteur sans palier
         float mxA, mxB;
-        const int lvA = MipTable::levelMix(incA * (modeA == 3 ? 2.f : 1.f) * (1.f + 1.4f * wA), mxA);
-        const int lvB = MipTable::levelMix(incB * (modeB == 3 ? 2.f : 1.f) * (1.f + 1.4f * wB), mxB);
-        VoiceTargets tg{pA, pB, g, k, pl, pr, gA * pAL, gA * pAR, gB * pBL, gB * pBR, wA, wB, drive};
+        const int lvA = MipTable::levelMix(incA * (modeA == 3 ? 2.f : 1.f) * warpWidth(wmA, wAv), mxA);
+        const int lvB = MipTable::levelMix(incB * (modeB == 3 ? 2.f : 1.f) * warpWidth(wmB, wBv), mxB);
+        VoiceTargets tg{pA, pB, g, k, pl, pr, gA * vAL, gA * vAR, gB * vBL, gB * vBR, wAv, wBv, drive};
         tg.mixA = mxA;
         tg.mixB = mxB;
-        tg.sub = subLvl * amp * 1.4f;
+        tg.sub = std::clamp(subLvl + vo[kVdSub], 0.f, 1.f) * amp * 1.4f;
+        tg.fc = fc;
+        tg.morph = std::clamp(fMorph + vo[kVdMorph], 0.f, 1.f);
+        tg.fmix = std::clamp(fMix + vo[kVdMix], 0.f, 1.f);
+        tg.fdrv = std::clamp(fdrive_ + vo[kVdDrive], 0.f, 1.f);
+        tg.noise = std::clamp(noiseLvl + vo[kVdNoise], 0.f, 1.f) * amp * 1.6f;
+        v.wmA = wmA;
+        v.wmB = wmB;
         if (v.fresh) {
             v.posA = pA; v.posB = pB; v.g = g; v.k = k; v.panL = pl; v.panR = pr;
-            v.aL = tg.aL; v.aR = tg.aR; v.bL = tg.bL; v.bR = tg.bR; v.wA = wA; v.wB = wB; v.drive = drive;
-            v.mixA = mxA; v.mixB = mxB; v.sub = tg.sub;
+            v.aL = tg.aL; v.aR = tg.aR; v.bL = tg.bL; v.bR = tg.bR; v.wA = wAv; v.wB = wBv; v.drive = drive;
+            v.mixA = mxA; v.mixB = mxB; v.sub = tg.sub; v.fmix = tg.fmix; v.noise = tg.noise;
             v.fresh = false;
         }
         if (lvA != v.levelA) v.mixA = mxA;  // changement de niveau : le dosage repart d'une valeur équivalente
@@ -857,8 +1091,8 @@ void Engine::controlUpdate(int n) {
     for (int s = 0; s < kNumSources; ++s) R.src[(size_t)s].store(srcNow_[(size_t)s], std::memory_order_relaxed);
     for (int d = 0; d < kNumDests; ++d) R.dst[(size_t)d].store(voiceDst(d, envN, keyN), std::memory_order_relaxed);
     // page ENV / LFO : point de lecture des enveloppes de la voix la plus récente et des LFO
-    for (int k = 0; k < 2; ++k) {
-        const EnvGen* e = newest ? (k == 0 ? &newest->envA : &newest->envB) : nullptr;
+    for (int k = 0; k < 4; ++k) {
+        const EnvGen* e = newest ? (k == 0 ? &newest->envA : (k == 1 ? &newest->envB : (k == 2 ? &newest->env3 : &newest->env4))) : nullptr;
         R.envStage[(size_t)k].store(e ? e->stage : -1, std::memory_order_relaxed);
         R.envT[(size_t)k].store(e ? e->t : 0.f, std::memory_order_relaxed);
         R.envLv[(size_t)k].store(e ? e->lv : 0.f, std::memory_order_relaxed);
@@ -867,6 +1101,9 @@ void Engine::controlUpdate(int n) {
         R.lfoPh[(size_t)k].store((float)lfo_[k].ph, std::memory_order_relaxed);
         R.lfoVal[(size_t)k].store(lfoNow_[k], std::memory_order_relaxed);
     }
+    R.press.store(srcValue(kRouteSrcPress, newest), std::memory_order_relaxed);
+    R.timbre.store(srcValue(kRouteSrcTimbre, newest), std::memory_order_relaxed);
+    R.noteBend.store(newest ? newest->bendSt : 0.f, std::memory_order_relaxed);
     R.posA.store(posAShow, std::memory_order_relaxed);
     R.posB.store(posBShow, std::memory_order_relaxed);
     R.lifeMod.store(lifeMod_, std::memory_order_relaxed);
@@ -953,7 +1190,8 @@ inline float readSmp(const float* d, int n, double pos) {
 
 // Une voix sur n échantillons. Renvoie false quand la voix s'est éteinte (enveloppes au repos,
 // ou fin du fondu d'une voix volée).
-bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, float* mono, int n, int span, const EnvShape& esA, const EnvShape& esB) {
+bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, float* mono, int n, int span, const EnvShape& esA, const EnvShape& esB,
+                         float* comb) {
     const float inv = 1.f / (float)span;
     const bool full = n == span;
     constexpr int kEnvStep = 8;  // enveloppes calculées tous les 8 échantillons, interpolées entre
@@ -965,8 +1203,10 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
     const float dAL = (t.aL - v.aL) * inv, dAR = (t.aR - v.aR) * inv, dBL = (t.bL - v.bL) * inv, dBR = (t.bR - v.bR) * inv;
     const float dWA = (t.wA - v.wA) * inv, dWB = (t.wB - v.wB) * inv, dDr = (t.drive - v.drive) * inv;
     const float dMA = (t.mixA - v.mixA) * inv, dMB = (t.mixB - v.mixB) * inv, dSub = (t.sub - v.sub) * inv;
+    const float dFm = (t.fmix - v.fmix) * inv, dNz = (t.noise - v.noise) * inv;
     float posA = v.posA, posB = v.posB, g = v.g, k = v.k, pl = v.panL, pr = v.panR, dr = v.drive;
     float aL = v.aL, aR = v.aR, bL = v.bL, bR = v.bR, wA = v.wA, wB = v.wB, mA = v.mixA, mB = v.mixB;
+    float fmix = v.fmix, nzg = v.noise;
     double phA = v.phA, phB = v.phB;
     float ic1 = v.ic1, ic2 = v.ic2, ic1r = v.ic1r, ic2r = v.ic2r;
     float ic3 = v.ic3, ic4 = v.ic4, ic3r = v.ic3r, ic4r = v.ic4r;
@@ -974,12 +1214,15 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
     double phS = v.phS;
     const float incS = v.incS;
     const bool slope24 = slope24_;
-    const float fd = fdrive_, fdk = 1.f + 5.f * fdrive_, fdInv = 1.f / fdk;
+    // drive du filtre : réglage du bloc (routes par note comprises)
+    const float fd = t.fdrv, fdk = 1.f + 5.f * fd, fdInv = 1.f / fdk;
     float eA = v.eA, eB = v.eB, deA = v.deA, deB = v.deB;
     int envCnt = v.envCnt;
     float dcA = v.dcA, dcB = v.dcB;
     const float dcK = dcK_;
     const bool loopA = v.modeA == 3, loopB = v.modeB == 3;
+    const int wmA = v.wmA, wmB = v.wmB;
+    float lastA = v.lastA, lastB = v.lastB;
     // SAMPLE : le son de départ doit être encore celui de l'oscillateur (sinon il a pu être libéré)
     const bool sA = v.smpA && v.smpSetA == (const void*)smpSet_[0] && v.smpDataA;
     // instrument : seulement s'il est encore celui de l'oscillateur (sinon il a pu être libéré)
@@ -991,18 +1234,60 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
     // voix volée : fondu linéaire jusqu'à zéro
     const float gStep = v.ghost > 0 ? 1.f / (float)stealLen_ : 0.f;
     float gg = v.ghost > 0 ? (float)v.ghost / (float)stealLen_ : 1.f;
-    // phase lue : LOOP (deux passages par cycle) puis warp u += w * 0.22 * sin(2 pi u)
-    auto readPhase = [&](double ph, bool loop, float w) {
+    auto sinAt = [&](float u) {
+        const float q = u * 1024.f;
+        const int i0 = std::clamp((int)q, 0, 1023);
+        return sin_[(size_t)i0] + (sin_[(size_t)(i0 + 1)] - sin_[(size_t)i0]) * (q - (float)i0);
+    };
+    auto wrap01 = [](float u) {
+        u -= std::floor(u);
+        return u >= 0.f && u < 1.f ? u : 0.f;  // NaN, 1 par arrondi
+    };
+    // déformation de la phase (modes de warp « de phase »), other : sortie de l'autre oscillateur
+    auto warpPh = [&](float u, int wm, float w, float other) {
+        switch (wm) {
+            case kWmClassic: return wrap01(u + w * 0.22f * sinAt(u));
+            case kWmSync: return wrap01(u * (1.f + 7.f * w));
+            case kWmBendP: case kWmBendN: {
+                const float x = 2.f * u - 1.f, e = wm == kWmBendP ? 1.f / (1.f + 4.f * w) : 1.f + 4.f * w;
+                const float y = std::pow(std::fabs(x), e);
+                return std::min(0.99999f, 0.5f * ((x < 0.f ? -y : y) + 1.f));
+            }
+            case kWmPwm: {
+                const float d = 1.f - 0.95f * w;
+                return u < d ? u / d : 0.f;
+            }
+            case kWmAsym: {
+                const float kn = 0.5f - 0.45f * w;
+                return u < kn ? 0.5f * u / kn : std::min(0.99999f, 0.5f + 0.5f * (u - kn) / (1.f - kn));
+            }
+            case kWmMirror: {  // aller jusqu'à p, puis retour : continu au bouclage
+                const float p = 1.f - 0.5f * w;
+                return u < p ? u / p : std::min(0.99999f, (1.f - u) / std::max(1e-4f, 1.f - p));
+            }
+            case kWmFm: return wrap01(u + w * w * 3.f * other);
+            default: return u;
+        }
+    };
+    // modes de warp « d'amplitude » (après la lecture de la table)
+    auto warpAmp = [&](float s, float u, int wm, float w, float other) {
+        switch (wm) {
+            case kWmFlip: return u >= 1.f - w ? -s : s;
+            case kWmQuant: {
+                const float q = std::exp2(1.f + 9.f * (1.f - w));
+                return std::round(s * q) / q;
+            }
+            case kWmAm: return s * (1.f + w * other) / (1.f + w);
+            case kWmRm: return s + w * (s * other - s);
+            default: return s;
+        }
+    };
+    // phase lue : LOOP (deux passages par cycle) puis le warp de l'oscillateur
+    auto readPhase = [&](double ph, bool loop, float w, int wm, float other) {
         float u = (float)ph;
         if (loop) { u *= 2.f; u -= std::floor(u); }
         if (!(u >= 0.f && u < 1.f)) u = u >= 1.f && u < 1e6f ? u - std::floor(u) : 0.f;  // NaN, hors cycle
-        if (w > 0.0005f) {
-            const float q = u * 1024.f;
-            const int i0 = std::clamp((int)q, 0, 1023);
-            const float s0 = sin_[(size_t)i0] + (sin_[(size_t)(i0 + 1)] - sin_[(size_t)i0]) * (q - (float)i0);
-            u += w * 0.22f * s0;
-            u -= std::floor(u);
-        }
+        if (w > 0.0005f) u = warpPh(u, wm, w, other);
         return u;
     };
     // départ de note : composante continue mesurée sur un cycle (aucune transitoire du suivi)
@@ -1011,13 +1296,176 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
         float sumA = 0.f, sumB = 0.f;
         for (int j = 0; j < kDcPts; ++j) {
             const double u = ((double)j + 0.5) / (double)kDcPts;
-            sumA += TA->readMix(v.levelA, mA, posA, readPhase(u, loopA, wA));
-            sumB += TB->readMix(v.levelB, mB, posB, readPhase(u, loopB, wB));
+            const float uA = readPhase(u, loopA, wA, wmA, 0.f), uB = readPhase(u, loopB, wB, wmB, 0.f);
+            sumA += warpAmp(TA->readMix(v.levelA, mA, posA, uA), uA, wmA, wA, 0.f);
+            sumB += warpAmp(TB->readMix(v.levelB, mB, posB, uB), uB, wmB, wB, 0.f);
         }
         dcA = (v.smpA || v.zoneA) ? 0.f : sumA / (float)kDcPts;
         dcB = v.smpB ? 0.f : sumB / (float)kDcPts;
         v.dcInit = false;
     }
+    // --- filtre multimode : réglages du bloc -------------------------------------------------
+    const int ft = filtType_;
+    const float morph = t.morph;
+    // FORMANT : 3 bandes (voyelles A E I O U de basse, glissées par MORPH, décalées par CUTOFF)
+    float fgF[3] = {0.f, 0.f, 0.f}, faF[3] = {0.f, 0.f, 0.f}, kF = 0.3f;
+    // PHASE : 2 (12 dB) ou 4 (24 dB) passe-tout écartés autour de la coupure
+    float gPh[4] = {0.f, 0.f, 0.f, 0.f};
+    const int nPh = slope24 ? 4 : 2;
+    // COMB : retard d'une période de la coupure, retour signé, amorti dans la boucle
+    float cD = 2.f, cFb = 0.f, cDamp = 1.f;
+    const int cMask = combLen_ - 1;
+    const float rsB = std::clamp((2.f - t.k) / 1.94f, 0.f, 1.f);  // résonance 0..1 de la cible
+    if (ft == kFtFormant) {
+        static const float F[5][3] = {{600, 1040, 2250}, {400, 1620, 2400}, {250, 1750, 2600}, {400, 750, 2400}, {350, 600, 2400}};
+        static const float A[5][3] = {{1.f, 0.447f, 0.355f}, {1.f, 0.251f, 0.355f}, {1.f, 0.0316f, 0.158f}, {1.f, 0.282f, 0.0891f}, {1.f, 0.1f, 0.0251f}};
+        const float p = std::clamp(morph, 0.f, 1.f) * 4.f;
+        const int i0 = std::min(3, (int)p);
+        const float fr = p - (float)i0;
+        const float shift = std::clamp(std::sqrt(t.fc / 632.f), 0.3f, 3.f);
+        for (int b = 0; b < 3; ++b) {
+            const float f = std::exp(std::log(F[i0][b]) + (std::log(F[i0 + 1][b]) - std::log(F[i0][b])) * fr) * shift;
+            fgF[b] = std::tan(kPi * std::min(f, (float)sr_ * 0.45f) / (float)sr_);
+            faF[b] = A[i0][b] + (A[i0 + 1][b] - A[i0][b]) * fr;
+        }
+        kF = 2.f / (5.f + 15.f * rsB);
+    } else if (ft == kFtPhase) {
+        const float spread = 0.25f + 1.5f * morph;
+        for (int s = 0; s < nPh; ++s) {
+            const float f = t.fc * std::exp2(((float)s - 0.5f * (float)(nPh - 1)) * spread);
+            gPh[s] = std::tan(kPi * std::clamp(f, 20.f, (float)sr_ * 0.45f) / (float)sr_);
+        }
+    } else if (ft == kFtCombP || ft == kFtCombN) {
+        cD = std::clamp((float)sr_ / std::max(t.fc, 20.f), 2.f, (float)(combLen_ - 4));
+        cFb = (ft == kFtCombP ? 1.f : -1.f) * (0.2f + 0.77f * rsB);
+        cDamp = 1.f - 0.92f * morph;
+    }
+    int cw = v.cw;
+    // un étage SVF (Cytomic, trapèzes) : sorties passe-bas, passe-bande, passe-haut
+    auto svf = [&](float x, float& s1, float& s2, float gg2, float kk, float& lp, float& bp) {
+        if (fd > 0.001f) {
+            x = fastTanh(x * fdk) * fdInv;
+            s1 = 2.f * fastTanh(0.5f * s1);
+        }
+        const float a1 = 1.f / (1.f + gg2 * (gg2 + kk)), a2 = gg2 * a1, a3 = gg2 * a2;
+        const float v3 = x - s2, v1 = a1 * s1 + a2 * v3, v2 = s2 + a2 * s1 + a3 * v3;
+        s1 = 2.f * v1 - s1;
+        s2 = 2.f * v2 - s2;
+        lp = v2;
+        bp = v1;
+        return x - kk * v1 - v2;  // passe-haut
+    };
+    auto pick = [&](float lp, float bp, float hp, float kk) {
+        switch (ft) {
+            case kFtHp: return hp;
+            case kFtBp: return kk * bp;
+            case kFtNotch: return lp + hp;
+            case kFtPeak: return lp - hp;
+            case kFtMorph: {
+                const float b = kk * bp;
+                return morph < 0.5f ? lp + (b - lp) * 2.f * morph : b + (hp - b) * (2.f * morph - 1.f);
+            }
+            default: return lp;
+        }
+    };
+    // filtre d'un côté (c : 0 gauche, 1 droit)
+    auto filt = [&](float x, int c, float& s1, float& s2, float& s3, float& s4) {
+        float lp, bp, hp, y;
+        switch (ft) {
+            case kFtPhase: {
+                float a = x;
+                for (int s = 0; s < nPh; ++s) {
+                    svf(a, v.fs[c][2 * s], v.fs[c][2 * s + 1], gPh[s], k, lp, bp);
+                    a = a - 2.f * k * bp;  // passe-tout
+                }
+                y = 0.5f * (x + a);
+                break;
+            }
+            case kFtCombP: case kFtCombN: {
+                float* buf = comb + (size_t)c * (size_t)combLen_;
+                const float rp = (float)cw - cD;
+                const int r0 = (int)std::floor(rp);
+                const float fr = rp - (float)r0;
+                const float a = buf[(size_t)(r0 & cMask)], b = buf[(size_t)((r0 + 1) & cMask)];
+                v.cLp[c] += (a + (b - a) * fr - v.cLp[c]) * cDamp;
+                const float xin = fd > 0.001f ? fastTanh(x * fdk) * fdInv : x;
+                y = xin + cFb * v.cLp[c];
+                buf[(size_t)(cw & cMask)] = std::clamp(y, -8.f, 8.f);
+                y *= 1.f - 0.5f * std::fabs(cFb);
+                break;
+            }
+            case kFtFormant: {
+                y = 0.f;
+                for (int bnd = 0; bnd < 3; ++bnd) {
+                    svf(x, v.fs[c][2 * bnd], v.fs[c][2 * bnd + 1], fgF[bnd], kF, lp, bp);
+                    y += faF[bnd] * kF * bp;
+                }
+                y *= 1.6f;
+                break;
+            }
+            default:
+                if (slope24) {
+                    // 24 dB : deux étages (Butterworth à Q 0,54 puis l'étage résonant), même type
+                    hp = svf(x, s3, s4, g, 1.848f, lp, bp);
+                    const float x2 = pick(lp, bp, hp, 1.848f);
+                    const float k2 = k * 0.3825f;  // 0,765 sans résonance (paire Butterworth d'ordre 4)
+                    hp = svf(x2, s1, s2, g, k2, lp, bp);
+                    y = pick(lp, bp, hp, k2);
+                } else {
+                    hp = svf(x, s1, s2, g, k, lp, bp);
+                    y = pick(lp, bp, hp, k);
+                }
+        }
+        if (fd > 0.001f) y *= 1.f + 0.6f * fd;
+        return y;
+    };
+    // bruit : un échantillon (gauche, droite)
+    const int nzType = nzType_, nzMode = nzMode_;
+    const float nzA = nzA_;
+    const double nzInc = (double)incS * 16.0;
+    auto rnd = [](uint32_t& s) {
+        s ^= s << 13;
+        s ^= s >> 17;
+        s ^= s << 5;
+        return (float)(s & 0xFFFFFF) * (2.f / 16777216.f) - 1.f;
+    };
+    auto noiseSample = [&](float& nl, float& nr) {
+        switch (nzType) {
+            case kNzPink: {
+                for (int c = 0; c < 2; ++c) {
+                    const float w = rnd(v.nz[c]);
+                    float* b = v.pk[c];
+                    b[0] = 0.99765f * b[0] + w * 0.0990460f;
+                    b[1] = 0.96300f * b[1] + w * 0.2965164f;
+                    b[2] = 0.57000f * b[2] + w * 1.0526913f;
+                    (c ? nr : nl) = (b[0] + b[1] + b[2] + w * 0.1848f) * 0.22f;
+                }
+                break;
+            }
+            case kNzCrackle: {
+                const float r = rnd(v.nz[0]);
+                v.crk *= 0.55f;
+                if (std::fabs(r) > 0.9993f) v.crk += rnd(v.nz[1]) * 1.6f;
+                nl = nr = v.crk;
+                break;
+            }
+            case kNzDigital: {
+                v.nzPh += nzInc;
+                if (v.nzPh >= 1.0) { v.nzPh -= std::floor(v.nzPh); v.nzHold = rnd(v.nz[0]) * 0.5f; }
+                nl = nr = v.nzHold;
+                break;
+            }
+            default:
+                nl = rnd(v.nz[0]) * 0.5f;
+                nr = rnd(v.nz[1]) * 0.5f;
+        }
+        if (nzMode != 2) {  // couleur : passe-bas (sombre) ou passe-haut (clair) d'un pôle
+            v.nzF[0] += (nl - v.nzF[0]) * nzA;
+            v.nzF[1] += (nr - v.nzF[1]) * nzA;
+            if (nzMode == 0) { nl = v.nzF[0]; nr = v.nzF[1]; }
+            else { nl -= v.nzF[0]; nr -= v.nzF[1]; }
+        }
+    };
     bool alive = true;
     for (int i = 0; i < n; ++i) {
         // enveloppes A et B (une par oscillateur) : un point tous les 8 échantillons, interpolé
@@ -1043,7 +1491,9 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
             ra = sA ? readSmp(v.smpDataA, v.smpLenA, spA) : 0.f;
             spA += v.smpRateA;
         } else {
-            ra = TA->readMix(v.levelA, mA, posA, readPhase(phA, loopA, wA));
+            const float u = readPhase(phA, loopA, wA, wmA, lastB);
+            ra = TA->readMix(v.levelA, mA, posA, u);
+            if (wmA >= kWmFlip && wA > 0.0005f) ra = warpAmp(ra, u, wmA, wA, lastB);
             dcA += (ra - dcA) * dcK;
         }
         if (!iA) raR = ra;
@@ -1054,20 +1504,29 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
             rb = sB ? readSmp(v.smpDataB, v.smpLenB, spB) : 0.f;
             spB += v.smpRateB;
         } else {
-            rb = TB->readMix(v.levelB, mB, posB, readPhase(phB, loopB, wB));
+            const float u = readPhase(phB, loopB, wB, wmB, lastA);
+            rb = TB->readMix(v.levelB, mB, posB, u);
+            if (wmB >= kWmFlip && wB > 0.0005f) rb = warpAmp(rb, u, wmB, wB, lastA);
             dcB += (rb - dcB) * dcK;
         }
         if (!iB) rbR = rb;
+        lastA = ra - dcA;
+        lastB = rb - dcB;
         const float sa = (ra - dcA) * eA, saR = (raR - dcA) * eA;
         const float sb = (rb - dcB) * eB, sbR = (rbR - dcB) * eB;
         float xl = sa * aL + sb * bL, xr = saR * aR + sbR * bR;
         // sous-oscillateur sinus (au centre), avant le drive : la 808 sature avec le reste
         if (sub > 0.00001f || dSub != 0.f) {
-            const float q = (float)phS * 1024.f;
-            const int i0 = std::clamp((int)q, 0, 1023);
-            const float ss = (sin_[(size_t)i0] + (sin_[(size_t)(i0 + 1)] - sin_[(size_t)i0]) * (q - (float)i0)) * sub * eA;
+            const float ss = sinAt((float)phS) * sub * eA;
             xl += ss;
             xr += ss;
+        }
+        // bruit (enveloppe A), avant le drive et le filtre
+        if (nzg > 0.00001f || dNz != 0.f) {
+            float nl, nr;
+            noiseSample(nl, nr);
+            xl += nl * nzg * eA;
+            xr += nr * nzg * eA;
         }
         phS += incS;
         if (phS >= 1.0) phS -= std::floor(phS);
@@ -1089,31 +1548,13 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
             v.adX[0] = (double)(xl * dr); v.lin1[0] = xl;
             v.adX[1] = (double)(xr * dr); v.lin1[1] = xr;
         }
-        // filtre SVF (Cytomic, trapèzes), un par côté ; 24 dB : deux étages (Butterworth à Q 0,54
-        // puis l'étage résonant) ; DRIVE : saturation à l'entrée de chaque étage et de sa résonance
-        float yl, yr;
-        {
-            auto stage = [&](float x, float& s1, float& s2, float kk) {
-                if (fd > 0.001f) {
-                    x = fastTanh(x * fdk) * fdInv;
-                    s1 = 2.f * fastTanh(0.5f * s1);
-                }
-                const float a1 = 1.f / (1.f + g * (g + kk)), a2 = g * a1, a3 = g * a2;
-                const float v3 = x - s2, v1 = a1 * s1 + a2 * v3, v2 = s2 + a2 * s1 + a3 * v3;
-                s1 = 2.f * v1 - s1;
-                s2 = 2.f * v2 - s2;
-                return v2;
-            };
-            if (slope24) {
-                const float k2 = k * 0.3825f;  // 0,765 sans résonance (paire Butterworth d'ordre 4)
-                yl = stage(stage(xl, ic3, ic4, 1.848f), ic1, ic2, k2);
-                yr = stage(stage(xr, ic3r, ic4r, 1.848f), ic1r, ic2r, k2);
-                if (fd > 0.001f) { yl *= 1.f + 0.6f * fd; yr *= 1.f + 0.6f * fd; }
-            } else {
-                yl = stage(xl, ic1, ic2, k);
-                yr = stage(xr, ic1r, ic2r, k);
-                if (fd > 0.001f) { yl *= 1.f + 0.6f * fd; yr *= 1.f + 0.6f * fd; }
-            }
+        // filtre multimode (un par côté) ; MIX : part filtrée
+        float yl = filt(xl, 0, ic1, ic2, ic3, ic4);
+        float yr = filt(xr, 1, ic1r, ic2r, ic3r, ic4r);
+        ++cw;
+        if (fmix < 0.9995f) {
+            yl = xl + (yl - xl) * fmix;
+            yr = xr + (yr - xr) * fmix;
         }
         if (gStep > 0.f) {
             gg -= gStep;
@@ -1126,30 +1567,34 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
         mono[i] += 0.5f * (yl + yr);
         posA += dPosA; posB += dPosB; g += dG; k += dK; pl += dPl; pr += dPr; dr += dDr;
         aL += dAL; aR += dAR; bL += dBL; bR += dBR; wA += dWA; wB += dWB; mA += dMA; mB += dMB; sub += dSub;
+        fmix += dFm; nzg += dNz;
     }
     if (full) {
         v.posA = t.posA; v.posB = t.posB; v.g = t.g; v.k = t.k; v.panL = t.panL; v.panR = t.panR;
         v.aL = t.aL; v.aR = t.aR; v.bL = t.bL; v.bR = t.bR; v.wA = t.wA; v.wB = t.wB; v.drive = t.drive;
-        v.mixA = t.mixA; v.mixB = t.mixB; v.sub = t.sub;
+        v.mixA = t.mixA; v.mixB = t.mixB; v.sub = t.sub; v.fmix = t.fmix; v.noise = t.noise;
     } else {  // bloc de contrôle pas fini : la rampe continue au prochain appel
         v.posA = posA; v.posB = posB; v.g = g; v.k = k; v.panL = pl; v.panR = pr;
         v.aL = aL; v.aR = aR; v.bL = bL; v.bR = bR; v.wA = wA; v.wB = wB; v.drive = dr;
-        v.mixA = mA; v.mixB = mB; v.sub = sub;
+        v.mixA = mA; v.mixB = mB; v.sub = sub; v.fmix = fmix; v.noise = nzg;
     }
+    v.cw = cw & cMask;
+    v.lastA = std::isfinite(lastA) ? lastA : 0.f;
+    v.lastB = std::isfinite(lastB) ? lastB : 0.f;
     v.phA = phA; v.phB = phB; v.phS = phS;
     v.smpPosA = spA; v.smpPosB = spB;
     v.inPosA = ipA; v.inPosB = ipB;
     v.eA = eA; v.eB = eB; v.deA = deA; v.deB = deB; v.envCnt = envCnt;
     v.dcA = dcA; v.dcB = dcB;
     v.env = eA;
-    v.ic1 = std::isfinite(ic1) ? ic1 : 0.f;
-    v.ic2 = std::isfinite(ic2) ? ic2 : 0.f;
-    v.ic1r = std::isfinite(ic1r) ? ic1r : 0.f;
-    v.ic2r = std::isfinite(ic2r) ? ic2r : 0.f;
-    v.ic3 = std::isfinite(ic3) ? ic3 : 0.f;
-    v.ic4 = std::isfinite(ic4) ? ic4 : 0.f;
-    v.ic3r = std::isfinite(ic3r) ? ic3r : 0.f;
-    v.ic4r = std::isfinite(ic4r) ? ic4r : 0.f;
+    auto fin = [](float x) { return std::isfinite(x) ? x : 0.f; };
+    v.ic1 = fin(ic1); v.ic2 = fin(ic2); v.ic1r = fin(ic1r); v.ic2r = fin(ic2r);
+    v.ic3 = fin(ic3); v.ic4 = fin(ic4); v.ic3r = fin(ic3r); v.ic4r = fin(ic4r);
+    for (auto& side : v.fs)
+        for (float& x : side) x = fin(x);
+    v.cLp[0] = fin(v.cLp[0]);
+    v.cLp[1] = fin(v.cLp[1]);
+    for (int c = 0; c < 2; ++c) v.nzF[c] = fin(v.nzF[c]);
     if (v.ghost > 0) v.ghost = alive ? std::max(1, (int)std::lround(gg * (float)stealLen_)) : 0;
     return alive;
 }
@@ -1165,13 +1610,18 @@ void Engine::renderBlock(float* L, float* R, int n, int span) {
     std::fill(R, R + n, 0.f);
     std::fill(mono, mono + n, 0.f);
     const EnvShape esA = envShape(0), esB = envShape(1);
+    // passage à un COMB : les tampons repartent du silence (pas de restes d'anciennes notes)
+    if (filtType_ != lastFiltType_) {
+        if (filtType_ == kFtCombP || filtType_ == kFtCombN) std::fill(combPool_.begin(), combPool_.end(), 0.f);
+        lastFiltType_ = filtType_;
+    }
     for (size_t vi = 0; vi < voices_.size(); ++vi) {
         Voice& v = voices_[vi];
-        if (v.active && !renderVoice(v, voiceTargets_[vi], L, R, mono, n, span, esA, esB)) v.active = false;
+        if (v.active && !renderVoice(v, voiceTargets_[vi], L, R, mono, n, span, esA, esB, combOf((int)vi))) v.active = false;
     }
     for (size_t gi = 0; gi < ghosts_.size(); ++gi) {
         Voice& v = ghosts_[gi];
-        if (v.ghost > 0 && !renderVoice(v, ghostTargets_[gi], L, R, mono, n, span, esA, esB)) v.ghost = 0;
+        if (v.ghost > 0 && !renderVoice(v, ghostTargets_[gi], L, R, mono, n, span, esA, esB, combOf(kVoices + (int)gi))) v.ghost = 0;
     }
 
     // --- TEXTURE : nuage de grains relus dans l'historique du son -----------------------------
@@ -1309,6 +1759,8 @@ void Engine::process(float* outL, float* outR, int numSamples, const NoteEvent* 
     }
     NoteEvent gn;
     while (m_.guiNotes.pop(gn)) {
+        curChan_ = 0;
+        curNoteId_ = -1;
         if (gn.on) inputOn(gn.note, gn.velocity, time_);
         else inputOff(gn.note, time_);
     }
@@ -1326,8 +1778,13 @@ void Engine::process(float* outL, float* outR, int numSamples, const NoteEvent* 
         }
         if (moved && ctlAge_ >= 16) forceControl();
         while (e < nev && ev[e].offset <= done) {
-            if (ev[e].on && ev[e].velocity > 0.f) inputOn(ev[e].note, ev[e].velocity, time_ + done);
-            else inputOff(ev[e].note, time_ + done);
+            const NoteEvent& x = ev[e];
+            if (x.kind != kEvNote) expression(x);
+            else if (x.on && x.velocity > 0.f) {
+                curChan_ = x.channel;
+                curNoteId_ = x.noteId;
+                inputOn(x.note, x.velocity, time_ + done);
+            } else inputOff(x.note, time_ + done);
             ++e;
         }
         fireInternal(time_ + done);
@@ -1356,8 +1813,13 @@ void Engine::process(float* outL, float* outR, int numSamples, const NoteEvent* 
     }
     while (pe < npev) m_.params.set(pev[pe].id, pev[pe].value), ++pe;
     while (e < nev) {  // évènements au-delà du bloc
-        if (ev[e].on && ev[e].velocity > 0.f) inputOn(ev[e].note, ev[e].velocity, time_ + numSamples);
-        else inputOff(ev[e].note, time_ + numSamples);
+        const NoteEvent& x = ev[e];
+        if (x.kind != kEvNote) expression(x);
+        else if (x.on && x.velocity > 0.f) {
+            curChan_ = x.channel;
+            curNoteId_ = x.noteId;
+            inputOn(x.note, x.velocity, time_ + numSamples);
+        } else inputOff(x.note, time_ + numSamples);
         ++e;
     }
     time_ += numSamples;

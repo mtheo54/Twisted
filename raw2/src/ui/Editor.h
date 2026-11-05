@@ -38,6 +38,7 @@ struct EditorState {
     Pattern brushPat = Pattern::Glider;
     // MODULES
     int mxSel = ModMatrix::idx(0, 6);
+    int routeSel = -1;  // route libre sélectionnée (dosage, courbe, source qui la dose), -1 : la liaison de la matrice
     int modSide = 0;  // 0 SIDE A (matrice), 1 SIDE B (rack modulaire)
     // MIX IA
     int aiPhase = 0;  // 0 attente, 1 écoute, 2 terminé
@@ -76,11 +77,16 @@ struct EditorState {
     int wtTool = 0;          // 0 crayon, 1 lissage, 2 distorsion
     bool wtScopeTable = false;
     bool wtImpTable = false;
+    int wtImpMode = 0;     // import : 0 AUTO, 1 CYCLES, 2 RESYNTHÈSE (ImportMode)
+    int wtImpFrames = 64;  // frames voulues pour un son quelconque (64, 128, 256)
+    std::array<bool, 2> envAlt{};  // page ENV / LFO : la carte du haut montre ENV 3, celle du bas ENV 4
     float pSm = 0.5f, pDist = 0.35f, pTsm = 0.4f;
     bool autoNorm = false;
     struct Undo {
         int osc;
-        std::array<Frame, kFrames> fr;
+        std::vector<Frame> fr;
+        std::shared_ptr<const std::vector<float>> hi;
+        std::vector<bool> hiOk;
     };
     std::deque<Undo> undo;
     std::optional<Frame> clip;
@@ -114,6 +120,7 @@ private:
     void drawEfx();
     void drawEnv();
     void drawJeu();
+    void drawSynth();  // page SYNTH (filtre multimode, warps, bruit, unison, expression)
     void drawStar(Pt center, float r, Color col, bool filled);
     std::string exportWav();  // son en cours -> WAV (chemin, vide si échec)                                  // page JEU (voix, 808, macros, arpège, accords)
     void choiceRow(uint32_t id, const char* const* labels, int n, float x, float y, float w, float h, int base = 0);
@@ -190,7 +197,8 @@ private:
 
     // wavetable
     Wavetable& wtCur();      // à appeler avec tableMutex pris
-    int wtSel() const;
+    int wtSel();
+    int wtFrames();          // nombre de frames de la table éditée
     void wtSetSel(int i);
     void wtPushUndo();
     void wtMount();

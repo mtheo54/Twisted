@@ -81,6 +81,8 @@ void normFrame(Frame& a) {
 }
 
 void buildFromSpec(Wavetable& t, const ShapeSpec& spec, const std::string& name) {
+    t.fr.assign(kFrames, Frame{});
+    t.dropHi();
     for (int k = 0; k < kFrames; ++k) {
         const float m = spec.morphStart + (spec.morphEnd - spec.morphStart) * (float)k / 63.f;
         for (int i = 0; i < kPoints; ++i) t.fr[k][i] = genShape(spec.shape, (float)i / kPoints, m);
@@ -92,6 +94,8 @@ void buildFromSpec(Wavetable& t, const ShapeSpec& spec, const std::string& name)
 
 void buildFallback(Wavetable& t, float hh) {
     // Reprend l'oscillateur additif de la maquette : la position règle la pente des partielles.
+    t.fr.assign(kFrames, Frame{});
+    t.dropHi();
     for (int k = 0; k < kFrames; ++k) {
         const double p = (double)k / 63.0, dec = 1.6 - 0.9 * p;
         for (int i = 0; i < kPoints; ++i) {
@@ -111,8 +115,10 @@ void buildFallback(Wavetable& t, float hh) {
 
 float sampleTable(const Wavetable& w, float pos, float u) {
     pos = pos < 0.f ? 0.f : (pos > 1.f ? 1.f : pos);
-    const float fp = pos * (kFrames - 1);
-    const int i0 = (int)fp, i1 = std::min(kFrames - 1, i0 + 1);
+    const int nf = w.frames();
+    if (nf <= 0) return 0.f;
+    const float fp = pos * (float)(nf - 1);
+    const int i0 = std::min(nf - 1, (int)fp), i1 = std::min(nf - 1, i0 + 1);
     const float fz = fp - (float)i0;
     const float f = (u - std::floor(u)) * kPoints;
     int k = (int)f;
@@ -132,61 +138,137 @@ bool shapeFromKey(const char* key, Shape& out) {
     return false;
 }
 
+void MipTable::allocate(int frames) {
+    frames_ = std::clamp(frames, 1, kMaxFrames);
+    size_t o = 0;
+    for (int L = 0; L < kMipLevels; ++L) {
+        off_[L] = o;
+        o += (size_t)frames_ * (size_t)(kMipLens[L] + 4);
+    }
+    data_.assign(o, 0.f);
+}
+
 void MipTable::buildFrame(const Wavetable& t, int f) {
     // spectre de la frame : forme calculée rendue à 4096 points (harmoniques jusqu'à 511 pour les
-    // notes graves), sinon la frame éditée de 256 points (127 harmoniques au plus)
+    // notes graves), frame importée de 2048 points, sinon la frame éditée de 256 points (127 harmoniques)
     constexpr int kHi = 4096;
-    const bool hi = t.spec.has_value();
-    const int n = hi ? kHi : kPoints;
+    const bool calc = t.spec.has_value();
+    const bool imp = !calc && t.hiFrame(f);
+    const int n = calc ? kHi : (imp ? kHiLen : kPoints);
     std::vector<std::complex<double>> spec((size_t)n);
-    if (hi) {
+    if (calc) {
         const ShapeSpec& sp = *t.spec;
-        const float m = sp.morphStart + (sp.morphEnd - sp.morphStart) * (float)f / 63.f;
+        const float m = sp.morphStart + (sp.morphEnd - sp.morphStart) * (float)f / (float)std::max(1, frames_ - 1);
         double mean = 0.0, pk = 1e-9;
         std::vector<double> w((size_t)n);
         for (int i = 0; i < n; ++i) { w[(size_t)i] = genShape(sp.shape, (float)i / (float)n, m); mean += w[(size_t)i]; }
         mean /= n;
         for (double& v : w) { v -= mean; pk = std::max(pk, std::fabs(v)); }  // comme normFrame
         for (int i = 0; i < n; ++i) spec[(size_t)i] = w[(size_t)i] / pk;
+    } else if (imp) {
+        const float* h = t.hi->data() + (size_t)f * kHiLen;
+        for (int i = 0; i < kHiLen; ++i) spec[(size_t)i] = h[i];
     } else {
-        for (int i = 0; i < kPoints; ++i) spec[(size_t)i] = t.fr[f][i];
+        for (int i = 0; i < kPoints; ++i) spec[(size_t)i] = t.fr[(size_t)f][(size_t)i];
     }
     fft(spec, false);
     const int hMax = n / 2 - 1;
-    std::vector<std::complex<double>> buf(kMipLen);
-    // deux niveaux par IFFT : leurs spectres sont hermitiens (signaux réels), donc
+    // deux niveaux par IFFT (même longueur) : leurs spectres sont hermitiens (signaux réels), donc
     // IFFT(A + iB) = a + ib, le niveau pair sort en partie réelle, l'impair en partie imaginaire
-    const double scale = (double)kMipLen / (double)n;  // spectre recopié dans 2048 points : même forme, plus fine
     for (int level = 0; level < kMipLevels; level += 2) {
-        std::fill(buf.begin(), buf.end(), std::complex<double>(0.0, 0.0));
+        const int len = kMipLens[level];
+        std::vector<std::complex<double>> buf((size_t)len);
         const std::complex<double> I(0.0, 1.0);
+        const double scale = (double)len / (double)n;  // spectre recopié dans len points : même forme
         for (int k = 0; k < 2 && level + k < kMipLevels; ++k) {
-            const int H = std::min(kMipHarmonics[level + k], hMax);
+            const int H = std::min({kMipHarmonics[level + k], hMax, len / 2 - 1});
             const std::complex<double> mul = k ? I * scale : std::complex<double>(scale, 0.0);
             for (int h = 1; h <= H; ++h) {
                 buf[(size_t)h] += spec[(size_t)h] * mul;
-                buf[(size_t)(kMipLen - h)] += spec[(size_t)(n - h)] * mul;
+                buf[(size_t)(len - h)] += spec[(size_t)(n - h)] * mul;
             }
         }
         fft(buf, true);
         for (int k = 0; k < 2 && level + k < kMipLevels; ++k) {
-            float* out = data_.data() + ((size_t)(level + k) * kFrames + (size_t)f) * kMipStride + 1;
-            for (int i = 0; i < kMipLen; ++i) out[i] = (float)(k ? buf[(size_t)i].imag() : buf[(size_t)i].real());
-            out[-1] = out[kMipLen - 1];  // gardes circulaires
-            out[kMipLen] = out[0];
-            out[kMipLen + 1] = out[1];
-            out[kMipLen + 2] = out[2];
+            float* out = data_.data() + off_[level + k] + (size_t)f * (size_t)(len + 4) + 1;
+            for (int i = 0; i < len; ++i) out[i] = (float)(k ? buf[(size_t)i].imag() : buf[(size_t)i].real());
+            out[-1] = out[len - 1];  // gardes circulaires
+            out[len] = out[0];
+            out[len + 1] = out[1];
+            out[len + 2] = out[2];
         }
     }
 }
 
 void MipTable::build(const Wavetable& t) {
-    for (int f = 0; f < kFrames; ++f) buildFrame(t, f);
+    allocate(t.frames());
+    for (int f = 0; f < frames_; ++f) buildFrame(t, f);
 }
 
-void MipTable::rebuildFrames(const Wavetable& t, const std::array<bool, kFrames>& dirty) {
-    for (int f = 0; f < kFrames; ++f)
-        if (dirty[f]) buildFrame(t, f);
+void MipTable::rebuildFrames(const Wavetable& t, const std::vector<bool>& dirty) {
+    if (t.frames() != frames_) { build(t); return; }
+    for (int f = 0; f < frames_ && f < (int)dirty.size(); ++f)
+        if (dirty[(size_t)f]) buildFrame(t, f);
+}
+
+float warpPhasePreview(float u, int wm, float w, float other) {
+    if (w <= 0.0005f) return u;
+    auto wrap = [](float x) { x -= std::floor(x); return x >= 0.f && x < 1.f ? x : 0.f; };
+    switch (wm) {
+        case 0: return wrap(u + w * 0.22f * std::sin(6.2831853f * u));
+        case 1: return wrap(u * (1.f + 7.f * w));
+        case 2: case 3: {
+            const float x = 2.f * u - 1.f, e = wm == 2 ? 1.f / (1.f + 4.f * w) : 1.f + 4.f * w;
+            const float y = std::pow(std::fabs(x), e);
+            return std::min(0.99999f, 0.5f * ((x < 0.f ? -y : y) + 1.f));
+        }
+        case 4: { const float d = 1.f - 0.95f * w; return u < d ? u / d : 0.f; }
+        case 5: { const float k = 0.5f - 0.45f * w; return u < k ? 0.5f * u / k : std::min(0.99999f, 0.5f + 0.5f * (u - k) / (1.f - k)); }
+        case 7: { const float p = 1.f - 0.5f * w; return u < p ? u / p : std::min(0.99999f, (1.f - u) / std::max(1e-4f, 1.f - p)); }
+        case 9: return wrap(u + w * w * 3.f * other);
+        default: return u;
+    }
+}
+
+float warpAmpPreview(float s, float u, int wm, float w, float other) {
+    if (w <= 0.0005f) return s;
+    switch (wm) {
+        case 6: return u >= 1.f - w ? -s : s;
+        case 8: { const float q = std::exp2(1.f + 9.f * (1.f - w)); return std::round(s * q) / q; }
+        case 10: return s * (1.f + w * other) / (1.f + w);
+        case 11: return s + w * (s * other - s);
+        default: return s;
+    }
+}
+
+void frameHi(const Wavetable& t, int f, float* out) {
+    if (t.hiFrame(f)) {
+        std::copy(t.hi->data() + (size_t)f * kHiLen, t.hi->data() + (size_t)(f + 1) * kHiLen, out);
+        return;
+    }
+    std::vector<std::complex<double>> a(kPoints), b(kHiLen);
+    for (int i = 0; i < kPoints; ++i) a[(size_t)i] = t.fr[(size_t)f][(size_t)i];
+    fft(a, false);
+    const double sc = (double)kHiLen / (double)kPoints;
+    for (int h = 1; h < kPoints / 2; ++h) {
+        b[(size_t)h] = a[(size_t)h] * sc;
+        b[(size_t)(kHiLen - h)] = a[(size_t)(kPoints - h)] * sc;
+    }
+    fft(b, true);
+    for (int i = 0; i < kHiLen; ++i) out[i] = (float)b[(size_t)i].real();
+}
+
+void decimateFrame(const float* hi, Frame& out) {
+    std::vector<std::complex<double>> a(kHiLen), b(kPoints);
+    for (int i = 0; i < kHiLen; ++i) a[(size_t)i] = hi[i];
+    fft(a, false);
+    const double sc = (double)kPoints / (double)kHiLen;
+    for (int h = 1; h < kPoints / 2; ++h) {
+        b[(size_t)h] = a[(size_t)h] * sc;
+        b[(size_t)(kPoints - h)] = a[(size_t)(kHiLen - h)] * sc;
+    }
+    fft(b, true);
+    for (int i = 0; i < kPoints; ++i) out[(size_t)i] = (float)b[(size_t)i].real();
 }
 
 } // namespace raw2

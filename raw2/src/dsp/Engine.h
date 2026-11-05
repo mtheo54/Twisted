@@ -1,7 +1,8 @@
 #pragma once
-// Moteur audio de RAW 2 : synthé polyphonique (16 voix, unison, mono / legato avec glide),
-// 2 oscillateurs wavetable par voix et un sous-oscillateur, accords et arpégiateur,
-// enveloppe ADSR, filtre passe-bas 12 dB/oct, matrice de modulation 6 x 8, liaison avec la vie,
+// Moteur audio de RAW 2 : synthé polyphonique (32 voix, unison jusqu'à 16, mono / legato avec glide),
+// 2 oscillateurs wavetable par voix (12 modes de warp, FM / AM / RM croisées), un sous-oscillateur
+// et un oscillateur de bruit, accords et arpégiateur, 4 enveloppes (A, B, ENV 3, ENV 4), filtre
+// multimode (10 types, 12 / 24 dB), MPE, matrice de modulation 6 x 8, routes par note, liaison avec la vie,
 // modules HARMONIQUES / ESPACE / TEXTURE et chaîne de mixage acceptée dans MIX IA.
 // Aucune allocation ni verrou dans process().
 #include "core/Model.h"
@@ -25,7 +26,7 @@ public:
     void process(float* outL, float* outR, int numSamples, const NoteEvent* events, int numEvents,
                  const ParamEvent* params = nullptr, int numParams = 0);
 
-    static constexpr int kVoices = 16;
+    static constexpr int kVoices = 32;
     int latencySamples() const { return master_.latencySamples(); }  // anticipation du limiteur
 
 private:
@@ -87,6 +88,27 @@ private:
         float incS = 0.f, sub = 0.f;
         float ic3 = 0.f, ic4 = 0.f, ic3r = 0.f, ic4r = 0.f;  // second étage du filtre (24 dB)
         float lin1[2] = {0.f, 0.f};
+        // v6 : modes de warp, dernière sortie brute de chaque oscillateur (FM / AM / RM croisées)
+        int wmA = 0, wmB = 0;
+        float lastA = 0.f, lastB = 0.f;
+        // filtre multimode : étages en plus (FORMANT 3 bandes, PHASE 4 passe-tout), amorti du COMB
+        float fs[2][8] = {};
+        float cLp[2] = {0.f, 0.f};
+        int cw = 0;
+        // bruit : générateurs gauche / droite, rose (3 pôles), couleur, craquements, numérique
+        uint32_t nz[2] = {1u, 2u};
+        float pk[2][3] = {};
+        float nzF[2] = {0.f, 0.f};
+        float crk = 0.f, nzHold = 0.f;
+        double nzPh = 0.0;
+        // ENV 3 / ENV 4 (modulation, par note), expression (MPE / Note Expression), aléa par note
+        EnvGen env3, env4;
+        float e3 = 0.f, e4 = 0.f;
+        int chan = 0, noteId = -1;
+        float press = 0.f, polyPress = 0.f, timbre = 0.f, bendSt = 0.f, rnd = 0.f;
+        float uniG = 1.f;
+        // valeurs de contrôle v6 (début de bloc -> fin de bloc)
+        float fmix = 1.f, noise = 0.f, fc = 1000.f, morph = 0.f, fdrv = 0.f;
         // voix volée : fondu de sortie (échantillons restants), pendant que la nouvelle note démarre
         int ghost = 0;
         float ic1 = 0.f, ic2 = 0.f, ic1r = 0.f, ic2r = 0.f;  // filtre (gauche, droite)
@@ -100,6 +122,7 @@ private:
     struct VoiceTargets {
         float posA = 0, posB = 0, g = 0, k = 2, panL = 1, panR = 1, aL = 0, aR = 0, bL = 0, bR = 0, wA = 0, wB = 0, drive = 1;
         float mixA = 0, mixB = 0, sub = 0;
+        float fmix = 1, noise = 0, fc = 1000, morph = 0, fdrv = 0;
     };
     struct Grain {
         bool on = false;
@@ -124,7 +147,11 @@ private:
     void retarget(int note, float vel, bool retrigger);
     void allOff(bool hard);
     void renderBlock(float* L, float* R, int n, int span);
-    bool renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, float* mono, int n, int span, const EnvShape& esA, const EnvShape& esB);
+    bool renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, float* mono, int n, int span, const EnvShape& esA, const EnvShape& esB,
+                     float* comb);
+    float* combOf(int slot) { return combPool_.data() + (size_t)slot * 2 * (size_t)combLen_; }  // voix 0..31, fantômes 32..39
+    void expression(const NoteEvent& e);
+    float srcValue(int s, const Voice* v) const;  // valeur d'une source de route (v : la note, sinon la plus récente)
     void startSample(Voice& v, int osc, float semis);
     float pv(uint32_t id) const;  // valeur du paramètre + routes libres
     void controlUpdate(int n);
@@ -135,7 +162,7 @@ private:
     int maxBlock_ = 1024;
     std::array<Voice, kVoices> voices_;
     std::array<VoiceTargets, kVoices> voiceTargets_{};
-    static constexpr int kGhosts = 4;  // voix volées en cours de fondu (3 ms)
+    static constexpr int kGhosts = 8;  // voix volées en cours de fondu (3 ms)
     std::array<Voice, kGhosts> ghosts_;
     std::array<VoiceTargets, kGhosts> ghostTargets_{};
     int stealLen_ = 144;
@@ -177,7 +204,27 @@ private:
     void applyRoutes();
     const SampleSet* smpSet_[2] = {nullptr, nullptr};
     const Instrument* inst_[2] = {nullptr, nullptr};
-    EnvShape envShape(int osc) const;
+    EnvShape envShape(int osc) const;   // 0 : A, 1 : B, 2 : ENV 3, 3 : ENV 4
+    // routes dont la source (ou la source auxiliaire) change d'une note à l'autre, vers un réglage
+    // calculé voix par voix : appliquées dans la boucle des voix
+    enum VoiceDst { kVdAPos, kVdBPos, kVdALvl, kVdBLvl, kVdAPan, kVdBPan, kVdAWarp, kVdBWarp, kVdCut, kVdReso, kVdDrive,
+                    kVdMorph, kVdMix, kVdNoise, kVdSub, kVdBlend, kNumVd };
+    static int voiceDst(uint32_t id);
+    struct VRoute { int src, aux, curve, vd; float amt; };
+    std::array<VRoute, kMaxFreeRoutes> vr_{};
+    int nVr_ = 0;
+    const Voice* newest_ = nullptr;
+    // MPE : dernier état de chaque canal (repris par une note qui démarre sur ce canal)
+    std::array<float, 16> chBend_{}, chPress_{}, chTimbre_{};
+    int curChan_ = 0, curNoteId_ = -1;
+    float noteRnd_ = 0.f;
+    // filtre multimode : type du bloc, tampons des COMB (un par voix et par fantôme)
+    int filtType_ = 0, lastFiltType_ = 0;
+    std::vector<float> combPool_;
+    int combLen_ = 2048;
+    // bruit : couleur (passe-bas ou passe-haut d'un pôle), type
+    float nzA_ = 1.f;
+    int nzMode_ = 2, nzType_ = 0;
     float liveSm_ = 0.f, pulse_ = 0.f, centroidSm_ = 0.f;
     uint32_t lastGen_ = 0;
     float lifeMod_ = 0.f, grainAmt_ = 0.f, masterGain_ = 0.f, masterTarget_ = 0.f, space_ = 0.f, liveNow_ = 0.f;
@@ -192,7 +239,7 @@ private:
     float lastPitch_ = -1.f, lastVel_ = 0.8f;
     std::array<int, 32> monoStack_{};
     int nMono_ = 0;
-    struct Pending { int64_t t; int note; float vel; bool on; };
+    struct Pending { int64_t t; int note; float vel; bool on; int chan; };
     std::array<Pending, 256> pend_{};
     int nPend_ = 0;
     int64_t time_ = 0;                        // temps absolu (échantillons) au début du bloc de l'hôte

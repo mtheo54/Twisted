@@ -12,16 +12,27 @@
 
 namespace raw2 {
 
-constexpr int kFrames = 64;
-constexpr int kPoints = 256;
+constexpr int kFrames = 64;       // nombre de frames par défaut (presets d'usine, tables calculées)
+constexpr int kMaxFrames = 256;   // une table importée peut en avoir jusqu'à 256 (comme Serum)
+constexpr int kPoints = 256;      // points d'une frame éditée (écran de l'éditeur)
+constexpr int kHiLen = 2048;      // points d'une frame importée (haute résolution, jusqu'à 1023 harmoniques)
 
 using Frame = std::array<float, kPoints>;
 
 struct Wavetable {
     std::string name;
-    std::array<Frame, kFrames> fr{};
+    std::vector<Frame> fr = std::vector<Frame>(kFrames);  // fr.size() frames (1..256)
     // Forme d'origine si la table sort intacte d'un preset (les fichiers restent compacts).
     std::optional<ShapeSpec> spec;
+    // Version haute résolution d'une table importée : fr.size() x 2048 points, jamais modifiée
+    // (partagée entre les copies). hiOk[f] : la frame f n'a pas été retouchée depuis l'import, la
+    // lecture audio part de ses 2048 points ; sinon des 256 points de fr[f].
+    std::shared_ptr<const std::vector<float>> hi;
+    std::vector<bool> hiOk;
+    int frames() const { return (int)fr.size(); }
+    bool hiFrame(int f) const { return hi && f >= 0 && f < (int)hiOk.size() && hiOk[(size_t)f] && hi->size() >= (size_t)(f + 1) * kHiLen; }
+    void touch(int f) { if (f >= 0 && f < (int)hiOk.size()) hiOk[(size_t)f] = false; }  // frame retouchée dans l'éditeur
+    void dropHi() { hi.reset(); hiOk.clear(); }
 };
 
 // Formes de base de la maquette (genShape) : u dans [0, 1), m = morph dans [0, 1].
@@ -34,22 +45,25 @@ float sampleTable(const Wavetable& t, float pos, float u);  // lecture interpol�
 const char* shapeKey(Shape s);
 bool shapeFromKey(const char* key, Shape& out);
 
-// Version audio : niveaux [level][frame][kMipLen + 4], un niveau par demi-octave.
-// Le niveau L garde kMipHarmonics[L] harmoniques. Les formes calculées (preset d'usine) sont
-// rendues à 4096 points pour remplir les niveaux riches (jusqu'à 511 harmoniques, notes graves) ;
-// une table éditée (256 points) s'arrête à 127 harmoniques.
+// Version audio : niveaux [level][frame][longueur + 4], un niveau par demi-octave.
+// Le niveau L garde kMipHarmonics[L] harmoniques, sur kMipLens[L] points (16 points par
+// harmonique au moins : les niveaux pauvres sont plus courts, la mémoire reste raisonnable avec
+// 256 frames). Les formes calculées (preset d'usine) sont rendues à 4096 points pour remplir les
+// niveaux riches (jusqu'à 511 harmoniques, notes graves) ; une frame importée (2048 points) aussi ;
+// une frame éditée (256 points) s'arrête à 127 harmoniques.
 constexpr int kMipLevels = 18;
 constexpr int kMipLen = 2048;
-constexpr int kMipStride = kMipLen + 4;  // un point de garde avant, trois après (lecture Hermite)
 constexpr int kMipHarmonics[kMipLevels] = {511, 362, 256, 181, 127, 90, 63, 45, 32, 22, 16, 11, 8, 6, 4, 3, 2, 1};
+constexpr int kMipLens[kMipLevels] = {2048, 2048, 2048, 2048, 2048, 2048, 1024, 1024, 512, 512, 256, 256, 128, 128, 64, 64, 64, 64};
 constexpr int kMipHermiteBelow = 4;      // niveaux 0..3 (plus de 127 harmoniques) : interpolation cubique
 
 class MipTable {
 public:
     void build(const Wavetable& t);
-    // Recalcule seulement les frames marquées (copie d'une table existante).
-    void rebuildFrames(const Wavetable& t, const std::array<bool, kFrames>& dirty);
-    const float* frame(int level, int f) const { return data_.data() + ((size_t)level * kFrames + (size_t)f) * kMipStride + 1; }
+    // Recalcule seulement les frames marquées (copie d'une table existante, même nombre de frames).
+    void rebuildFrames(const Wavetable& t, const std::vector<bool>& dirty);
+    int frames() const { return frames_; }
+    const float* frame(int level, int f) const { return data_.data() + off_[level] + (size_t)f * (size_t)(kMipLens[level] + 4) + 1; }
     // Niveau le plus riche dont les harmoniques repliées restent au-dessus de 20 kHz :
     // limite 0.54 * fs (à 44.1 kHz, une harmonique à 0.54 fs se replie vers 20.3 kHz).
     static int levelFor(float phaseInc) {
@@ -71,18 +85,20 @@ public:
     }
     // Lecture : position (0..1) entre frames, phase (0..1).
     inline float read(int level, float pos, float phase) const {
-        const float fp = pos * (kFrames - 1);
+        const int last = frames_ - 1;
+        const float fp = pos * (float)last;
         int i0 = (int)fp;
         if (i0 < 0) i0 = 0;
-        if (i0 > kFrames - 2) i0 = kFrames - 2;
-        const float fz = fp - (float)i0;
-        const float x = phase * kMipLen;
+        if (i0 > last - 1) i0 = last > 0 ? last - 1 : 0;
+        const float fz = last > 0 ? fp - (float)i0 : 0.f;
+        const int len = kMipLens[level];
+        const float x = phase * (float)len;
         int k = (int)x;
         if (k < 0) k = 0;
-        if (k >= kMipLen) k = kMipLen - 1;
+        if (k >= len) k = len - 1;
         const float fr = x - (float)k;
         const float* A = frame(level, i0);
-        const float* B = A + kMipStride;
+        const float* B = last > 0 ? A + len + 4 : A;
         float a, b;
         if (level < kMipHermiteBelow) {
             a = hermite(A + k, fr);
@@ -107,8 +123,21 @@ private:
         const float c3 = 0.5f * (p[2] - p[-1]) + 1.5f * (p[0] - p[1]);
         return ((c3 * f + c2) * f + c1) * f + p[0];
     }
+    void allocate(int frames);
     void buildFrame(const Wavetable& t, int f);
-    std::vector<float> data_ = std::vector<float>((size_t)kMipLevels * kFrames * kMipStride, 0.f);
+    int frames_ = 0;
+    size_t off_[kMipLevels] = {};
+    std::vector<float> data_;
 };
+
+// Frame f en 2048 points : la version importée si elle est intacte, sinon les 256 points
+// suréchantillonnés sans repliement (spectre complété de zéros). Sert à l'export WAV.
+void frameHi(const Wavetable& t, int f, float* out2048);
+// 2048 points -> frame éditée de 256 points (harmoniques au-delà de 127 retirées)
+void decimateFrame(const float* hi2048, Frame& out);
+// Aperçu des modes de warp (interface) : mêmes déformations que le moteur. other : sortie de
+// l'autre oscillateur (FM / AM / RM), u : phase 0..1.
+float warpPhasePreview(float u, int mode, float w, float other);
+float warpAmpPreview(float s, float u, int mode, float w, float other);
 
 } // namespace raw2

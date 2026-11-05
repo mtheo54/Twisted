@@ -521,7 +521,7 @@ void Model::applyInit(ParamSink* sink) {
     instruments.clear(0);
     instruments.clear(1);
     for (uint32_t id = 0; id < kNumParams; ++id)
-        if (id != kPitchBend && id != kModWheel) setParam(sink, id, paramDef(id).def);
+        if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
     // valeurs de la maquette (applyInit) : un sinus, pas d'oscillateur B, aucun effet
     const std::pair<uint32_t, float> v[] = {
         {kAPos, 0.5f}, {kBPos, 0.5f}, {kALvl, 0.78f}, {kBLvl, 0.f}, {kAWarp, 0.f}, {kBWarp, 0.f}, {kAPan, 0.5f}, {kBPan, 0.5f},

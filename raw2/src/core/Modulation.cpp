@@ -32,6 +32,8 @@ int FreeRoutes::add(int src, uint32_t id, int amt) {
     FreeRoute& q = r[(size_t)n];
     q.id.store((int)id);
     q.amt.store(std::clamp(amt, -100, 100));
+    q.curve.store(0);
+    q.aux.store(-1);
     q.src.store(src, std::memory_order_release);  // publiée en dernier : l'audio la lit entière
     return n;
 }
@@ -42,9 +44,17 @@ void FreeRoutes::remove(int i) {
     for (int k = i; k + 1 < n; ++k) {
         r[(size_t)k].id.store(r[(size_t)k + 1].id.load());
         r[(size_t)k].amt.store(r[(size_t)k + 1].amt.load());
+        r[(size_t)k].curve.store(r[(size_t)k + 1].curve.load());
+        r[(size_t)k].aux.store(r[(size_t)k + 1].aux.load());
         r[(size_t)k].src.store(r[(size_t)k + 1].src.load(), std::memory_order_release);
     }
     r[(size_t)n - 1].src.store(-1, std::memory_order_release);
+}
+
+void FreeRoutes::setShape(int i, int curve, int aux) {
+    if (i < 0 || i >= count()) return;
+    r[(size_t)i].curve.store(std::clamp(curve, -100, 100));
+    r[(size_t)i].aux.store(aux >= 0 && aux < kNumRouteSrcs ? aux : -1);
 }
 
 void FreeRoutes::removeSource(int src) {
@@ -71,6 +81,8 @@ json::Value FreeRoutes::save() const {
         o.set("src", r[(size_t)i].src.load());
         o.set("param", paramDef((uint32_t)r[(size_t)i].id.load()).key);
         o.set("amt", r[(size_t)i].amt.load());
+        if (r[(size_t)i].curve.load() != 0) o.set("curve", r[(size_t)i].curve.load());
+        if (r[(size_t)i].aux.load() >= 0) o.set("aux", r[(size_t)i].aux.load());
         a.push(o);
     }
     return a;
@@ -81,7 +93,9 @@ void FreeRoutes::load(const json::Value& v) {
     if (!v.isArray()) return;
     for (const auto& o : v.items()) {
         const int id = paramIdFromKey(o["param"].str().c_str());
-        if (id >= 0) add((int)o["src"].num(-1), (uint32_t)id, (int)o["amt"].num(50));
+        if (id < 0) continue;
+        const int i = add((int)o["src"].num(-1), (uint32_t)id, (int)o["amt"].num(50));
+        if (i >= 0) setShape(i, (int)o["curve"].num(0), (int)o["aux"].num(-1));
     }
 }
 

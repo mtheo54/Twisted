@@ -284,12 +284,13 @@ void Editor::oscCard(int osc, const Rect& card) {
     const float pos = std::clamp(liveAudio ? (osc == 0 ? m_.readouts.posA.load() : m_.readouts.posB.load()) : P(pPos), 0.f, 1.f);
     const int heldN = mouseNote_ >= 0 ? mouseNote_ : (m_.readouts.heldNote.load() >= 0 ? m_.readouts.heldNote.load() - 48 : -1);
     const float kf = heldN >= 0 ? std::pow(2.f, (float)(heldN - 12) / 12.f) : 1.f;
-    const float bend = std::pow(2.f, P(kPitchBend) * 2.f / 12.f);
+    const float bend = std::pow(2.f, P(kPitchBend) * P(kBendRange) / 12.f);
     const float ratio = std::pow(2.f, (float)m_.params.geti(pOct) + (float)m_.params.geti(pSt) / 12.f);
     const float cyc = 2.f * kf * ratio * bend;
     const float amp = (0.35f + 0.65f * P(pLvl)) * (1.f + 0.2f * hit_);
     const float tt = (float)(now_ / 1000.0), rate = osc == 0 ? 0.2f : 0.28f;
     const int mode = m_.params.geti(pMode);
+    const int wmode = std::clamp(m_.params.geti(osc == 0 ? kAWarpMode : kBWarpMode), 0, kNumWarpModes - 1);
     const float warp = std::clamp(P(pWarp) + P(kModWheel) * 0.3f, 0.f, 1.f);
     const float ph0 = mode == 1 ? 0.25f : (mode == 2 ? 0.5f : 0.f);
     auto wrp = [&](float u) {  // même déformation de phase que le moteur
@@ -297,8 +298,7 @@ void Editor::oscCard(int osc, const Rect& card) {
         if (mode == 3) { u = u * 2.f; }
         if (mode == 4) u += tt * 0.15f;
         u -= std::floor(u);
-        u += warp * 0.22f * std::sin(6.2831853f * u);
-        return u;
+        return warpPhasePreview(u, wmode, warp, std::sin(6.2831853f * u));
     };
     c.save();
     c.clip(scr.inset(1.f));
@@ -358,7 +358,13 @@ void Editor::oscCard(int osc, const Rect& card) {
         s.bg = Color{0, 0, 0, 0}; s.fg = T.ink; s.border = T.ink; s.shadow = false; s.dashed = true;
         s.font = Font{Face::Mono, 10.f, 1.4f};
         const std::string lbl = std::string("[ ") + oscModeName(mode) + " ]";
-        if (ui_.button(makeId("oscMode", osc), Rect{card.x + 15.f, card.y + 365.2f, card.w - 30.f, 25.f}, lbl, s)) setParam(pMode, (float)((mode + 1) % 5));
+        const float hw = (card.w - 36.f) / 2.f;
+        if (ui_.button(makeId("oscMode", osc), Rect{card.x + 15.f, card.y + 365.2f, hw, 25.f}, lbl, s)) setParam(pMode, (float)((mode + 1) % 5));
+        // mode de warp : un clic passe au suivant (le choix complet est sur la page SYNTH)
+        const uint32_t pWm = osc == 0 ? kAWarpMode : kBWarpMode;
+        const int wm = std::clamp(m_.params.geti(pWm), 0, kNumWarpModes - 1);
+        const std::string wl = std::string("[ WARP : ") + warpModeName(wm, osc) + " ]";
+        if (ui_.button(makeId("oscWarpMode", osc), Rect{card.x + 21.f + hw, card.y + 365.2f, hw, 25.f}, wl, s)) setParam(pWm, (float)((wm + 1) % kNumWarpModes));
     }
 
     // potards POSITION / WARP / PAN / NIVEAU
@@ -1292,8 +1298,10 @@ void Editor::drawModMatrix() {
                     m_.matrix.amt[(size_t)key] = 50;
                     m_.matrix.on[(size_t)key] = true;
                     st_.mxSel = key;
-                } else if (st_.mxSel != key) {
+                    st_.routeSel = -1;
+                } else if (st_.mxSel != key || st_.routeSel >= 0) {
                     st_.mxSel = key;
+                    st_.routeSel = -1;
                 } else {
                     m_.matrix.on[(size_t)key] = false;
                     st_.mxSel = -1;
@@ -1360,6 +1368,58 @@ void Editor::drawModMatrix() {
     const Rect lc{916.f, 115.f, 340.f, 191.f};
     ui_.card(lc);
     ui_.cardHeader(lc, "LIAISON", false, 14.f, 12.f);
+    if (st_.routeSel >= m_.routes.count()) st_.routeSel = -1;
+    if (st_.routeSel >= 0) {
+        // route libre : dosage, courbe (-100 exp .. +100 log) et source qui la dose (AUX)
+        const int ri = st_.routeSel;
+        FreeRoute& fr = m_.routes.r[(size_t)ri];
+        ui_.tag("route libre", lc.r() - 15.f, 128.f, Ui::Tag::Accent);
+        const int src = fr.src.load(), amt = fr.amt.load(), curve = fr.curve.load(), aux = fr.aux.load();
+        ui_.text(ui_.fit(std::string(routeSrcName(src)) + "  \xE2\x86\x92  " + upper(paramDef((uint32_t)fr.id.load()).name), Font{Face::MonoBold, 13.f, 0.6f}, 310.f), 931.f, 160.f,
+                 Font{Face::MonoBold, 13.f, 0.6f}, T.ink);
+        const Font lf2{Face::Mono, 10.f, 1.f};
+        auto bar = [&](Id id, float y, int v, auto&& set) {
+            const Rect tr{931.f, y, 228.f, 16.f};
+            const Ui::Interact it = ui_.interact(id, tr, Cursor::ResizeEW);
+            if (it.held) set(std::clamp((int)std::lround((ui_.in().mouse.x - tr.x) / tr.w * 200.f - 100.f), -100, 100));
+            ui_.box(tr, T.railBg, T.rule);
+            const float inner = tr.w - 2.f, mid = tr.x + 1.f + inner / 2.f, fw = std::fabs((float)v) / 200.f * inner;
+            c.fillRect(Rect{v >= 0 ? mid : mid - fw, tr.y + 1.f, fw, 14.f}, T.acc);
+            c.fillRect(Rect{mid, tr.y - 2.f, 1.f, 20.f}, T.ink);
+        };
+        ui_.text("DOSAGE", 931.f, 184.f, lf2, T.muted);
+        ui_.textRight(signedPct((float)amt), 1159.f, 184.f, lf2, T.ink);
+        bar(makeId("rtAmt", ri), 199.f, amt, [&](int v) { fr.amt.store(v); });
+        ui_.text("COURBE", 931.f, 222.f, lf2, T.muted);
+        ui_.textRight(curve == 0 ? std::string("LIN\xC3\x89" "AIRE") : (curve > 0 ? fmt("LOG %d", curve) : fmt("EXP %d", -curve)), 1159.f, 222.f, lf2, T.ink);
+        bar(makeId("rtCurve", ri), 237.f, curve, [&](int v) { m_.routes.setShape(ri, v, fr.aux.load()); });
+        // aperçu de la courbe (source 0..1 -> effet)
+        {
+            const Rect pv{1169.f, 184.f, 72.f, 69.f};
+            ui_.screen(pv);
+            std::vector<Pt> pts;
+            for (int i = 0; i <= 32; ++i) {
+                const float x = (float)i / 32.f;
+                pts.push_back(Pt{pv.x + 4.f + x * (pv.w - 8.f), pv.b() - 4.f - routeCurve(x, curve) * (pv.h - 8.f)});
+            }
+            c.polyline(pts.data(), (int)pts.size(), T.waveA, 1.5f);
+        }
+        {
+            const std::string at = std::string("[ DOS\xC3\x89" "E PAR : ") + (aux >= 0 ? routeSrcName(aux) : "AUCUNE") + " ]";
+            ButtonStyle bs = ui_.miniStyle(aux >= 0);
+            bs.font = Font{Face::Mono, 10.f, 0.5f};
+            if (ui_.button(makeId("rtAux", ri), Rect{931.f, 263.f, 228.f, 30.f}, at, bs)) {
+                int nx = aux + 1;
+                if (nx == src) ++nx;
+                if (nx >= kNumRouteSrcs) nx = -1;
+                m_.routes.setShape(ri, curve, nx);
+            }
+            if (ui_.button(makeId("rtCut", ri), Rect{1169.f, 263.f, 72.f, 30.f}, "COUPER", ui_.miniStyle(false))) {
+                m_.routes.remove(ri);
+                st_.routeSel = -1;
+            }
+        }
+    } else {
     ui_.tag("dosage", lc.r() - 15.f, 128.f, Ui::Tag::Line);
     const bool hasSel = st_.mxSel >= 0 && m_.matrix.on[(size_t)st_.mxSel].load();
     const int selAmt = hasSel ? m_.matrix.amt[(size_t)st_.mxSel].load() : 0;
@@ -1407,6 +1467,8 @@ void Editor::drawModMatrix() {
         }
     }
 
+    }  // fin de la liaison de la matrice
+
     // --- PATCHS ACTIFS ---
     std::vector<int> keys;
     for (int k = 0; k < 48; ++k)
@@ -1432,29 +1494,40 @@ void Editor::drawModMatrix() {
             const Rect r{931.f, 375.f + (float)i * 34.f - scroll, 310.f, 30.f};
             if (r.b() < area.y || r.y > area.b()) continue;
             const bool on = st_.mxSel == k;
-            if (ui_.interact(makeId("patch", k), r).clicked) st_.mxSel = k;
+            if (ui_.interact(makeId("patch", k), r).clicked) { st_.mxSel = k; st_.routeSel = -1; }
             ui_.box(r, on ? T.tabBg : Color{0, 0, 0, 0}, on ? T.ink : T.rule);
             const Color fg = on ? T.tabFg : T.ink;
             ui_.text(std::string(kSrc[k / 8]) + " \xE2\x86\x92 " + kDst[k % 8], r.x + 11.f, r.y + 8.f, Font{Face::Mono, 11.f, 0.f}, fg);
             ui_.textRight(signedPct((float)m_.matrix.amt[(size_t)k].load()), r.r() - 11.f, r.y + 8.f, Font{Face::MonoBold, 11.f, 0.f}, fg);
         }
-        // routes libres (glissées depuis [✛ MOD]) : cadre orange en pointillés, clic : couper
+        // routes libres (glissées depuis [✛ MOD]) : cadre orange en pointillés ; clic : la régler
+        // dans LIAISON (dosage, courbe, source qui la dose), ✕ : la couper
         int cut = -1;
         for (int i = 0; i < nRoutes; ++i) {
             const Rect r{931.f, 375.f + (float)(keys.size() + (size_t)i) * 34.f - scroll, 310.f, 30.f};
             if (r.b() < area.y || r.y > area.b()) continue;
-            if (ui_.interact(makeId("route", i), r).clicked) cut = i;
+            const Rect xr{r.r() - 28.f, r.y, 28.f, r.h};
+            if (ui_.interact(makeId("routeX", i), xr).clicked) cut = i;
+            else if (ui_.interact(makeId("route", i), Rect{r.x, r.y, r.w - 28.f, r.h}).clicked) st_.routeSel = i;
+            if (st_.routeSel == i) ui_.box(r, T.tabBg, T.ink);
             const Pt q[5] = {{r.x + 0.5f, r.y + 0.5f}, {r.r() - 0.5f, r.y + 0.5f}, {r.r() - 0.5f, r.b() - 0.5f}, {r.x + 0.5f, r.b() - 0.5f}, {r.x + 0.5f, r.y + 0.5f}};
             c.dashedPolyline(q, 5, Color::rgb8(255, 122, 26), 1.f, 3.f, 3.f);
             const int src = m_.routes.r[(size_t)i].src.load(), amt = m_.routes.r[(size_t)i].amt.load();
             const Font rf{Face::Mono, 11.f, 0.f};
             const std::string amtTxt = signedPct((float)amt) + "  \xE2\x9C\x95";
             const float aw = ui_.width(amtTxt, Font{Face::MonoBold, 11.f, 0.f});
-            ui_.text(ui_.fit(std::string(routeSrcName(src)) + " \xE2\x87\xA2 " + upper(paramDef((uint32_t)m_.routes.r[(size_t)i].id.load()).name), rf, r.w - 30.f - aw),
-                     r.x + 11.f, r.y + 8.f, rf, T.ink);
-            ui_.textRight(amtTxt, r.r() - 11.f, r.y + 8.f, Font{Face::MonoBold, 11.f, 0.f}, T.ink);
+            const Color rc = st_.routeSel == i ? T.tabFg : T.ink;
+            const bool shaped = m_.routes.r[(size_t)i].curve.load() != 0 || m_.routes.r[(size_t)i].aux.load() >= 0;
+            ui_.text(ui_.fit(std::string(routeSrcName(src)) + " \xE2\x87\xA2 " + upper(paramDef((uint32_t)m_.routes.r[(size_t)i].id.load()).name) + (shaped ? " \xE2\x88\xBF" : ""), rf,
+                             r.w - 30.f - aw),
+                     r.x + 11.f, r.y + 8.f, rf, rc);
+            ui_.textRight(amtTxt, r.r() - 11.f, r.y + 8.f, Font{Face::MonoBold, 11.f, 0.f}, rc);
         }
-        if (cut >= 0) m_.routes.remove(cut);
+        if (cut >= 0) {
+            m_.routes.remove(cut);
+            if (st_.routeSel == cut) st_.routeSel = -1;
+            else if (st_.routeSel > cut) --st_.routeSel;
+        }
         c.restore();
         if (nItems == 0) ui_.text("aucune liaison, clique sur la matrice", 931.f, 383.f, Font{Face::Mono, 11.f, 0.f}, T.muted);
     }

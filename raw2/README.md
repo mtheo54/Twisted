@@ -19,6 +19,14 @@ les comportements, avec un vrai moteur audio derrière.
 - **v8, jeu et flux de travail** : un arpégiateur calé sur l'hôte, des accords en un doigt avec
   strum, des favoris et un bouton HASARD dans le navigateur, et l'export du son joué en WAV, à
   glisser directement dans la DAW.
+- **v9, synthèse** (page SYNTH, voir [`docs/SYNTH.md`](docs/SYNTH.md)) : un filtre multimode à 10 types
+  (LP, HP, BP, NOTCH, PEAK, PHASE, COMB +, COMB −, FORMANT, MORPH LP→BP→HP), 12 modes de warp par
+  oscillateur dont **FM, AM et RM croisées** entre A et B, un oscillateur de bruit (blanc, rose,
+  craquements, numérique), l'unison jusqu'à **16 copies** (32 voix au total) avec BLEND et écart
+  maximal, **ENV 3 et ENV 4** pour la modulation, des routes **par note** avec **courbe** et
+  **source qui les dose**, l'aftertouch et le **MPE** (Audio Unit et VST3 Note Expression), et des
+  tables de **256 frames** importées en 2048 points (tables Serum / Vital telles quelles, ou
+  n'importe quel son découpé en cycles, ou resynthétisé).
 - **Instruments réels** (ROMpler) : chaque oscillateur peut jouer un instrument multi-échantillonné
   au format SFZ. Une banque de 23 instruments sous licence libre (Wurlitzer, CP80, Pianet, string
   machines, cuivres, basses et sifflet G-funk, sax, vibraphone…) est livrée à part, avec le pack
@@ -209,10 +217,11 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
 
 ### Moteur audio
 
-- **16 voix** (v6), 2 oscillateurs wavetable par voix (64 frames × 256 points, lecture interpolée entre
-  frames). Pour l'audio, chaque table est convertie en **mipmaps anti-repliement** (18 niveaux,
-  jusqu'à 511 harmoniques dans le grave, 2048 points, Hermite sur les niveaux riches et fondu
-  continu d'un niveau à l'autre) sur un thread à part, puis échangée sans verrou. Vol de voix en
+- **32 voix** (v9), 2 oscillateurs wavetable par voix (1 à 256 frames, éditées en 256 points, importées
+  en 2048 points ; lecture interpolée entre frames). Pour l'audio, chaque table est convertie en
+  **mipmaps anti-repliement** (18 niveaux, jusqu'à 511 harmoniques dans le grave, 16 points par
+  harmonique au moins, Hermite sur les niveaux riches et fondu continu d'un niveau à l'autre) sur un
+  thread à part, puis échangée sans verrou. Vol de voix en
   fondu de 3 ms, légère dérive analogique par voix, drive anti-crénelé (ADAA).
 - Deux enveloppes ADSR par voix, une par oscillateur, à courbe réglable (attaque `u^(1/q)`, déclin
   et relâche `(1-u)^q`, `q = 4^((c-0,5)×2)`, formules de la maquette ; attaque 1 ms à 5 s, déclin

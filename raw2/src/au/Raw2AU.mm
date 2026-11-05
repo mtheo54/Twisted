@@ -497,14 +497,42 @@ OSStatus scheduleParameters(void* p, const AudioUnitParameterEvent* ev, UInt32 n
 OSStatus midiEvent(void* p, UInt32 status, UInt32 d1, UInt32 d2, UInt32 offset) {
     Instance* in = self(p);
     const UInt32 kind = status & 0xF0;
+    const uint8_t ch = (uint8_t)(status & 0x0F);
+    // MPE : le canal 1 (0) porte les réglages globaux, les canaux 2..16 une note chacun
+    const bool member = in->model.params.get(kMpe) > 0.5f && ch != 0;
+    auto expr = [&](uint8_t k, float v) {
+        NoteEvent e;
+        e.offset = (int)offset;
+        e.kind = k;
+        e.channel = ch;
+        e.value = v;
+        in->midiIn.push(e);
+    };
     if (kind == 0x90 || kind == 0x80) {
         const bool on = kind == 0x90 && d2 > 0;
-        in->midiIn.push(NoteEvent{(int)offset, (int)(d1 & 0x7F), on ? (float)(d2 & 0x7F) / 127.f : 0.f, on});
+        NoteEvent e{(int)offset, (int)(d1 & 0x7F), on ? (float)(d2 & 0x7F) / 127.f : 0.f, on};
+        e.channel = ch;
+        in->midiIn.push(e);
+    } else if (kind == 0xA0) {  // aftertouch polyphonique
+        NoteEvent e;
+        e.offset = (int)offset;
+        e.kind = kEvPolyPress;
+        e.note = (int)(d1 & 0x7F);
+        e.channel = ch;
+        e.value = (float)(d2 & 0x7F) / 127.f;
+        in->midiIn.push(e);
+    } else if (kind == 0xD0) {  // pression du canal
+        if (member) expr(kEvChanPress, (float)(d1 & 0x7F) / 127.f);
+        else in->model.params.set(kAftertouch, (float)(d1 & 0x7F) / 127.f);
+    } else if (kind == 0xB0 && d1 == 74) {  // glissé / brillance (CC 74)
+        if (member) expr(kEvChanTimbre, (float)(d2 & 0x7F) / 127.f);
+        else in->model.params.set(kTimbre, (float)(d2 & 0x7F) / 127.f);
     } else if (kind == 0xB0 && d1 == 1) {  // molette de modulation
         in->model.params.set(kModWheel, fromNormalized(kModWheel, (float)(d2 & 0x7F) / 127.f));
     } else if (kind == 0xE0) {  // pitch bend 14 bits
         const float norm = (float)(((d2 & 0x7F) << 7) | (d1 & 0x7F)) / 16383.f;
-        in->model.params.set(kPitchBend, fromNormalized(kPitchBend, norm));
+        if (member) expr(kEvChanBend, norm * 2.f - 1.f);
+        else in->model.params.set(kPitchBend, fromNormalized(kPitchBend, norm));
     }
     return noErr;
 }

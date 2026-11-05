@@ -10,8 +10,10 @@ namespace raw2::ui {
 
 namespace {
 
-const uint32_t kEnvIds[2][5] = {{kAttack, kDecay, kSustain, kRelease, kEnvACurve},
-                                {kEnvBAttack, kEnvBDecay, kEnvBSustain, kEnvBRelease, kEnvBCurve}};
+const uint32_t kEnvIds[4][5] = {{kAttack, kDecay, kSustain, kRelease, kEnvACurve},
+                                {kEnvBAttack, kEnvBDecay, kEnvBSustain, kEnvBRelease, kEnvBCurve},
+                                {kEnv3Attack, kEnv3Decay, kEnv3Sustain, kEnv3Release, kEnv3Curve},
+                                {kEnv4Attack, kEnv4Decay, kEnv4Sustain, kEnv4Release, kEnv4Curve}};
 const float kCurves[4] = {0.5f, 0.8f, 0.2f, 1.f};  // LIN, EXP, LOG, EXTR
 
 std::string timeTxt(float s) {
@@ -76,14 +78,43 @@ void Editor::envCard(int i, const Rect& card) {
     const Theme& T = *T_;
     ParamStore& P = m_.params;
     ui_.card(card);
-    ui_.text(i == 0 ? "ENV \xC2\xB7 OSC A" : "ENV \xC2\xB7 OSC B", card.x + 15.f, card.y + 17.f, Font{Face::Pixel, 16.f, 1.28f}, T.ink, 16.f);
+    static const char* titles[4] = {"ENV \xC2\xB7 OSC A", "ENV \xC2\xB7 OSC B", "ENV 3 \xC2\xB7 MOD", "ENV 4 \xC2\xB7 MOD"};
+    ui_.text(titles[i], card.x + 15.f, card.y + 17.f, Font{Face::Pixel, 16.f, 1.28f}, T.ink, 16.f);
     c.fillRect(Rect{card.x + 15.f, card.y + 47.f, card.w - 30.f, 1.f}, T.rule);
-    const bool linked = P.get(kEnvLink) > 0.5f;
+    const bool mod = i >= 2;  // ENV 3 / ENV 4 : enveloppes de modulation (poignée [+ MOD])
+    const bool linked = !mod && P.get(kEnvLink) > 0.5f;
+    // bascule de la carte : enveloppe de l'oscillateur ou enveloppe de modulation
+    {
+        const int slot = i & 1;
+        const char* lab[2] = {slot ? "B" : "A", slot ? "4" : "3"};
+        for (int k = 0; k < 2; ++k) {
+            ButtonStyle bs;
+            const bool on = (k == 1) == mod;
+            bs.bg = on ? T.ink : T.btnBg;
+            bs.fg = on ? T.card : T.ink;
+            bs.border = T.ink;
+            bs.font = Font{Face::Mono, 9.f, 0.5f};
+            bs.pressed = on;
+            if (ui_.button(makeId("envAlt", slot * 2 + k), Rect{card.x + 158.f + (float)k * 28.f, card.y + 13.f, 26.f, 24.f}, lab[k], bs))
+                st_.envAlt[(size_t)slot] = k == 1;
+        }
+    }
 
     // boutons de l'en-tête, alignés à droite
     {
         float right = card.r() - 15.f, w = 0.f;
         const uint32_t curveId = kEnvIds[i][4], modeId = i == 0 ? kEnvAMode : kEnvBMode;
+        if (mod) {
+            const std::string cn = envCurveName(P.get(curveId));
+            if (envBtn(makeId("envCurve", i), right, card.y + 13.f, "[ COURBE : " + cn + " ]", false, &w)) {
+                int n = -1;
+                for (int k = 0; k < 4; ++k)
+                    if (std::fabs(P.get(curveId) - kCurves[k]) < 0.04f) n = k;
+                setParam(curveId, kCurves[(n + 1) % 4]);
+            }
+            right -= w + 6.f;
+            modHandle(makeId("envMod", i), Rect{right - 76.f, card.y + 14.f, 76.f, 22.f}, i == 2 ? kRouteSrcEnv3 : kRouteSrcEnv4);
+        } else {
         const std::string cn = envCurveName(P.get(curveId));
         if (envBtn(makeId("envCurve", i), right, card.y + 13.f, "[ COURBE : " + cn + " ]", false, &w)) {
             int n = -1;
@@ -107,6 +138,7 @@ void Editor::envCard(int i, const Rect& card) {
                     for (int k = 0; k < 5; ++k) setParam(kEnvIds[1][k], P.get(kEnvIds[0][k]));
             }
         }
+        }
     }
 
     // écran : courbe ADSR, nœuds déplaçables, point de lecture
@@ -115,7 +147,7 @@ void Editor::envCard(int i, const Rect& card) {
     const float s = (scr.w - 2.f) / 640.f;
     const float ox = scr.x + 1.f, oy = scr.y + 1.f + (scr.h - 2.f - 200.f * s) * 0.5f;
     auto V = [&](float x, float y) { return Pt{ox + x * s, oy + y * s}; };
-    const Color col = i == 0 ? T.waveA : T.waveB;
+    const Color col = (i & 1) == 0 ? T.waveA : T.waveB;
     const Rect area{ox, oy, 640.f * s, 200.f * s};
 
     // glisser les nœuds (formules de la maquette)
@@ -188,7 +220,7 @@ void Editor::envCard(int i, const Rect& card) {
     poly.push_back(V(xR, g.yB));
     poly.push_back(V(g.x0, g.yB));
     c.fillPolygon(poly.data(), (int)poly.size(), col.withAlpha(0.1f));
-    if (i == 1) glowLine(L, col, 2.f * s);
+    if (i & 1) glowLine(L, col, 2.f * s);
     else {
         c.polyline(L.data(), (int)L.size(), col.withAlpha(0.18f), 6.f * s);
         c.polyline(L.data(), (int)L.size(), col, 2.f * s);
@@ -242,9 +274,9 @@ void Editor::drawEnv() {
             envLast_[k] = P(kEnvIds[0][k]);
         }
     }
-    envCard(0, Rect{24.f, 73.f, 610.f, 425.5f});
+    envCard(st_.envAlt[0] ? 2 : 0, Rect{24.f, 73.f, 610.f, 425.5f});
     lfoCard(0, Rect{646.f, 73.f, 610.f, 425.5f}, false);
-    envCard(1, Rect{24.f, 510.5f, 610.f, 425.5f});
+    envCard(st_.envAlt[1] ? 3 : 1, Rect{24.f, 510.5f, 610.f, 425.5f});
     lfoCard(1, Rect{646.f, 510.5f, 610.f, 425.5f}, false);
 }
 

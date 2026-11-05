@@ -125,7 +125,7 @@ struct Table {
         defs.push_back({"polyMode", "Mode de jeu", "", 0.f, 2.f, 0.f, 2});
         defs.push_back({"glide", "Glide", "ms", 0.f, 1.f, 0.f, 0});
         defs.push_back({"glideMode", "Glide mode", "", 0.f, 1.f, 0.f, 1});
-        defs.push_back({"unison", "Unison", "", 1.f, 8.f, 1.f, 7});
+        defs.push_back({"unison", "Unison", "", 1.f, 16.f, 1.f, 15});  // v6 : jusqu'à 16 voix
         defs.push_back({"uniDetune", "Unison d\xC3\xA9" "saccord", "%", 0.f, 1.f, 0.3f, 0});
         defs.push_back({"uniWidth", "Unison largeur", "%", 0.f, 1.f, 0.7f, 0});
         defs.push_back({"punch", "808 punch", "ST", 0.f, 1.f, 0.f, 0});
@@ -151,6 +151,36 @@ struct Table {
         defs.push_back({"chord", "Accord", "", 0.f, (float)(kNumChords - 1), 0.f, kNumChords - 1});
         defs.push_back({"chordStrum", "Accord strum", "ms", 0.f, 1.f, 0.f, 0});
         for (int f = kNumFxV1; f < kNumFx; ++f) addFx(f);
+        // version 6 : synthèse (filtre multimode, warps, bruit, unison, ENV 3/4, expression)
+        defs.push_back({"filtType", "Filtre type", "", 0.f, (float)(kNumFiltTypes - 1), 0.f, kNumFiltTypes - 1});
+        defs.push_back({"filtMorph", "Filtre morph", "%", 0.f, 1.f, 0.f, 0});
+        defs.push_back({"filtMix", "Filtre mix", "%", 0.f, 1.f, 1.f, 0});
+        defs.push_back({"filtKey", "Filtre suivi clavier", "%", 0.f, 1.f, 0.5f, 0});
+        defs.push_back({"aWarpMode", "Osc A mode de warp", "", 0.f, (float)(kNumWarpModes - 1), 0.f, kNumWarpModes - 1});
+        defs.push_back({"bWarpMode", "Osc B mode de warp", "", 0.f, (float)(kNumWarpModes - 1), 0.f, kNumWarpModes - 1});
+        defs.push_back({"noiseLvl", "Bruit niveau", "%", 0.f, 1.f, 0.f, 0});
+        defs.push_back({"noiseColor", "Bruit couleur", "%", 0.f, 1.f, 0.5f, 0});
+        defs.push_back({"noiseType", "Bruit type", "", 0.f, (float)(kNumNoiseTypes - 1), 0.f, kNumNoiseTypes - 1});
+        defs.push_back({"uniBlend", "Unison blend", "%", 0.f, 1.f, 1.f, 0});
+        defs.push_back({"uniRange", "Unison \xC3\xA9" "cart max", "", 0.f, 3.f, 0.f, 3});
+        for (int e = 3; e <= 4; ++e) {
+            const std::string k = "env" + std::to_string(e), n = "Env " + std::to_string(e) + " ";
+            static const char* fk[5] = {"Attack", "Decay", "Sustain", "Release", "Curve"};
+            static const char* fn[5] = {"attack", "decay", "sustain", "release", "courbe"};
+            static const char* fu[5] = {"ms", "ms", "%", "ms", ""};
+            static const float fd[5] = {0.f, 0.45f, 0.f, 0.35f, 0.8f};
+            for (int i = 0; i < 5; ++i) {
+                text.push_back(k + fk[i]);
+                const char* key = text.back().c_str();
+                text.push_back(n + fn[i]);
+                defs.push_back({key, text.back().c_str(), fu[i], 0.f, 1.f, fd[i], 0});
+            }
+        }
+        defs.push_back({"aftertouch", "Pression", "%", 0.f, 1.f, 0.f, 0});
+        defs.push_back({"timbre", "Timbre (CC 74)", "%", 0.f, 1.f, 0.f, 0});
+        defs.push_back({"mpe", "MPE", "", 0.f, 1.f, 0.f, 1});
+        defs.push_back({"mpeRange", "MPE pitch bend", "st", 1.f, 96.f, 48.f, 95});
+        defs.push_back({"bendRange", "Pitch bend amplitude", "st", 1.f, 24.f, 2.f, 23});
     }
     void addFx(int f) {
         static const char* what[kFxParamsPer] = {"on", "p0", "p1", "p2", "mix", "modDepth", "modSrc"};
@@ -250,19 +280,45 @@ const char* arpRateName(int r) {
 }
 const char* routeSrcName(int s) {
     static const char* n[kNumRouteSrcs] = {"LFO 1", "LFO 2", "LFO R1", "LFO R2", "LFO R3", "LFO R4", "LFO R5", "LFO R6",
-                                            "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "V\xC3\x89LOCIT\xC3\x89", "MOLETTE"};
+                                            "MACRO 1", "MACRO 2", "MACRO 3", "MACRO 4", "V\xC3\x89LOCIT\xC3\x89", "MOLETTE",
+                                            "PRESSION", "TIMBRE", "ENV 3", "ENV 4", "CLAVIER", "AL\xC3\x89" "A"};
     return n[s < 0 || s >= kNumRouteSrcs ? 0 : s];
 }
 const char* lfoDisplayName(int lfo) {
     static const char* n[kNumLfos] = {"LFO 1", "LFO 2", "LFO R1", "LFO R2", "LFO R3", "LFO R4", "LFO R5", "LFO R6"};
     return n[lfo < 0 || lfo >= kNumLfos ? 0 : lfo];
 }
+float routeCurve(float x, int curve) {
+    if (curve == 0 || x == 0.f) return x;
+    const float e = std::pow(4.f, -(float)std::clamp(curve, -100, 100) / 100.f);
+    const float a = std::pow(std::fabs(x), e);
+    return x < 0.f ? -a : a;
+}
+const char* filtTypeName(int t) {
+    static const char* n[kNumFiltTypes] = {"LP", "HP", "BP", "NOTCH", "PEAK", "PHASE", "COMB +", "COMB -", "FORMANT", "MORPH"};
+    return n[t < 0 || t >= kNumFiltTypes ? 0 : t];
+}
+const char* warpModeName(int m, int osc) {
+    static const char* n[kNumWarpModes] = {"CLASSIQUE", "SYNC", "BEND +", "BEND -", "PWM", "ASYM", "FLIP", "MIRROR", "QUANTIZE", "FM", "AM", "RM"};
+    static const char* fa[3] = {"FM \xE2\x86\x90 B", "AM \xE2\x86\x90 B", "RM \xE2\x86\x90 B"};
+    static const char* fb[3] = {"FM \xE2\x86\x90 A", "AM \xE2\x86\x90 A", "RM \xE2\x86\x90 A"};
+    if (m >= kWmFm && m <= kWmRm) return (osc ? fb : fa)[m - kWmFm];
+    return n[m < 0 || m >= kNumWarpModes ? 0 : m];
+}
+const char* noiseTypeName(int t) {
+    static const char* n[kNumNoiseTypes] = {"BLANC", "ROSE", "CRAQUE", "NUM\xC3\x89RIQUE"};
+    return n[t < 0 || t >= kNumNoiseTypes ? 0 : t];
+}
+float uniRangeSemis(int r) {
+    static const float s[4] = {1.f, 2.f, 7.f, 12.f};
+    return s[r < 0 || r > 3 ? 0 : r];
+}
 bool isModulatable(uint32_t id) {
     if (id >= kNumParams) return false;
     const ParamDef& d = paramDef(id);
     if (d.steps > 0) return false;  // boutons à crans (modes, formes, sync…) : pas de route
     if (id >= kMacro1 && id <= kMacro4) return false;  // une macro est une source, pas une destination
-    return id != kPitchBend && id != kModWheel;
+    return id != kPitchBend && id != kModWheel && id != kAftertouch && id != kTimbre;
 }
 const char* lfoShapeName(int s) {
     static const char* n[kNumLfoShapes] = {"SINE", "TRI", "SAW", "SQR", "S&H"};
@@ -418,6 +474,23 @@ std::string formatParam(uint32_t id, float v) {
         case kLfo1Smooth: case kLfo2Smooth: return fmt("%.0f %%", v * 100.0);
         case kLfo1Shape: case kLfo2Shape: return lfoShapeName((int)v);
         case kLfo1Sync: case kLfo2Sync: return lfoSyncName((int)v);
+        case kFiltType: return filtTypeName((int)v);
+        case kAWarpMode: return warpModeName((int)v, 0);
+        case kBWarpMode: return warpModeName((int)v, 1);
+        case kNoiseType: return noiseTypeName((int)v);
+        case kUniRange: { static const char* r[4] = {"1 ST", "2 ST", "QUINTE", "OCTAVE"}; return r[std::clamp((int)v, 0, 3)]; }
+        case kFiltMorph: case kFiltMix: case kFiltKey: case kNoiseLvl: case kUniBlend: case kAftertouch: case kTimbre:
+        case kEnv3Sustain: case kEnv4Sustain: return pctText(v);
+        case kNoiseColor: {
+            const int d = (int)std::lround((v - 0.5f) * 200.f);
+            return d == 0 ? std::string("BLANC") : (d < 0 ? fmt("SOMBRE %.0f", -d) : fmt("CLAIR %.0f", d));
+        }
+        case kEnv3Attack: case kEnv4Attack: return timeText(attackSeconds(v));
+        case kEnv3Decay: case kEnv4Decay: return timeText(decaySeconds(v));
+        case kEnv3Release: case kEnv4Release: return timeText(releaseSeconds(v));
+        case kEnv3Curve: case kEnv4Curve: return envCurveName(v);
+        case kMpe: return v > 0.5f ? "ON" : "OFF";
+        case kMpeRange: case kBendRange: return fmt("%.0f ST", v);
         default: return fmt("%.2f", v);
     }
 }
@@ -434,7 +507,8 @@ bool parseParam(uint32_t id, const char* text, float& out) {
     const double x = std::strtod(text, &end);
     if (end == text) return false;
     switch (id) {
-        case kAPos: case kBPos: case kBirth: case kQty: case kReso: case kSustain: case kEnvBSustain: case kLfo1Smooth: case kLfo2Smooth: out = (float)(x / 100.0); break;
+        case kAPos: case kBPos: case kBirth: case kQty: case kReso: case kSustain: case kEnvBSustain: case kLfo1Smooth: case kLfo2Smooth:
+        case kFiltMorph: case kFiltMix: case kFiltKey: case kNoiseLvl: case kUniBlend: case kEnv3Sustain: case kEnv4Sustain: out = (float)(x / 100.0); break;
         case kASmpRoot: case kBSmpRoot: out = (float)x; break;
         case kALvl: case kBLvl: case kMaster: out = (float)(1.0 + (x > 0 ? -x : x) / 18.2); break;
         case kSpeed: out = x > 0 ? (float)(std::log(x / 0.5) / std::log(40.0)) : 0.f; break;

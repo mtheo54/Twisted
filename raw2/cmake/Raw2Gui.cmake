@@ -9,6 +9,7 @@ set(RAW2_UI_SOURCES
     src/ui/EditorEnv.cpp
     src/ui/EditorRack.cpp
     src/ui/EditorJeu.cpp
+    src/ui/EditorSynth.cpp
   src/ui/EditorWt.cpp
   src/ui/EmbeddedFonts.cpp
   ${RAW2_FONTS_CPP})

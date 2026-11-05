@@ -91,7 +91,37 @@ enum ParamIdV5 : uint32_t {
     kFx2Base,                      // puis (kNumFx - kNumFxV1) blocs de kFxParamsPer (VINTAGE, PUMP)
     kV5End = kFx2Base + (uint32_t)((kNumFx - kNumFxV1) * (int)kFxParamsPer)
 };
-constexpr uint32_t kNumParams = (uint32_t)kV5End;
+// --- version 6 (synthèse : filtre multimode, warps, bruit, unison 16, ENV 3/4, MPE) ---
+enum FiltType { kFtLp = 0, kFtHp, kFtBp, kFtNotch, kFtPeak, kFtPhase, kFtCombP, kFtCombN, kFtFormant, kFtMorph, kNumFiltTypes };
+enum WarpMode { kWmClassic = 0, kWmSync, kWmBendP, kWmBendN, kWmPwm, kWmAsym, kWmFlip, kWmMirror, kWmQuant, kWmFm, kWmAm, kWmRm, kNumWarpModes };
+enum NoiseType { kNzWhite = 0, kNzPink, kNzCrackle, kNzDigital, kNumNoiseTypes };
+enum ParamIdV6 : uint32_t {
+    kFiltType = (uint32_t)kV5End,  // FiltType
+    kFiltMorph,                    // FORMANT : voyelle A-E-I-O-U ; MORPH : LP -> BP -> HP ; COMB : amorti ; PHASE : écart
+    kFiltMix,                      // filtré / direct
+    kFiltKey,                      // suivi du clavier (0,5 : une demi-octave par octave, comme avant)
+    kAWarpMode, kBWarpMode,        // WarpMode
+    kNoiseLvl, kNoiseColor, kNoiseType,
+    kUniBlend,                     // niveau des voix d'unison écartées (1 : toutes égales)
+    kUniRange,                     // écart maximal : 0 1 demi-ton, 1 2, 2 quinte, 3 octave
+    kEnv3Attack, kEnv3Decay, kEnv3Sustain, kEnv3Release, kEnv3Curve,  // enveloppes de modulation
+    kEnv4Attack, kEnv4Decay, kEnv4Sustain, kEnv4Release, kEnv4Curve,
+    kAftertouch,                   // pression (aftertouch canal), 0..1
+    kTimbre,                       // timbre (CC 74, glissé MPE global), 0..1
+    kMpe,                          // MPE : chaque note sur son canal (pression, glissé, hauteur par note)
+    kMpeRange,                     // amplitude du pitch bend par note (MPE), demi-tons
+    kBendRange,                    // amplitude de la molette PITCH, demi-tons
+    kV6End
+};
+constexpr uint32_t kNumParams = (uint32_t)kV6End;
+const char* filtTypeName(int t);   // LP, HP, BP, NOTCH, PEAK, PHASE, COMB +, COMB -, FORMANT, MORPH
+const char* warpModeName(int m, int osc);  // CLASSIQUE, SYNC… ; FM / AM / RM : « FM ← B » pour l'OSC A
+const char* noiseTypeName(int t);  // BLANC, ROSE, CRAQUE, NUMÉRIQUE
+float uniRangeSemis(int r);        // 1, 2, 7, 12
+// réglages de l'instrument (jeu, contrôleur) : ni dans les presets, ni remis à zéro par un preset
+constexpr bool isPerformanceParam(uint32_t id) {
+    return id == kPitchBend || id == kModWheel || id == kAftertouch || id == kTimbre || id == kMpe || id == kMpeRange;
+}
 constexpr uint32_t fxParam(int fx, int what) {
     return fx < kNumFxV1 ? (uint32_t)kFxBase + (uint32_t)(fx * (int)kFxParamsPer + what)
                          : (uint32_t)kFx2Base + (uint32_t)((fx - kNumFxV1) * (int)kFxParamsPer + what);
@@ -112,8 +142,16 @@ const char* arpModeName(int m);
 const char* arpRateName(int r);
 // sources des routes libres (poignées [✛ MOD]) : 8 LFO, 4 macros, vélocité, molette MOD
 constexpr int kRouteSrcMacro = kNumLfos, kRouteSrcVel = kNumLfos + kNumMacros, kRouteSrcWheel = kRouteSrcVel + 1;
-constexpr int kNumRouteSrcs = kRouteSrcWheel + 1;
-const char* routeSrcName(int s);  // LFO 1 … LFO R6, MACRO 1..4, VÉLOCITÉ, MOLETTE
+// version 6 : sources par note (chaque voix a sa valeur) en plus de la molette
+constexpr int kRouteSrcPress = kRouteSrcWheel + 1, kRouteSrcTimbre = kRouteSrcPress + 1, kRouteSrcEnv3 = kRouteSrcTimbre + 1,
+              kRouteSrcEnv4 = kRouteSrcEnv3 + 1, kRouteSrcKey = kRouteSrcEnv4 + 1, kRouteSrcRnd = kRouteSrcKey + 1;
+constexpr int kNumRouteSrcs = kRouteSrcRnd + 1;
+// source propre à chaque note (vélocité, pression, timbre, ENV 3/4, clavier, aléa par note)
+constexpr bool routeSrcPerNote(int s) { return s == kRouteSrcVel || (s >= kRouteSrcPress && s < kNumRouteSrcs); }
+// source bipolaire (-1..1) : les LFO ; les autres vont de 0 à 1
+constexpr bool routeSrcBipolar(int s) { return s >= 0 && s < kNumLfos; }
+float routeCurve(float x, int curve);  // courbe d'une route (-100..100) : x^(4^(-c)), signe gardé
+const char* routeSrcName(int s);  // LFO 1 … LFO R6, MACRO 1..4, VÉLOCITÉ, MOLETTE, PRESSION, TIMBRE, ENV 3, ENV 4, CLAVIER, ALÉA
 // Paramètre d'un des 8 LFO (0 et 1 : page ENV / LFO, 2..7 : rack R1..R6). kLfOn n'existe que pour
 // le rack (renvoie kNumParams pour LFO 1 et 2, toujours actifs).
 constexpr uint32_t lfoP(int lfo, int field) {

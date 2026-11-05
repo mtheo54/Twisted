@@ -15,12 +15,22 @@ std::string p2(int n) { return fmt("%02d", n + 1); }
 } // namespace
 
 Wavetable& Editor::wtCur() { return m_.edit[(size_t)st_.wtTgt]; }
-int Editor::wtSel() const { return std::clamp((int)std::lround(P(st_.wtTgt == 0 ? kAPos : kBPos) * 63.f), 0, 63); }
-void Editor::wtSetSel(int i) { setParam(st_.wtTgt == 0 ? kAPos : kBPos, (float)std::clamp(i, 0, 63) / 63.f); }
+int Editor::wtFrames() {
+    std::lock_guard<std::mutex> lk(m_.tableMutex);
+    return std::max(1, wtCur().frames());
+}
+int Editor::wtSel() {
+    const int last = wtFrames() - 1;
+    return std::clamp((int)std::lround(P(st_.wtTgt == 0 ? kAPos : kBPos) * (float)last), 0, last);
+}
+void Editor::wtSetSel(int i) {
+    const int last = wtFrames() - 1;
+    setParam(st_.wtTgt == 0 ? kAPos : kBPos, last > 0 ? (float)std::clamp(i, 0, last) / (float)last : 0.f);
+}
 
 void Editor::wtPushUndo() {
     std::lock_guard<std::mutex> lk(m_.tableMutex);
-    st_.undo.push_back(EditorState::Undo{st_.wtTgt, wtCur().fr});
+    st_.undo.push_back(EditorState::Undo{st_.wtTgt, wtCur().fr, wtCur().hi, wtCur().hiOk});
     if (st_.undo.size() > 12) st_.undo.pop_front();
 }
 
@@ -37,6 +47,8 @@ void Editor::wtChanged(int frame) {
     {
         std::lock_guard<std::mutex> lk(m_.tableMutex);
         wtCur().spec.reset();
+        // une frame retouchée repart de ses 256 points (sa version importée n'est plus la bonne)
+        if (frame >= 0) wtCur().touch(frame);
     }
     m_.tablesChanged(st_.wtTgt, frame);
 }
@@ -56,7 +68,7 @@ void Editor::wtOp(const std::string& label, int kind, bool forceNorm) {
         std::lock_guard<std::mutex> lk(m_.tableMutex);
         Wavetable& t = wtCur();
         std::vector<int> idx;
-        if (table) for (int k = 0; k < kFrames; ++k) idx.push_back(k);
+        if (table) for (int k = 0; k < t.frames(); ++k) idx.push_back(k);
         else idx.push_back(sel);
         static const Shape shapes[6] = {Shape::Sine, Shape::Saw, Shape::Square, Shape::Tri, Shape::Complex, Shape::Noise};
         if (kind < 6) applyPresetShape(t, shapes[kind], idx, table);
@@ -68,6 +80,7 @@ void Editor::wtOp(const std::string& label, int kind, bool forceNorm) {
         else if (kind == 16) for (int k : idx) for (int i = 0; i < kPoints; ++i) t.fr[(size_t)k][(size_t)i] = std::sin((float)i / kPoints * 6.2831853f);
         if (st_.autoNorm || forceNorm)
             for (int k : idx) normFrame(t.fr[(size_t)k]);
+        for (int k : idx) t.touch(k);
     }
     wtChanged(table ? -1 : sel);
     wtSay(label + (table ? std::string(" \xC2\xB7 TABLE") : " \xC2\xB7 FRAME " + p2(sel)));
@@ -78,7 +91,7 @@ void Editor::wtAction(int id) {
     switch (id) {
         case 0: wtOp("NORMALISER", 10, true); break;
         case 1: {  // dupliquer
-            if (sel >= 63) { wtSay("DUPLIQUER \xC2\xB7 derni\xC3\xA8re frame"); break; }
+            if (sel >= wtFrames() - 1) { wtSay("DUPLIQUER \xC2\xB7 derni\xC3\xA8re frame"); break; }
             wtPushUndo();
             wtMount();
             {
@@ -117,6 +130,8 @@ void Editor::wtAction(int id) {
             {
                 std::lock_guard<std::mutex> lk(m_.tableMutex);
                 m_.edit[(size_t)u.osc].fr = u.fr;
+                m_.edit[(size_t)u.osc].hi = u.hi;
+                m_.edit[(size_t)u.osc].hiOk = u.hiOk;
                 m_.edit[(size_t)u.osc].spec.reset();
             }
             m_.tablesChanged(u.osc);
@@ -132,7 +147,28 @@ void Editor::wtAction(int id) {
                 interpolateTable(wtCur());
             }
             wtChanged(-1);
-            wtSay("INTERPOL. 01\xE2\x86\x92" "64 \xC2\xB7 TABLE");
+            wtSay("INTERPOL. 01\xE2\x86\x92" + p2(wtFrames() - 1) + " \xC2\xB7 TABLE");
+            break;
+        }
+        case 20: case 21: {  // moins / plus de frames : 1, 8, 16, 32, 64, 128, 256 (interpolées)
+            static const int steps[7] = {1, 8, 16, 32, 64, 128, 256};
+            const int cur = wtFrames();
+            int k = 0;
+            while (k < 6 && steps[k] < cur) ++k;
+            if (id == 20) k = steps[k] >= cur ? std::max(0, k - 1) : k;
+            else k = steps[k] <= cur ? std::min(6, k + 1) : k;
+            if (steps[k] == cur) { wtSay(fmt("TABLE \xC2\xB7 %d FRAMES", cur)); break; }
+            const float pos = P(st_.wtTgt == 0 ? kAPos : kBPos);
+            wtPushUndo();
+            wtMount();
+            {
+                std::lock_guard<std::mutex> lk(m_.tableMutex);
+                resizeTable(wtCur(), steps[k]);
+                wtCur().spec.reset();
+            }
+            m_.tablesChanged(st_.wtTgt);
+            setParam(st_.wtTgt == 0 ? kAPos : kBPos, pos);
+            wtSay(fmt("TABLE \xC2\xB7 %d FRAMES", steps[k]));
             break;
         }
         case 11: wtOp("LISSAGE", 11, false); break;
@@ -154,9 +190,12 @@ void Editor::wtImport(const std::string& path, bool toOsc, int osc) {
     // le son déposé est aussi gardé tel quel : jouable en SAMPLE (page WAVETABLE)
     m_.samples.load(osc, base + ".wav", data, sr);
     m_.instruments.clear(osc);  // le son déposé remplace l'instrument
+    static const char* how[5] = {"", "CYCLES", "RESYNTH\xC3\x88SE", "TABLE", "D\xC3\x89" "COUPE"};
     if (toOsc) {
         Wavetable t;
-        if (!tableFromAudio(data, base, t)) { wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT"); return; }
+        const int r = tableFromAudioEx(data, sr, base, st_.wtImpMode, st_.wtImpFrames, t);
+        if (!r) { wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT"); return; }
+        wtSay(fmt("IMPORT \xC2\xB7 %d FRAMES \xC2\xB7 ", t.frames()) + how[r]);
         {
             std::lock_guard<std::mutex> lk(m_.tableMutex);
             t.name = base + ".wav";
@@ -170,30 +209,54 @@ void Editor::wtImport(const std::string& path, bool toOsc, int osc) {
     st_.wtTgt = osc;
     const int sel = wtSel();
     if (!st_.wtImpTable) {
-        std::vector<float> tab;
-        if (!singleCycleFrom(data, tab)) { wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT"); st_.wtTgt = prevTgt; return; }
+        // une frame : un cycle du son (hauteur détectée), gardé en 2048 points
+        Wavetable one;
+        if (!tableFromAudioEx(data, sr, base, st_.wtImpMode == kImpSpectral ? kImpSpectral : kImpCycles, 1, one)) {
+            wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT");
+            st_.wtTgt = prevTgt;
+            return;
+        }
         wtPushUndo();
         wtMount();
         {
             std::lock_guard<std::mutex> lk(m_.tableMutex);
-            Frame& a = wtCur().fr[(size_t)sel];
-            for (int i = 0; i < kPoints; ++i) a[(size_t)i] = tab[(size_t)i * 2];
-            normFrame(a);
+            Wavetable& t = wtCur();
+            const int mid = one.frames() / 2;
+            t.fr[(size_t)sel] = one.fr[(size_t)mid];
+            // version 2048 points : copie de la table haute résolution (frames intactes gardées)
+            auto hi = std::make_shared<std::vector<float>>((size_t)t.frames() * kHiLen, 0.f);
+            std::vector<bool> ok((size_t)t.frames(), false);
+            for (int f = 0; f < t.frames(); ++f)
+                if (t.hiFrame(f)) {
+                    std::copy(t.hi->data() + (size_t)f * kHiLen, t.hi->data() + (size_t)(f + 1) * kHiLen, hi->data() + (size_t)f * kHiLen);
+                    ok[(size_t)f] = true;
+                }
+            if (one.hiFrame(mid)) {
+                std::copy(one.hi->data() + (size_t)mid * kHiLen, one.hi->data() + (size_t)(mid + 1) * kHiLen, hi->data() + (size_t)sel * kHiLen);
+                ok[(size_t)sel] = true;
+            }
+            t.hi = hi;
+            t.hiOk = ok;
+            t.spec.reset();
         }
-        wtChanged(sel);
+        m_.tablesChanged(st_.wtTgt, sel);
         wtSay("IMPORT \xC2\xB7 FRAME " + p2(sel) + " \xE2\x86\x90 " + base + ".wav");
     } else {
         Wavetable t;
-        if (!tableFromAudio(data, base, t)) { wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT"); st_.wtTgt = prevTgt; return; }
+        const int r = tableFromAudioEx(data, sr, base, st_.wtImpMode, st_.wtImpFrames, t);
+        if (!r) { wtSay("IMPORT \xC3\x89" "CHOU\xC3\x89 \xC2\xB7 FICHIER TROP COURT"); st_.wtTgt = prevTgt; return; }
         wtPushUndo();
         wtMount();
         {
             std::lock_guard<std::mutex> lk(m_.tableMutex);
             wtCur().fr = t.fr;
+            wtCur().hi = t.hi;
+            wtCur().hiOk = t.hiOk;
+            wtCur().spec.reset();
             wtCur().name = base;
         }
-        wtChanged(-1);
-        wtSay("IMPORT \xC2\xB7 TABLE \xE2\x86\x90 " + base + ".wav");
+        m_.tablesChanged(st_.wtTgt);
+        wtSay(fmt("IMPORT \xC2\xB7 TABLE %d FRAMES \xC2\xB7 ", t.frames()) + how[r] + " \xE2\x86\x90 " + base + ".wav");
     }
 }
 
@@ -214,7 +277,7 @@ void Editor::wtExport() {
     const std::string dir = files::wavetableDir();
     files::makeDirs(dir);
     const std::string path = files::join(dir, name + ".wav");
-    if (writeFile(path, wav)) wtSay("EXPORT \xC2\xB7 " + name + ".wav \xC2\xB7 64\xC3\x97" "2048 \xC2\xB7 Documents/RAW2 banque presets/wavetables");
+    if (writeFile(path, wav)) wtSay("EXPORT \xC2\xB7 " + name + fmt(".wav \xC2\xB7 %d\xC3\x97" "2048 \xC2\xB7 Documents/RAW2 banque presets/wavetables", (int)((wav.size() - 44) / 4096)));
     else wtSay("EXPORT IMPOSSIBLE \xC2\xB7 DOSSIER INACCESSIBLE");
 }
 
@@ -245,41 +308,52 @@ void Editor::drawWt() {
     if (ui_.button(makeId("wtView", 1), Rect{192.f, 166.f, 147.f, 30.f}, "GRILLE", ui_.miniStyle(st_.wtGrid))) st_.wtGrid = true;
     const Rect vbox{39.f, 210.f, 300.f, 367.3f};
     ui_.screen(vbox);
+    const int nf = std::max(1, tab.frames());
+    // cascade : au plus 64 lignes (une table de 256 frames montre une frame sur quatre)
+    const int rows = std::min(nf, 64);
+    auto rowOf = [&](float frame) { return nf > 1 ? frame * (float)(std::max(rows, 2) - 1) / (float)(nf - 1) : 0.f; };
     if (!st_.wtGrid) {
         const float s = 286.f / 340.f, ox0 = 46.f, oy0 = 217.f;
         auto P2 = [&](float x, float y) { return Pt{ox0 + x * s, oy0 + y * s}; };
         std::vector<Pt> pts, poly;
-        for (int k = 63; k >= 0; --k) {
+        const float rowK = 63.f / (float)std::max(1, rows - 1);  // même profondeur quel que soit le nombre de lignes
+        for (int r = rows - 1; r >= 0; --r) {
+            const int k = rows > 1 ? (int)std::lround((float)r * (float)(nf - 1) / (float)(rows - 1)) : 0;
             const Frame& a = tab.fr[(size_t)k];
-            const float ox = 10.f + (float)k * 1.4f, oy = 380.f - (float)k * 5.3f;
+            const float kk = (float)r * rowK;
+            const float ox = 10.f + kk * 1.4f, oy = 380.f - kk * 5.3f;
             pts.clear();
             for (int j = 0; j <= 64; ++j) pts.push_back(P2(ox + (float)j * 3.4375f, oy - a[(size_t)((j * 4) & 255)] * 20.f));
             poly = pts;
             poly.push_back(P2(ox + 220.f, oy + 40.f));
             poly.push_back(P2(ox, oy + 40.f));
             c.fillPolygon(poly.data(), (int)poly.size(), T.scr);
-            c.polyline(pts.data(), (int)pts.size(), T.waveA.withAlpha(0.95f - 0.6f * (float)k / 63.f), 1.f * s);
+            c.polyline(pts.data(), (int)pts.size(), T.waveA.withAlpha(0.95f - 0.6f * kk / 63.f), 1.f * s);
         }
         {
             const Frame& a = tab.fr[(size_t)sel];
-            const float ox = 10.f + (float)sel * 1.4f, oy = 380.f - (float)sel * 5.3f;
+            const float kk = rowOf((float)sel) * rowK;
+            const float ox = 10.f + kk * 1.4f, oy = 380.f - kk * 5.3f;
             pts.clear();
             for (int j = 0; j <= 64; ++j) pts.push_back(P2(ox + (float)j * 3.4375f, oy - a[(size_t)((j * 4) & 255)] * 20.f));
             c.polyline(pts.data(), (int)pts.size(), T.acc, 2.f * s);
         }
         {
-            const float fp = livePos * 63.f, ox = 10.f + fp * 1.4f, oy = 380.f - fp * 5.3f;
+            const float fp = livePos * 63.f, ox = 10.f + fp * 1.4f, oy = 380.f - fp * 5.3f;  // position 0..1 : même profondeur
             pts.clear();
             for (int j = 0; j <= 64; ++j) pts.push_back(P2(ox + (float)j * 3.4375f, oy - sampleTable(tab, livePos, (float)j / 64.f) * 20.f));
             c.dashedPolyline(pts.data(), (int)pts.size(), T.hl, 1.2f * s, 3.f * s, 2.f * s);
         }
         const Font f{Face::Mono, 9.f * s, 1.f * s};
         c.text("01", P2(236.f, 396.f).x, P2(236.f, 396.f).y, f, T.scrMuted);
-        c.text("64", P2(322.f, 50.f).x, P2(322.f, 50.f).y, f, T.scrMuted);
+        c.text(p2(nf - 1), P2(322.f, 50.f).x, P2(322.f, 50.f).y, f, T.scrMuted);
     } else {
-        const float cw = (300.f - 12.f - 21.f) / 8.f;
-        for (int k = 0; k < 64; ++k) {
-            const Rect r{45.f + (float)(k % 8) * (cw + 3.f), 216.f + (float)(k / 8) * 35.f, cw, 32.f};
+        // grille : 8 colonnes jusqu'à 64 frames, 16 au-delà
+        const int cols = nf <= 64 ? 8 : 16, gr = (nf + cols - 1) / cols;
+        const float cw = (300.f - 12.f - 3.f * (float)(cols - 1)) / (float)cols;
+        const float chh = std::min(32.f, (280.f - 3.f * (float)(std::max(gr, 1) - 1)) / (float)std::max(gr, 1));
+        for (int k = 0; k < nf; ++k) {
+            const Rect r{45.f + (float)(k % cols) * (cw + 3.f), 216.f + (float)(k / cols) * (chh + 3.f), cw, chh};
             const bool on = k == sel;
             if (ui_.interact(makeId("wtCell", k), r).clicked) wtSetSel(k);
             c.fillRect(r, T.scr);
@@ -287,10 +361,13 @@ void Editor::drawWt() {
             std::vector<Pt> pts;
             for (int j = 0; j < 64; ++j) pts.push_back(Pt{r.x + (float)j / 63.f * r.w, r.y + (16.f - tab.fr[(size_t)k][(size_t)(j * 4)] * 13.f) / 32.f * r.h});
             c.polyline(pts.data(), (int)pts.size(), on ? T.acc : T.waveA, 1.2f);
-            ui_.text(p2(k), r.x + 2.f, r.y + 1.f, Font{Face::Mono, 7.f, 0.28f}, on ? T.acc : T.scrMuted);
+            if (cols == 8) ui_.text(p2(k), r.x + 2.f, r.y + 1.f, Font{Face::Mono, 7.f, 0.28f}, on ? T.acc : T.scrMuted);
         }
     }
-    ui_.text(st_.wtGrid ? "cliquer une cellule" : "avant : 01 \xC2\xB7 fond : 64", 39.f, 596.8f, Font{Face::Mono, 10.f, 0.8f}, T.muted);
+    // nombre de frames : moins / plus (1, 8, 16, 32, 64, 128, 256 ; les frames sont interpolées)
+    if (ui_.button(makeId("wtNf", 0), Rect{39.f, 587.3f, 32.f, 32.f}, "\xE2\x88\x92", ui_.miniStyle(false))) wtAction(20);
+    ui_.textCenter(fmt("%d FRAMES", nf), Rect{71.f, 596.8f, 112.f, 14.f}, Font{Face::MonoBold, 11.f, 0.8f}, T.ink);
+    if (ui_.button(makeId("wtNf", 1), Rect{183.f, 587.3f, 32.f, 32.f}, "+", ui_.miniStyle(false))) wtAction(21);
     if (ui_.button(makeId("wtPrev"), Rect{258.f, 587.3f, 37.5f, 32.f}, "\xE2\x97\x80", ui_.miniStyle(false))) wtSetSel(sel - 1);
     if (ui_.button(makeId("wtNext"), Rect{301.5f, 587.3f, 37.5f, 32.f}, "\xE2\x96\xB6", ui_.miniStyle(false))) wtSetSel(sel + 1);
     {
@@ -298,7 +375,7 @@ void Editor::drawWt() {
         for (float v : tab.fr[(size_t)sel]) rms += v * v;
         rms = std::sqrt(rms / kPoints);
         const char* labels[3] = {"FRAME", "RMS", "R\xC3\x89SOL."};
-        const std::string vals[3] = {p2(sel) + "/64", fmt("%d %%", (int)std::lround(rms * 100.f)), "256 pts"};
+        const std::string vals[3] = {p2(sel) + "/" + p2(nf - 1), fmt("%d %%", (int)std::lround(rms * 100.f)), tab.hiFrame(sel) ? "2048 pts" : "256 pts"};
         for (int k = 0; k < 3; ++k) {
             const Rect r{39.f + (float)k * 102.65f, 629.3f, 94.7f, 55.f};
             ui_.box(r, T.railBg, T.rule);
@@ -347,8 +424,8 @@ void Editor::drawWt() {
             return v;
         };
         if (sel > 0) { auto v = framePts(tab.fr[(size_t)sel - 1], 2); c.dashedPolyline(v.data(), (int)v.size(), T.waveB.withAlpha(0.35f), 1.f, 4.f, 3.f); }
-        if (sel < 63) { auto v = framePts(tab.fr[(size_t)sel + 1], 2); c.dashedPolyline(v.data(), (int)v.size(), T.waveB.withAlpha(0.35f), 1.f, 1.f, 3.f); }
-        if (std::fabs(livePos * 63.f - (float)sel) > 0.4f) {
+        if (sel < nf - 1) { auto v = framePts(tab.fr[(size_t)sel + 1], 2); c.dashedPolyline(v.data(), (int)v.size(), T.waveB.withAlpha(0.35f), 1.f, 1.f, 3.f); }
+        if (std::fabs(livePos * (float)(nf - 1) - (float)sel) > 0.4f) {
             std::vector<Pt> v;
             for (int i = 0; i < 256; i += 2) v.push_back(P2((float)i * 640.f / 255.f, 180.f - sampleTable(tab, livePos, (float)i / 256.f) * 170.f));
             c.dashedPolyline(v.data(), (int)v.size(), T.hl.withAlpha(0.6f), 1.f, 3.f, 2.f);
@@ -433,6 +510,22 @@ void Editor::drawWt() {
     ui_.card(ic);
     ui_.cardHeader(ic, "IMPORT / EXPORT", false, 14.f, 12.f);
     ui_.tag(".wav", ic.r() - 15.f, 613.7f, Ui::Tag::Line);
+    // méthode d'import d'un son quelconque, et nombre de frames voulu
+    {
+        const char* modes[3] = {"AUTO", "CYCLES", "RESYNTH."};
+        ButtonStyle bs;
+        for (int k = 0; k < 3; ++k) {
+            bs = ui_.miniStyle(st_.wtImpMode == k);
+            bs.font = Font{Face::Mono, 9.f, 0.6f};
+            if (ui_.button(makeId("wtImpM", k), Rect{574.f + (float)k * 60.f, 609.7f, 56.f, 24.f}, modes[k], bs)) st_.wtImpMode = k;
+        }
+        const int fn[3] = {64, 128, 256};
+        for (int k = 0; k < 3; ++k) {
+            bs = ui_.miniStyle(st_.wtImpFrames == fn[k]);
+            bs.font = Font{Face::Mono, 9.f, 0.6f};
+            if (ui_.button(makeId("wtImpF", k), Rect{760.f + (float)k * 40.f, 609.7f, 36.f, 24.f}, std::to_string(fn[k]), bs)) st_.wtImpFrames = fn[k];
+        }
+    }
     if (ui_.button(makeId("wtImp", 0), Rect{381.f, 657.7f, 182.7f, 34.f}, "FRAME ACTIVE", ui_.miniStyle(!st_.wtImpTable))) st_.wtImpTable = false;
     if (ui_.button(makeId("wtImp", 1), Rect{569.7f, 657.7f, 182.7f, 34.f}, "TABLE ENTI\xC3\x88RE", ui_.miniStyle(st_.wtImpTable))) st_.wtImpTable = true;
     if (ui_.button(makeId("wtExp"), Rect{758.3f, 657.7f, 178.7f, 34.f}, "[ EXPORT .WAV ]", ui_.miniStyle(false))) wtExport();
@@ -499,11 +592,14 @@ void Editor::drawWt() {
         }
         const Color fg = dropWt_ ? T.hl : T.scrText;
         ui_.textCenter("> DROP WAV TO LOAD", Rect{dz.x, dz.cy() - 17.f, dz.w, 18.f}, Font{Face::MonoBold, 14.f, 1.68f}, fg);
-        const std::string sub = std::string("cible : ") + O + (st_.wtImpTable ? " \xC2\xB7 64 FRAMES" : " \xC2\xB7 FRAME " + p2(sel)) + " \xC2\xB7 glisser-d\xC3\xA9poser uniquement";
+        static const char* why[3] = {" \xC2\xB7 table Serum / Vital telle quelle, sinon cycles", " \xC2\xB7 un cycle align\xC3\xA9 par frame",
+                                     " \xC2\xB7 harmoniques resynth\xC3\xA9tis\xC3\xA9" "es"};
+        const std::string sub = std::string("cible : ") + O + (st_.wtImpTable ? fmt(" \xC2\xB7 %d FRAMES", st_.wtImpFrames) : " \xC2\xB7 FRAME " + p2(sel)) +
+                                why[std::clamp(st_.wtImpMode, 0, 2)];
         ui_.textCenter(sub, Rect{dz.x, dz.cy() + 5.f, dz.w, 13.f}, Font{Face::Mono, 10.f, 0.8f}, fg.withAlpha(0.7f));
     }
     ui_.text("> " + (now_ - st_.wtMsgT < 6000.0 ? ui_.fit(st_.wtMsg, Font{Face::Mono, 11.f, 0.66f}, 510.f) : std::string("pr\xC3\xAAt")), 381.f, 892.f, Font{Face::Mono, 11.f, 0.66f}, T.hl);
-    ui_.text("export : 64 frames \xC3\x97 2048 pts \xC2\xB7 16 bits \xC2\xB7 compatible import Serum", 381.f, 910.f, Font{Face::Mono, 10.f, 0.6f}, T.muted);
+    ui_.text(fmt("export : %d frames \xC3\x97 2048 pts \xC2\xB7 16 bits \xC2\xB7 compatible import Serum", nf), 381.f, 910.f, Font{Face::Mono, 10.f, 0.6f}, T.muted);
 
     // ============ TRAITEMENT ============
     const Rect pc{964.f, 73.f, 292.f, 299.f};
@@ -516,18 +612,18 @@ void Editor::drawWt() {
         bs.font = Font{Face::Mono, 10.f, 0.8f};
         // MORPH · POSITION
         ui_.text("MORPH \xC2\xB7 POSITION", 979.f, 132.f, lf, T.muted);
-        ui_.textRight(p2(sel) + " / 64", 1241.f + 1.f, 132.f, lf, T.ink);
+        ui_.textRight(p2(sel) + " / " + p2(nf - 1), 1241.f + 1.f, 132.f, lf, T.ink);
         {
-            float v = (float)sel / 63.f;
+            float v = nf > 1 ? (float)sel / (float)(nf - 1) : 0.f;
             if (ui_.hslider(makeId("wtSl", 0), Rect{979.f, 160.f, 158.f, 18.f}, v)) {
-                const int ns = (int)std::lround(v * 63.f);
+                const int ns = (int)std::lround(v * (float)(nf - 1));
                 if (ns != sel) wtSetSel(ns);
             }
             const Ui::Interact it = ui_.interact(makeId("wtInterp"), Rect{1145.f, 150.f, 96.f, 38.f});
             ui_.drawButton(Rect{1145.f, 150.f, 96.f, 38.f}, "", bs, it.held);
             const float dy = it.held ? 2.f : 0.f, dx = dy;
             ui_.textCenter("INTERP.", Rect{1145.f + dx, 156.f + dy, 96.f, 13.f}, bs.font, T.ink);
-            ui_.textCenter("01\xE2\x86\x92" "64", Rect{1145.f + dx, 169.f + dy, 96.f, 13.f}, bs.font, T.ink);
+            ui_.textCenter("01\xE2\x86\x92" + p2(nf - 1), Rect{1145.f + dx, 169.f + dy, 96.f, 13.f}, bs.font, T.ink);
             if (it.clicked) wtAction(10);
         }
         struct S { const char* label; float* v; const char* btn; int act; float y; };

@@ -25,12 +25,15 @@
 #include "pluginterfaces/vst/ivsthostapplication.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
+#include "pluginterfaces/vst/ivstnoteexpression.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/vsttypes.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -77,6 +80,7 @@ DEF_CLASS_IID(IComponent)
 DEF_CLASS_IID(IAudioProcessor)
 DEF_CLASS_IID(IEditController)
 DEF_CLASS_IID(IMidiMapping)
+DEF_CLASS_IID(INoteExpressionController)
 DEF_CLASS_IID(IComponentHandler)
 DEF_CLASS_IID(IParameterChanges)
 DEF_CLASS_IID(IParamValueQueue)
@@ -98,6 +102,9 @@ const TUID kProcessorUID = INLINE_UID(0x6E2D9A41, 0xB7C34E15, 0x8F0A21D6, 0x5C9B
 const TUID kControllerUID = INLINE_UID(0x1F84C7B2, 0x3D6A4A90, 0xA5E2F017, 0xC48B26D9);
 const char* kVendor = "ABRASION";
 const char* kName = "RAW 2";
+
+// pression par note : type de Note Expression propre (les hôtes MPE l'envoient aussi en PolyPressure)
+constexpr NoteExpressionTypeID kRaw2PressureTypeID = kCustomStart + 1;
 
 void toUtf16(const std::string& s, TChar* out, int maxLen) {
     int o = 0;
@@ -290,10 +297,36 @@ public:
             for (int32 i = 0; i < count && nev < (int)kMaxEvents; ++i) {
                 Event e{};
                 if (list->getEvent(i, e) != kResultOk) continue;
-                if (e.type == Event::kNoteOnEvent)
-                    events_[(size_t)nev++] = NoteEvent{e.sampleOffset, e.noteOn.pitch, e.noteOn.velocity, e.noteOn.velocity > 0.f};
-                else if (e.type == Event::kNoteOffEvent)
-                    events_[(size_t)nev++] = NoteEvent{e.sampleOffset, e.noteOff.pitch, 0.f, false};
+                NoteEvent x;
+                x.offset = e.sampleOffset;
+                if (e.type == Event::kNoteOnEvent) {
+                    x.note = e.noteOn.pitch;
+                    x.velocity = e.noteOn.velocity;
+                    x.on = e.noteOn.velocity > 0.f;
+                    x.channel = (uint8_t)std::clamp<int>(e.noteOn.channel, 0, 15);
+                    x.noteId = e.noteOn.noteId;
+                } else if (e.type == Event::kNoteOffEvent) {
+                    x.note = e.noteOff.pitch;
+                    x.velocity = 0.f;
+                    x.on = false;
+                    x.channel = (uint8_t)std::clamp<int>(e.noteOff.channel, 0, 15);
+                    x.noteId = e.noteOff.noteId;
+                } else if (e.type == Event::kPolyPressureEvent) {  // aftertouch polyphonique
+                    x.kind = kEvPolyPress;
+                    x.note = e.polyPressure.pitch;
+                    x.noteId = e.polyPressure.noteId;
+                    x.value = e.polyPressure.pressure;
+                } else if (e.type == Event::kNoteExpressionValueEvent) {  // MPE des hôtes VST3 (Note Expression)
+                    const NoteExpressionValueEvent& ne = e.noteExpressionValue;
+                    x.noteId = ne.noteId;
+                    if (ne.typeId == kTuningTypeID) { x.kind = kEvNoteTune; x.value = (float)((ne.value - 0.5) * 240.0); }
+                    else if (ne.typeId == kBrightnessTypeID) { x.kind = kEvNoteTimbre; x.value = (float)ne.value; }
+                    else if (ne.typeId == kRaw2PressureTypeID) { x.kind = kEvPolyPress; x.note = -1; x.value = (float)ne.value; }
+                    else continue;
+                } else {
+                    continue;
+                }
+                events_[(size_t)nev++] = x;
             }
             // l'hôte doit les trier, on s'en assure (tri par insertion, sans allocation)
             for (int i = 1; i < nev; ++i)
@@ -470,7 +503,7 @@ private:
 };
 #endif
 
-class Controller final : public IEditController, public IConnectionPoint, public IMidiMapping, public ParamSink {
+class Controller final : public IEditController, public IConnectionPoint, public IMidiMapping, public INoteExpressionController, public ParamSink {
 public:
     Controller() = default;
     ~Controller() {
@@ -482,6 +515,7 @@ public:
         if (iidIs<FUnknown>(iid) || iidIs<IPluginBase>(iid) || iidIs<IEditController>(iid)) *obj = static_cast<IEditController*>(this);
         else if (iidIs<IConnectionPoint>(iid)) *obj = static_cast<IConnectionPoint*>(this);
         else if (iidIs<IMidiMapping>(iid)) *obj = static_cast<IMidiMapping*>(this);
+        else if (iidIs<INoteExpressionController>(iid)) *obj = static_cast<INoteExpressionController*>(this);
         else { *obj = nullptr; return kNoInterface; }
         addRef();
         return kResultOk;
@@ -493,7 +527,51 @@ public:
         if (bus != 0) return kResultFalse;
         if (cc == Steinberg::Vst::ControllerNumbers::kPitchBend) { id = raw2::kPitchBend; return kResultTrue; }
         if (cc == Steinberg::Vst::ControllerNumbers::kCtrlModWheel) { id = raw2::kModWheel; return kResultTrue; }
+        if (cc == Steinberg::Vst::ControllerNumbers::kAfterTouch) { id = raw2::kAftertouch; return kResultTrue; }
+        if (cc == 74) { id = raw2::kTimbre; return kResultTrue; }  // CC 74 (glissé MPE, « brillance »)
         return kResultFalse;
+    }
+
+    // Note Expression (MPE des hôtes VST3) : hauteur par note, brillance (timbre), pression
+    int32 PLUGIN_API getNoteExpressionCount(int32 bus, int16) override { return bus == 0 ? 3 : 0; }
+    tresult PLUGIN_API getNoteExpressionInfo(int32 bus, int16, int32 index, NoteExpressionTypeInfo& info) override {
+        if (bus != 0 || index < 0 || index > 2) return kInvalidArgument;
+        info = NoteExpressionTypeInfo{};
+        info.unitId = -1;
+        info.associatedParameterId = 0;
+        if (index == 0) {
+            info.typeId = kTuningTypeID;
+            toUtf16("Hauteur", info.title, 128);
+            toUtf16("Tune", info.shortTitle, 128);
+            toUtf16("st", info.units, 128);
+            info.valueDesc = NoteExpressionValueDescription{0.5, 0.0, 1.0, 0};
+            info.flags = NoteExpressionTypeInfo::kIsBipolar;
+        } else if (index == 1) {
+            info.typeId = kBrightnessTypeID;
+            toUtf16("Timbre", info.title, 128);
+            toUtf16("Timb", info.shortTitle, 128);
+            info.valueDesc = NoteExpressionValueDescription{0.0, 0.0, 1.0, 0};
+            info.flags = NoteExpressionTypeInfo::kIsAbsolute;
+        } else {
+            info.typeId = kRaw2PressureTypeID;
+            toUtf16("Pression", info.title, 128);
+            toUtf16("Press", info.shortTitle, 128);
+            info.valueDesc = NoteExpressionValueDescription{0.0, 0.0, 1.0, 0};
+            info.flags = NoteExpressionTypeInfo::kIsAbsolute;
+        }
+        return kResultOk;
+    }
+    tresult PLUGIN_API getNoteExpressionStringByValue(int32, int16, NoteExpressionTypeID id, NoteExpressionValue v, String128 out) override {
+        char b[48];
+        if (id == kTuningTypeID) std::snprintf(b, sizeof b, "%+.2f st", (v - 0.5) * 240.0);
+        else std::snprintf(b, sizeof b, "%.0f %%", v * 100.0);
+        toUtf16(b, out, 128);
+        return kResultOk;
+    }
+    tresult PLUGIN_API getNoteExpressionValueByString(int32, int16, NoteExpressionTypeID id, const TChar* text, NoteExpressionValue& v) override {
+        const double x = std::atof(fromUtf16(text).c_str());
+        v = id == kTuningTypeID ? std::clamp(0.5 + x / 240.0, 0.0, 1.0) : std::clamp(x / 100.0, 0.0, 1.0);
+        return kResultOk;
     }
 
     tresult PLUGIN_API initialize(FUnknown*) override { return kResultOk; }

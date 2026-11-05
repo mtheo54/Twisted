@@ -36,15 +36,31 @@ json::Value tableJson(const Wavetable& t, bool mounted) {
         s.set("morphEnd", t.spec->morphEnd);
         o.set("shape", s);
     } else {
-        std::vector<unsigned char> b((size_t)kFrames * kPoints * 2);
+        auto put = [](std::vector<unsigned char>& b, size_t& p, float v) {
+            const int q = (int)std::lround(std::clamp(v, -1.f, 1.f) * 32767.f);
+            b[p++] = (unsigned char)(q & 0xFF);
+            b[p++] = (unsigned char)((q >> 8) & 0xFF);
+        };
+        std::vector<unsigned char> b((size_t)t.frames() * kPoints * 2);
         size_t p = 0;
         for (const Frame& f : t.fr)
-            for (float v : f) {
-                const int q = (int)std::lround(std::clamp(v, -1.f, 1.f) * 32767.f);
-                b[p++] = (unsigned char)(q & 0xFF);
-                b[p++] = (unsigned char)((q >> 8) & 0xFF);
-            }
+            for (float v : f) put(b, p, v);
+        o.set("count", t.frames());
         o.set("frames", json::base64Encode(b.data(), b.size()));
+        // version importée (2048 points) des frames intactes : la table garde tout son spectre
+        std::string ok;
+        for (int f = 0; f < t.frames(); ++f) ok += t.hiFrame(f) ? '1' : '0';
+        if (ok.find('1') != std::string::npos) {
+            std::vector<unsigned char> h;
+            size_t q = 0;
+            for (int f = 0; f < t.frames(); ++f)
+                if (t.hiFrame(f)) {
+                    h.resize(h.size() + (size_t)kHiLen * 2);
+                    for (int i = 0; i < kHiLen; ++i) put(h, q, (*t.hi)[(size_t)f * kHiLen + (size_t)i]);
+                }
+            o.set("hiOk", ok);
+            o.set("hi", json::base64Encode(h.data(), h.size()));
+        }
     }
     return o;
 }
@@ -60,14 +76,34 @@ bool tableFromJson(const json::Value& o, Wavetable& t, bool& mounted) {
         return true;
     }
     std::vector<unsigned char> b;
-    if (!json::base64Decode(o["frames"].str(), b) || b.size() < (size_t)kFrames * kPoints * 2) return false;
+    const int count = std::clamp((int)o["count"].num(kFrames), 1, kMaxFrames);
+    if (!json::base64Decode(o["frames"].str(), b) || b.size() < (size_t)count * kPoints * 2) return false;
+    auto get = [](const std::vector<unsigned char>& d, size_t& p) {
+        const int16_t q = (int16_t)(d[p] | (d[p + 1] << 8));
+        p += 2;
+        return (float)q / 32767.f;
+    };
+    t.fr.assign((size_t)count, Frame{});
     size_t p = 0;
     for (Frame& f : t.fr)
-        for (float& v : f) {
-            const int16_t q = (int16_t)(b[p] | (b[p + 1] << 8));
-            p += 2;
-            v = (float)q / 32767.f;
+        for (float& v : f) v = get(b, p);
+    t.dropHi();
+    const std::string ok = o["hiOk"].str();
+    std::vector<unsigned char> h;
+    if (ok.size() == (size_t)count && json::base64Decode(o["hi"].str(), h)) {
+        const size_t nHi = (size_t)std::count(ok.begin(), ok.end(), '1');
+        if (nHi > 0 && h.size() >= nHi * kHiLen * 2) {
+            auto hi = std::make_shared<std::vector<float>>((size_t)count * kHiLen, 0.f);
+            t.hiOk.assign((size_t)count, false);
+            size_t q = 0;
+            for (int f = 0; f < count; ++f) {
+                if (ok[(size_t)f] != '1') continue;
+                for (int i = 0; i < kHiLen; ++i) (*hi)[(size_t)f * kHiLen + (size_t)i] = get(h, q);
+                t.hiOk[(size_t)f] = true;
+            }
+            t.hi = hi;
         }
+    }
     t.name = name;
     t.spec.reset();
     return true;
@@ -81,7 +117,7 @@ Model::Model(Mode mode) : life(params, mode == Mode::Live), samples(mode == Mode
     resetFxOrder();
     fallback_ = sharedFallback();
     for (auto& m : mip_) m.store(fallback_);
-    for (auto& d : dirty_) d.fill(false);
+    for (auto& d : dirty_) d.assign(kMaxFrames, false);
     applyFactoryPreset(0, nullptr);
     if (offline_) {
         buildNow();
@@ -107,7 +143,7 @@ void Model::tablesChanged(int osc, int frame) {
     {
         std::lock_guard<std::mutex> lk(buildMutex_);
         if (frame < 0) fullDirty_[(size_t)osc] = true;
-        else dirty_[(size_t)osc][(size_t)frame] = true;
+        else if (frame < kMaxFrames) dirty_[(size_t)osc][(size_t)frame] = true;
         pending_[(size_t)osc] = true;
     }
     {
@@ -179,7 +215,7 @@ void Model::buildPendingLocked(std::unique_lock<std::mutex>& lk) {
         const bool full = fullDirty_[(size_t)osc];
         const auto dirty = dirty_[(size_t)osc];
         fullDirty_[(size_t)osc] = false;
-        dirty_[(size_t)osc].fill(false);
+        std::fill(dirty_[(size_t)osc].begin(), dirty_[(size_t)osc].end(), false);
         lk.unlock();
 
         Wavetable copy;
@@ -194,8 +230,9 @@ void Model::buildPendingLocked(std::unique_lock<std::mutex>& lk) {
         for (bool d : dirty) anyDirty = anyDirty || d;
         const MipTable* next = prev;
         if (anyDirty) {
-            MipTable* t = (!full && prev) ? new MipTable(*prev) : new MipTable();
-            if (!full && prev) t->rebuildFrames(copy, dirty);
+            const bool partial = !full && prev && prev->frames() == copy.frames();
+            MipTable* t = partial ? new MipTable(*prev) : new MipTable();
+            if (partial) t->rebuildFrames(copy, dirty);
             else t->build(copy);
             next = t;
         }
@@ -417,7 +454,8 @@ void Model::applyFactoryPreset(int i, ParamSink* sink) {
     setParam(sink, kMaster, b.master);
     setParam(sink, kRule, b.highLife ? 1.f : 0.f);
     // rack modulaire, formes dessinées, lecture SAMPLE : valeurs par défaut, puis la voix du preset
-    for (uint32_t id = kV3End; id < kV5End; ++id) setParam(sink, id, paramDef(id).def);
+    for (uint32_t id = kV3End; id < kNumParams; ++id)
+        if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
     routes.clear();
     for (int l = 0; l < kNumLfos; ++l) { lfoShapes.reset(l); lfoShapes.snap[(size_t)l] = 0; }
     lfoShapes.grp.fill(0);
@@ -476,7 +514,7 @@ void Model::applyFactoryPreset(int i, ParamSink* sink) {
 json::Value Model::presetJson(bool withSamples) {
     json::Value v = json::Value::object();
     v.set("format", "RAW2-preset");
-    v.set("version", 5);
+    v.set("version", 6);
     {
         std::lock_guard<std::mutex> lk(presetMutex);
         v.set("name", presetName);
@@ -484,7 +522,9 @@ json::Value Model::presetJson(bool withSamples) {
         v.set("style", presetStyle);
     }
     json::Value p = json::Value::object();
-    for (uint32_t i = 0; i < kNumParams; ++i) p.set(paramDef(i).key, (double)params.get(i));
+    // réglages de jeu (MPE, pression…) : dans l'état de l'instance seulement, pas dans un preset
+    for (uint32_t i = 0; i < kNumParams; ++i)
+        if (withSamples || !isPerformanceParam(i) || i == kPitchBend || i == kModWheel) p.set(paramDef(i).key, (double)params.get(i));
     v.set("params", p);
     json::Value order = json::Value::array();
     for (auto& o : fxOrder) order.push(fxKey(o.load()));
@@ -520,7 +560,7 @@ bool Model::applyPresetJson(const json::Value& v, ParamSink* sink) {
     if (!v.isObject() || !v["params"].isObject()) return false;
     if (v["version"].num(1) < 2) {  // preset d'avant la page EFX : nouveaux réglages par défaut, effets coupés
         for (uint32_t id = kAWarp; id < kNumParams; ++id)
-            if (id != kPitchBend && id != kModWheel) setParam(sink, id, paramDef(id).def);
+            if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
         resetFxOrder();
     }
     // ordre des effets : un preset d'avant VINTAGE / PUMP en a 10, les effets absents vont à la fin
@@ -548,6 +588,9 @@ bool Model::applyPresetJson(const json::Value& v, ParamSink* sink) {
         for (uint32_t id = kV3End; id < kV4End; ++id) setParam(sink, id, paramDef(id).def);
     if (v["version"].num(1) < 5)  // d'avant la page JEU, VINTAGE et PUMP
         for (uint32_t id = kV4End; id < kV5End; ++id) setParam(sink, id, paramDef(id).def);
+    if (v["version"].num(1) < 6)  // d'avant la page SYNTH (filtre multimode, warps, bruit, ENV 3 / 4, MPE)
+        for (uint32_t id = kV5End; id < kNumParams; ++id)
+            if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
     for (const auto& m : v["params"].members()) {
         const int id = paramIdFromKey(m.first.c_str());
         if (id >= 0 && m.second.isNumber()) setParam(sink, (uint32_t)id, (float)m.second.num());
@@ -678,11 +721,13 @@ std::string Model::saveState() {
     // « tab » : 5 pages (v1), « tab2 » : 6 pages (v2, EFX en 3), « tab3 » : 7 pages (ENV / LFO en 3)
     {
         // « tab4 » : 8 pages (JEU en 7) ; les anciens lecteurs reçoivent SON pour la page JEU
-        const int t4 = tab.load(), t3 = t4 == 7 ? 0 : t4, t2 = t3 == 3 ? 0 : (t3 > 3 ? t3 - 1 : t3);
+        // « tab5 » : 9 pages (SYNTH en 8) ; les anciens lecteurs reçoivent SON pour la page SYNTH
+        const int t5 = tab.load(), t4 = t5 == 8 ? 0 : t5, t3 = t4 == 7 ? 0 : t4, t2 = t3 == 3 ? 0 : (t3 > 3 ? t3 - 1 : t3);
         ui.set("tab", std::min(4, t2 >= 4 ? t2 - 1 : t2));
         ui.set("tab2", t2);
         ui.set("tab3", t3);
         ui.set("tab4", t4);
+        ui.set("tab5", t5);
     }
     ui.set("lfoBpm1", lfoBpm[0].load());
     ui.set("lfoBpm2", lfoBpm[1].load());
@@ -732,7 +777,8 @@ bool Model::loadState(const std::string& s, ParamSink* sink) {
         const int z = (int)ui["zoom"].num(100);
         zoomPct = (z == 75 || z == 100 || z == 125 || z == 150) ? z : 100;
         // « tab2 » : 6 pages (EFX ajoutée en 3) ; les anciens états n'ont que « tab » sur 5 pages
-        if (ui["tab4"].isNumber()) setTab(std::clamp((int)ui["tab4"].num(0), 0, 7));
+        if (ui["tab5"].isNumber()) setTab(std::clamp((int)ui["tab5"].num(0), 0, 8));
+        else if (ui["tab4"].isNumber()) setTab(std::clamp((int)ui["tab4"].num(0), 0, 7));
         else if (ui["tab3"].isNumber()) setTab(std::clamp((int)ui["tab3"].num(0), 0, 6));
         else if (ui["tab2"].isNumber()) { const int t = std::clamp((int)ui["tab2"].num(0), 0, 5); setTab(t >= 3 ? t + 1 : t); }
         else { const int t = std::clamp((int)ui["tab"].num(0), 0, 4); setTab(t >= 3 ? t + 2 : t); }

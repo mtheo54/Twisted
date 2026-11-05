@@ -16,9 +16,10 @@ const Rect kPbPanel{320.f, 90.f, 640.f, 780.f};    // fenêtre de choix des pres
 const Rect kInstPanel{370.f, 120.f, 540.f, 720.f};  // fenêtre de choix des instruments
 const Rect kSavePanel{320.f, 330.f, 640.f, 236.f};  // fenêtre ENREGISTRER
 constexpr float kPi = 3.14159265358979f;
-const char* kTabs[8] = {"SON", "VIE", "MODULES", "ENV / LFO", "EFX", "MIX IA", "WAVETABLE", "JEU"};
-// ordre d'affichage des onglets : JEU juste après SON (son numéro 7 garde la compatibilité des états)
-const int kTabOrder[8] = {0, 7, 1, 2, 3, 4, 5, 6};
+const char* kTabs[9] = {"SON", "VIE", "MODULES", "ENV / LFO", "EFX", "MIX IA", "WAVETABLE", "JEU", "SYNTH"};
+// ordre d'affichage des onglets : JEU et SYNTH juste après SON (leurs numéros 7 et 8 gardent la
+// compatibilité des états)
+const int kTabOrder[9] = {0, 7, 8, 1, 2, 3, 4, 5, 6};
 const char* kCats[7] = {"tous", "basse", "lead", "pad", "pluck", "arp", "fx"};
 } // namespace
 
@@ -285,6 +286,7 @@ void Editor::frame(Canvas& c, const Input& in) {
         case 4: drawEfx(); break;
         case 5: drawMix(); break;
         case 7: drawJeu(); break;
+        case 8: drawSynth(); break;
         default: drawWt(); break;
     }
     dragOverlay();
@@ -407,7 +409,7 @@ void Editor::drawHeader() {
     // sombre) et un point orange au-dessus du nom, comme le témoin d'enregistrement.
     {
         const Font f{Face::Mono, 10.f, 0.7f};
-        const Rect block{228.2f, 21.5f, 456.1f, 42.f};
+        const Rect block{228.2f, 21.5f, 481.8f, 42.f};
         const Color white{1.f, 1.f, 1.f, 1.f};
         const bool dark = (T.chassis.r + T.chassis.g + T.chassis.b) / 3.f < 0.4f;
         const Color metal = dark ? T.chassis.mix(white, 0.10f) : T.chassis;
@@ -415,20 +417,20 @@ void Editor::drawHeader() {
         const Color lip = metal.mix(T.line, dark ? 0.35f : 0.30f);
         c.fillRoundRect(block, 4.f, seam);  // le fond du logement : il fait les rainures
         const float gap = 2.f, in = 1.5f;
-        float tws[8], sumW = 0.f;
-        for (int slot = 0; slot < 8; ++slot) {
+        float tws[9], sumW = 0.f;
+        for (int slot = 0; slot < 9; ++slot) {
             tws[slot] = ui_.width(kTabs[kTabOrder[slot]], f);
             sumW += tws[slot];
         }
         // largeurs : une part égale + une part selon le nom, pour des touches presque égales
-        const float avail = block.w - 2.f * in - 7.f * gap;
-        const float base = (avail - sumW) / 8.f;
+        const float avail = block.w - 2.f * in - 8.f * gap;
+        const float base = (avail - sumW) / 9.f;
         float x = block.x + in;
         const float ky = block.y + in, kh = block.h - 2.f * in, lipH = 5.f;
-        for (int slot = 0; slot < 8; ++slot) {
+        for (int slot = 0; slot < 9; ++slot) {
             const int i = kTabOrder[slot];
             const bool on = tab_ == i;
-            const float w = slot == 7 ? block.r() - in - x : base + tws[slot];
+            const float w = slot == 8 ? block.r() - in - x : base + tws[slot];
             const Rect key{x, ky, w, kh};
             const Ui::Interact it = ui_.interact(makeId("tab", i), key);
             if (it.clicked) setTab(i);
@@ -467,7 +469,7 @@ void Editor::drawHeader() {
 
     // --- CPU / buffer / PANIC ---
     {
-        const Rect r{704.2f, 22.f, 123.4f, 41.f};
+        const Rect r{717.f, 22.f, 110.6f, 41.f};
         const Ui::Interact it = ui_.interact(makeId("perf"), r);
         if (it.clicked) {
             const int L[4] = {32, 64, 128, 256};

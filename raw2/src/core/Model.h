@@ -85,11 +85,26 @@ struct MixChain {
     }
 };
 
+// Évènement de jeu. kind 0 : note (on / off). Les autres portent une expression :
+// pression, glissé (timbre) et hauteur par canal (MPE) ou par note (VST3 Note Expression).
+enum NoteKind : uint8_t {
+    kEvNote = 0,
+    kEvChanPress,   // pression du canal (MPE) : value 0..1
+    kEvPolyPress,   // pression d'une note : value 0..1 (note, ou noteId si >= 0)
+    kEvChanBend,    // pitch bend du canal (MPE) : value -1..1
+    kEvChanTimbre,  // CC 74 du canal (MPE) : value 0..1
+    kEvNoteTune,    // hauteur d'une note (Note Expression) : value en demi-tons
+    kEvNoteTimbre,  // brillance d'une note (Note Expression) : value 0..1
+};
 struct NoteEvent {
     int offset = 0;
     int note = 60;
     float velocity = 0.8f;
     bool on = true;
+    uint8_t kind = kEvNote;
+    uint8_t channel = 0;  // canal MIDI 0..15
+    int noteId = -1;      // identifiant VST3 de la note (-1 : aucun)
+    float value = 0.f;
 };
 
 // automation de l'hôte : valeur « plain » d'un paramètre à un échantillon précis du bloc
@@ -107,8 +122,9 @@ struct Readouts {
     std::atomic<int> arpStep{-1}, arpNote{-1};  // page JEU : pas et note de l'arpège en cours
     std::atomic<int> heldNote{-1}, voices{0};
     // page ENV / LFO
-    std::array<std::atomic<int>, 2> envStage{};       // -1 repos, 0 A, 1 D, 2 S, 3 R
-    std::array<std::atomic<float>, 2> envT{}, envLv{};
+    std::array<std::atomic<int>, 4> envStage{};       // -1 repos, 0 A, 1 D, 2 S, 3 R (ENV A, B, 3, 4)
+    std::array<std::atomic<float>, 4> envT{}, envLv{};
+    std::atomic<float> press{0.f}, timbre{0.f}, noteBend{0.f};  // expression de la note la plus récente
     std::array<std::atomic<float>, kNumLfos> lfoPh{}, lfoVal{};  // 8 LFO (anneaux de modulation des potards)
     std::atomic<double> sampleRate{48000.0};
     std::atomic<bool> active{false};
@@ -231,7 +247,7 @@ public:
     // --- réglages d'affichage (sauvés avec l'instance, et comme défaut global) --------------
     std::atomic<int> theme{0};
     std::atomic<int> zoomPct{100};
-    std::atomic<int> tab{0};  // 0 SON, 1 VIE, 2 MODULES, 3 ENV / LFO, 4 EFX, 5 MIX IA, 6 WAVETABLE
+    std::atomic<int> tab{0};  // 0 SON, 1 VIE, 2 MODULES, 3 ENV / LFO, 4 EFX, 5 MIX IA, 6 WAVETABLE, 7 JEU, 8 SYNTH
     std::atomic<bool> bpmDisplay{false};
     void setTab(int t);
     std::set<std::string> favorites;  // presets favoris (« f:12 » usine, « p:pack/nom » pack), fil de l'interface
@@ -262,7 +278,7 @@ private:
 
     std::mutex buildMutex_;
     std::condition_variable buildCv_;
-    std::array<std::array<bool, kFrames>, 2> dirty_{};
+    std::array<std::vector<bool>, 2> dirty_{{std::vector<bool>(kMaxFrames, false), std::vector<bool>(kMaxFrames, false)}};
     std::array<bool, 2> fullDirty_{{true, true}};
     std::array<bool, 2> pending_{{true, true}};
     bool buildRun_ = true;

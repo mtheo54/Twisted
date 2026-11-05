@@ -72,8 +72,8 @@ void Editor::drawJeu() {
         const Rect card{X, kRow1, kColW, kRow1H};
         ui_.card(card);
         ui_.cardHeader(card, "VOIX", false, 14.f, 12.f);
-        const int U = std::clamp((int)std::lround(P(kUnison)), 1, 8);
-        ui_.tag(U > 1 ? fmt("16 VOIX \xC2\xB7 UNISON \xC3\x97%d", U) : std::string("16 VOIX"), card.r() - 15.f, kRow1 + 13.f, Ui::Tag::Line);
+        const int U = std::clamp((int)std::lround(P(kUnison)), 1, 16);
+        ui_.tag(U > 1 ? fmt("32 VOIX \xC2\xB7 UNISON \xC3\x97%d", U) : std::string("32 VOIX"), card.r() - 15.f, kRow1 + 13.f, Ui::Tag::Line);
         stripLabel("MODE", x0, kRow1);
         static const char* modes[3] = {"POLY", "MONO", "LEGATO"};
         choiceRow(kPolyMode, modes, 3, x0, kRow1 + kStrip, 226.f, kStripH);
@@ -95,7 +95,7 @@ void Editor::drawJeu() {
         ui_.text("L", scr.x + 8.f, scr.cy() - 6.f, sf, T.scrMuted);
         ui_.textRight("R", scr.r() - 8.f, scr.cy() - 6.f, sf, T.scrMuted);
         const int pm = (int)std::lround(P(kPolyMode));
-        ui_.text(pm == 0 ? "POLY \xC2\xB7 16 VOIX" : pm == 1 ? "MONO \xC2\xB7 DERNI\xC3\x88RE NOTE" : "LEGATO \xC2\xB7 ENVELOPPE LI\xC3\x89" "E",
+        ui_.text(pm == 0 ? "POLY \xC2\xB7 32 VOIX" : pm == 1 ? "MONO \xC2\xB7 DERNI\xC3\x88RE NOTE" : "LEGATO \xC2\xB7 ENVELOPPE LI\xC3\x89" "E",
                  scr.x + 8.f, scr.y + 6.f, sf, T.scrText);
         if (P(kGlide) > 0.001f)
             ui_.textRight("GLIDE " + formatParam(kGlide, P(kGlide)), scr.r() - 8.f, scr.y + 6.f, sf, T.hl);

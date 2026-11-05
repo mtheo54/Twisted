@@ -76,21 +76,23 @@ bool parseWav(const std::vector<unsigned char>& b, std::vector<float>& out, doub
 }
 
 std::vector<unsigned char> wavetableToWav(const Wavetable& t) {
-    const size_t L = 2048, n = (size_t)kFrames * L;
+    const size_t L = kHiLen, nf = (size_t)t.frames(), n = nf * L;
     std::vector<unsigned char> v(44 + n * 2, 0);
     std::memcpy(&v[0], "RIFF", 4); put32(v, 4, (uint32_t)(36 + n * 2));
     std::memcpy(&v[8], "WAVEfmt ", 8); put32(v, 16, 16); put16(v, 20, 1); put16(v, 22, 1);
     put32(v, 24, 44100); put32(v, 28, 88200); put16(v, 32, 2); put16(v, 34, 16);
     std::memcpy(&v[36], "data", 4); put32(v, 40, (uint32_t)(n * 2));
-    for (int k = 0; k < kFrames; ++k)
+    std::vector<float> f(L);
+    for (size_t k = 0; k < nf; ++k) {
+        frameHi(t, (int)k, f.data());  // 2048 points : la version importée, sinon suréchantillonnée sans repliement
+        float pk = 1e-9f;
+        for (float x : f) pk = std::max(pk, std::fabs(x));
+        const float g = pk > 1.f ? 1.f / pk : 1.f;
         for (size_t j = 0; j < L; ++j) {
-            const double f = (double)j / L * 256.0;
-            const int i = (int)f;
-            const double fr = f - i;
-            const double s = t.fr[k][i & 255] * (1.0 - fr) + t.fr[k][(i + 1) & 255] * fr;
-            const long q = std::clamp(std::lround(s * 32767.0), -32767L, 32767L);
-            put16(v, 44 + ((size_t)k * L + j) * 2, (uint16_t)(int16_t)q);
+            const long q = std::clamp(std::lround(f[j] * g * 32767.0), -32767L, 32767L);
+            put16(v, 44 + (k * L + j) * 2, (uint16_t)(int16_t)q);
         }
+    }
     return v;
 }
 

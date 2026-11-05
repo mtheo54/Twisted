@@ -19,6 +19,8 @@ struct FreeRoute {
     std::atomic<int> src{-1};        // LFO 0..7 (LFO 1, LFO 2, R1..R6), -1 : libre
     std::atomic<int> id{0};          // paramètre (isModulatable)
     std::atomic<int> amt{50};        // -100..100
+    std::atomic<int> curve{0};       // -100..100 : 0 linéaire, > 0 monte vite (log), < 0 monte tard (exp)
+    std::atomic<int> aux{-1};        // source qui dose la route (0..1), -1 : aucune
 };
 class FreeRoutes {
 public:
@@ -28,11 +30,12 @@ public:
     int find(int src, uint32_t id) const;
     int add(int src, uint32_t id, int amt);  // indice (existant ou nouveau), -1 si plein ou refusé
     void remove(int i);
+    void setShape(int i, int curve, int aux);  // courbe et source auxiliaire d'une route
     void removeSource(int src);              // LFO du rack retiré
     void removeTarget(uint32_t first, uint32_t last);  // routes vers les paramètres [first, last)
     void clear();
     json::Value save() const;
-    void load(const json::Value& v);         // tableau [{src, param (clé), amt}]
+    void load(const json::Value& v);         // tableau [{src, param (clé), amt, curve, aux}]
 };
 
 // --- formes dessinées ----------------------------------------------------------------------
