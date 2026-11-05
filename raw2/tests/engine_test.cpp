@@ -421,6 +421,45 @@ int main() {
         std::printf("instrument SFZ : %d zones, A5 joué à %d Hz (880 attendu), boucle tenue après 3 s : crête %.2f\n", in ? (int)in->zones.size() : 0, zc, pk);
         CHECK(std::abs(zc - 880) <= 3);
         CHECK(pk > 0.02f);
+
+        // note rejouée vite (pendant sa relâche) : l'échantillon repart du début, en POLY et en MONO
+        // (avant : la voix continuait l'ancien échantillon, la note « s'allongeait » au lieu de rejouer)
+        {
+            std::vector<float> L(48000), R(48000);
+            for (int i = 0; i < 14400; ++i) L[(size_t)i] = R[(size_t)i] = 0.5f * (float)std::sin(2.0 * 3.14159265358979 * 440.0 * i / 48000.0);  // 0,3 s puis silence
+            writeFile(dir + "/samples/pluck.wav", stereoToWav24(L, R, 48000));
+            files::writeText(dir + "/Test Pluck.sfz", "// name: Test Pluck\n<control> default_path=samples/\n<region> sample=pluck.wav pitch_keycenter=69\n");
+        }
+        double ref = 1.0;
+        for (int mode = 0; mode < 3; ++mode) {  // 2 : sans la deuxième note (référence : silence)
+            m.instruments.load(0, dir + "/Test Pluck.sfz");
+            m.params.set(kPolyMode, (float)(mode == 1));
+            m.params.set(kRelease, 0.6f);
+            Engine e2(m);
+            e2.prepare(48000, 256);
+            std::vector<float> o2;
+            for (int b = 0; b < 120; ++b) {
+                NoteEvent ev[2];
+                int n = 0;
+                if (b == 0) ev[n++] = NoteEvent{0, 69, 0.9f, true};
+                if (b == 10) ev[n++] = NoteEvent{0, 69, 0.f, false};
+                if (b == 28 && mode < 2) ev[n++] = NoteEvent{0, 69, 0.9f, true};  // 0,15 s : la première note est en relâche
+                e2.process(l, r, 256, ev, n);
+                o2.insert(o2.end(), l, l + 256);
+            }
+            // entre 0,32 et 0,42 s : l'ancien échantillon est fini, seule une note relancée sonne
+            double sum = 0.0;
+            for (size_t i = 15360; i < 20160; ++i) sum += (double)o2[i] * o2[i];
+            const double rmsAfter = std::sqrt(sum / 4800.0);
+            if (mode == 2) {
+                std::printf("note rejou\xC3\xA9" "e : sans relance %.4f\n", rmsAfter);
+                CHECK(rmsAfter * 20.0 < ref);
+            } else {
+                std::printf("note rejou\xC3\xA9" "e (%s) : rms apr\xC3\xA8s la fin du premier son %.3f\n", mode ? "MONO" : "POLY", rmsAfter);
+                CHECK(rmsAfter > 0.02);
+                ref = std::min(ref, rmsAfter);
+            }
+        }
     }
 
     std::printf("rms min %.1f dBFS, crête max %.1f dBFS\n", 20 * std::log10(minRms), 20 * std::log10(maxPeak));

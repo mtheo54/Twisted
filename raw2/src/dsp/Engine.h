@@ -62,8 +62,8 @@ private:
         float mixA = 0.f, mixB = 0.f;
         // lecture SAMPLE (son déposé) : position, pas, données de la version jouée
         bool smpA = false, smpB = false;
-        const void* smpSetA = nullptr;   // SampleSet de départ (comparé, jamais relu s'il a changé)
-        const void* smpSetB = nullptr;
+        uint64_t smpSetA = 0;   // numéro du SampleSet de départ (comparé, jamais relu s'il a changé)
+        uint64_t smpSetB = 0;
         const float* smpDataA = nullptr;
         const float* smpDataB = nullptr;
         int smpLenA = 0, smpLenB = 0, smpDA = 0, smpDB = 0;  // longueur, transposition de la version
@@ -72,8 +72,9 @@ private:
         // instrument multi-échantillonné : zone choisie au départ (note, vélocité), position, pas
         const InstZone* zoneA = nullptr;
         const InstZone* zoneB = nullptr;
-        const void* instA = nullptr;  // instrument de départ (comparé, jamais relu s'il a changé)
-        const void* instB = nullptr;
+        bool lostA = false, lostB = false;  // instrument remplacé pendant la note : cet oscillateur se tait
+        uint64_t instA = 0;  // numéro de l'instrument de départ : s'il n'est plus celui de
+        uint64_t instB = 0;  // l'oscillateur, la zone est oubliée (sa mémoire a pu être libérée)
         double inPosA = 0.0, inPosB = 0.0;
         float inRateA = 1.f, inRateB = 1.f;
         // dérive analogique tirée au départ de note : hauteur (demi-tons) de chaque osc, coupure (oct)
@@ -151,6 +152,9 @@ private:
                      float* comb);
     float* combOf(int slot) { return combPool_.data() + (size_t)slot * 2 * (size_t)combLen_; }  // voix 0..31, fantômes 32..39
     void expression(const NoteEvent& e);
+    void dropStaleSounds(Voice& v) const;  // oublie les zones / sons dont l'instrument a changé
+    static bool playsSamples(const Voice& v) { return v.zoneA || v.zoneB || v.smpA || v.smpB; }
+    void toGhost(Voice& v);                // la voix s'éteint en 3 ms dans un fantôme (vol, note rejouée)
     float srcValue(int s, const Voice* v) const;  // valeur d'une source de route (v : la note, sinon la plus récente)
     void startSample(Voice& v, int osc, float semis);
     float pv(uint32_t id) const;  // valeur du paramètre + routes libres

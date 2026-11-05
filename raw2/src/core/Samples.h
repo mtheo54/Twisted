@@ -17,9 +17,12 @@
 
 namespace raw2 {
 
+uint64_t nextSoundSerial();  // Instruments.cpp
+
 struct SampleSet {
     static constexpr int kMinD = -12, kMaxD = 24;  // transpositions calculées d'avance (STRETCH)
     static constexpr int kNumD = kMaxD - kMinD + 1;
+    const uint64_t serial = nextSoundSerial();     // numéro unique (voir Instruments.h)
     std::string name;
     double sr = 48000.0;
     std::vector<float> base;                         // son nettoyé (début de silence retiré, normalisé)

@@ -30,7 +30,11 @@ struct InstZone {
     const float* data = nullptr;  // entrelacé (ch canaux), possédé par l'instrument
 };
 
+// numéro unique de chaque instrument / son déposé chargé (jamais réutilisé, même si la mémoire l'est)
+uint64_t nextSoundSerial();
+
 struct Instrument {
+    const uint64_t serial = nextSoundSerial();  // l'audio reconnaît « son » instrument par ce numéro
     std::string name, category, path, license;
     std::vector<std::vector<float>> buffers;  // un tampon par fichier WAV
     std::vector<InstZone> zones;

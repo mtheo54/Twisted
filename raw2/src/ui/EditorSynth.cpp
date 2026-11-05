@@ -158,8 +158,21 @@ void Editor::drawSynth() {
             const uint32_t idM = osc ? kBWarpMode : kAWarpMode, idW = osc ? kBWarp : kAWarp, idP = osc ? kBPos : kAPos;
             const int wm = std::clamp((int)std::lround(P(idM)), 0, kNumWarpModes - 1);
             ui_.text(osc ? "OSC B" : "OSC A", x0, kR1 + 58.f, Font{Face::MonoBold, 11.f, 0.8f}, osc ? T.acc : T.ink);
-            ui_.textRight(warpModeName(wm, osc), x0 + hw, kR1 + 58.f, lf, T.ink);
-            grid(idM, kNumWarpModes, 4, x0, kR1 + 78.f, hw, 24.f, [osc](int k) { return warpModeName(k, osc); });
+            // source de l'oscillateur : table d'onde (synthé) ou instrument réel, pour mêler les deux
+            {
+                const uint32_t idPlay = osc ? kBPlay : kAPlay;
+                const bool inst = P(idPlay) > 0.5f && !m_.instruments.name(osc).empty();
+                ButtonStyle ta = ui_.miniStyle(!inst), ti = ui_.miniStyle(inst);
+                ta.font = ti.font = Font{Face::Mono, 9.f, 0.4f};
+                const std::string iname = inst ? ui_.fit(upper(m_.instruments.name(osc)), ti.font, 118.f) : std::string("INSTRUMENT \xE2\x96\xBE");
+                if (ui_.button(makeId("synSrc", osc * 2), Rect{x0 + hw - 210.f, kR1 + 52.f, 66.f, 22.f}, "TABLE", ta)) setParam(idPlay, 0.f);
+                if (ui_.button(makeId("synSrc", osc * 2 + 1), Rect{x0 + hw - 140.f, kR1 + 52.f, 140.f, 22.f}, iname, ti)) {
+                    instOpen_ = true;
+                    instOsc_ = osc;
+                    m_.instruments.scan();
+                }
+            }
+            grid(idM, kNumWarpModes, 4, x0, kR1 + 80.f, hw, 24.f, [osc](int k) { return warpModeName(k, osc); });
             if (osc == 1) c.fillRect(Rect{x0 - 10.5f, kR1 + 58.f, 1.f, kR1H - 74.f}, T.rule.withAlpha(0.35f));
             // écran : un cycle de la table à sa position, déformé par le mode (l'autre oscillateur
             // vu comme un sinus pour FM / AM / RM)

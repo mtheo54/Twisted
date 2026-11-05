@@ -1,12 +1,15 @@
 // Fabrique le pack de presets « RAW 2 · INSTRUMENTS » : des sons construits sur la banque
 // d'instruments réels (Documents › Raw 2 › Instruments), dans l'esprit French touch / filter house
-// et hip-hop américain (boom bap, G-funk, soul, lo-fi, trap). Chaque preset part d'INIT.
+// et hip-hop américain (boom bap, G-funk, soul, lo-fi, trap). Chaque preset part d'INIT et se joue
+// une touche = une note (pas d'accord automatique, pas d'arpège). Les presets FUSION mêlent un
+// instrument réel (OSC A) et un synthé wavetable (OSC B) avec le filtre et les warps de la page SYNTH.
 //   raw2_inst_pack <dossier de sortie>   (écrit <sortie>/RAW 2 · INSTRUMENTS/*.raw + pack.json)
 // Si la banque d'instruments est installée (Documents › Raw 2 › Instruments), chaque preset est
 // joué (accord de trois notes, 2 s) et son MASTER (puis le niveau des OSC) est ajusté pour viser
 // le volume médian des presets d'usine : RMS -20 dB, crêtes sous -3 dBFS.
 #include "core/Files.h"
 #include "core/Model.h"
+#include "dsp/Wavetable.h"
 #include "dsp/Engine.h"
 
 #include <algorithm>
@@ -26,7 +29,7 @@ struct Recipe {
     const char* style;
     const char* instA;
     const char* instB;     // "" : pas de second instrument (OSC B coupé)
-    std::function<void(ParamStore&)> set;
+    std::function<void(Model&)> set;
 };
 
 void fx(ParamStore& P, int f, float p0, float p1, float p2, float mix) {
@@ -42,129 +45,262 @@ void env(ParamStore& P, float a, float d, float s, float r) {
     P.set(kEnvBAttack, a); P.set(kEnvBDecay, d); P.set(kEnvBSustain, s); P.set(kEnvBRelease, r);
 }
 
+// table calculée sur un oscillateur (synthé de la couche FUSION), jouée en WAVEFORM
+void table(Model& M, int osc, Shape sh, float m0, float m1, const char* name) {
+    {
+        std::lock_guard<std::mutex> lk(M.tableMutex);
+        buildFromSpec(M.edit[(size_t)osc], ShapeSpec{sh, m0, m1}, name);
+    }
+    M.setMounted(osc, true);
+    M.tablesChanged(osc);
+    M.params.set(osc ? kBPlay : kAPlay, 0.f);
+}
+// route par note (ENV 3 / vélocité…) avec courbe et source qui la dose
+void route(Model& M, int src, uint32_t id, int amt, int curve = 0, int aux = -1) {
+    const int i = M.routes.add(src, id, amt);
+    if (i >= 0) M.routes.setShape(i, curve, aux);
+}
+
 const std::vector<Recipe>& recipes() {
     static const std::vector<Recipe> R = {
         // ---- French touch / filter house -----------------------------------------------------
-        {"Filtre Maison", "pad", "french touch", "Wurlitzer EP200", "", [](ParamStore& P) {
+        {"Filtre Maison", "pad", "french touch", "Wurlitzer EP200", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.02f, 0.6f, 0.7f, 0.35f);
-             P.set(kChord, 5); P.set(kCutoff, 0.62f); P.set(kReso, 0.35f); P.set(kFiltSlope, 1);
+             P.set(kCutoff, 0.62f); P.set(kReso, 0.35f); P.set(kFiltSlope, 1);
              fx(P, kFxPump, 0.7f, 0.3f, 0.5f, 1.f); fx(P, kFxPhase, 0.3f, 0.5f, 0.5f, 0.35f); fx(P, kFxRev, 0.25f, 0.5f, 0.1f, 0.2f);
          }},
-        {"Cordes Disco", "pad", "french touch", "OB String Machine", "String Machine", [](ParamStore& P) {
+        {"Cordes Disco", "pad", "french touch", "OB String Machine", "String Machine", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.35f, 0.6f, 0.9f, 0.55f);
              P.set(kBLvl, 0.7f); P.set(kCutoff, 0.8f);
              fx(P, kFxChor, 0.35f, 0.5f, 0.6f, 0.45f); fx(P, kFxRev, 0.45f, 0.4f, 0.2f, 0.3f); fx(P, kFxPump, 0.45f, 0.3f, 0.6f, 1.f);
          }},
-        {"Robot Funk", "lead", "french touch", "OB Funk Lead", "", [](ParamStore& P) {
+        {"Robot Funk", "lead", "french touch", "OB Funk Lead", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.01f, 0.5f, 0.8f, 0.25f);
              P.set(kPolyMode, 2); P.set(kGlide, 0.3f); P.set(kCutoff, 0.7f); P.set(kReso, 0.4f); P.set(kFiltDrive, 0.4f);
              fx(P, kFxDist, 0.35f, 0.6f, 0.5f, 0.5f); fx(P, kFxDly, 0.3f, 0.35f, 0.4f, 0.2f);
          }},
-        {"Voix Robot", "pad", "french touch", "OB Choir Aah", "", [](ParamStore& P) {
+        {"Voix Robot", "pad", "french touch", "OB Choir Aah", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.25f, 0.6f, 0.85f, 0.5f);
              P.set(kCutoff, 0.6f); P.set(kReso, 0.55f); P.set(kFiltSlope, 1);
              fx(P, kFxFlang, 0.25f, 0.6f, 0.5f, 0.35f); fx(P, kFxChor, 0.3f, 0.5f, 0.5f, 0.4f); fx(P, kFxRev, 0.5f, 0.4f, 0.1f, 0.3f);
          }},
-        {"Clavi Funky", "pluck", "funk", "Clavisynth", "", [](ParamStore& P) {
+        {"Clavi Funky", "pluck", "funk", "Clavisynth", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.35f, 0.3f, 0.2f);
              P.set(kCutoff, 0.68f); P.set(kReso, 0.3f); P.set(kVelCut, 0.6f);
              fx(P, kFxPhase, 0.45f, 0.6f, 0.4f, 0.4f); fx(P, kFxComp, 0.4f, 0.3f, 0.4f, 1.f);
          }},
-        {"Cuivres Club", "pluck", "french touch", "OB Brass Stabs", "", [](ParamStore& P) {
+        {"Cuivres Club", "pluck", "french touch", "OB Brass Stabs", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.45f, 0.4f, 0.25f);
-             P.set(kChord, 1); P.set(kCutoff, 0.75f);
+             P.set(kCutoff, 0.75f);
              fx(P, kFxPump, 0.65f, 0.6f, 0.4f, 1.f); fx(P, kFxRev, 0.3f, 0.5f, 0.1f, 0.2f);
          }},
-        {"Super Scie Club", "lead", "french touch", "OB Super Saw", "", [](ParamStore& P) {
+        {"Super Scie Club", "lead", "french touch", "OB Super Saw", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.02f, 0.6f, 0.85f, 0.4f);
              P.set(kUnison, 3); P.set(kUniDetune, 0.25f); P.set(kUniWidth, 0.8f); P.set(kCutoff, 0.78f);
              fx(P, kFxPump, 0.6f, 0.3f, 0.5f, 1.f); fx(P, kFxRev, 0.4f, 0.4f, 0.15f, 0.25f);
          }},
-        {"Orgue Maison", "pad", "house", "OB Tonewheels", "", [](ParamStore& P) {
+        {"Orgue Maison", "pad", "house", "OB Tonewheels", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.01f, 0.5f, 1.f, 0.2f);
              P.set(kCutoff, 0.85f);
              fx(P, kFxChor, 0.6f, 0.5f, 0.7f, 0.5f); fx(P, kFxDist, 0.25f, 0.5f, 0.5f, 0.3f); fx(P, kFxRev, 0.3f, 0.5f, 0.1f, 0.2f);
          }},
         // ---- hip-hop américain ----------------------------------------------------------------
-        {"Wurli Boom Bap", "pluck", "boom bap", "Wurlitzer EP200", "", [](ParamStore& P) {
+        {"Wurli Boom Bap", "pluck", "boom bap", "Wurlitzer EP200", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.65f, 0.5f, 0.35f);
-             P.set(kChord, 9); P.set(kChordStrum, 0.25f); P.set(kCutoff, 0.7f);
+             P.set(kCutoff, 0.7f);
              fx(P, kFxVintage, 0.45f, 0.35f, 0.35f, 1.f); fx(P, kFxComp, 0.45f, 0.35f, 0.4f, 1.f);
          }},
-        {"Soul Échantillon", "pad", "soul", "CP80 Electric Grand", "", [](ParamStore& P) {
+        {"Soul Échantillon", "pad", "soul", "CP80 Electric Grand", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.7f, 0.6f, 0.45f);
-             P.set(kChord, 4); P.set(kCutoff, 0.66f);
+             P.set(kCutoff, 0.66f);
              fx(P, kFxVintage, 0.6f, 0.55f, 0.45f, 1.f); fx(P, kFxRev, 0.3f, 0.6f, 0.1f, 0.2f);
          }},
-        {"Sifflet G-Funk", "lead", "g-funk", "G-Funk Whistle", "", [](ParamStore& P) {
+        {"Sifflet G-Funk", "lead", "g-funk", "G-Funk Whistle", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.03f, 0.5f, 0.9f, 0.3f);
              P.set(kPolyMode, 2); P.set(kGlide, 0.35f); P.set(kCutoff, 0.9f);
              fx(P, kFxDly, 0.35f, 0.35f, 0.5f, 0.25f); fx(P, kFxRev, 0.35f, 0.5f, 0.1f, 0.2f);
          }},
-        {"Basse G-Funk", "basse", "g-funk", "G-Funk Bass", "", [](ParamStore& P) {
+        {"Basse G-Funk", "basse", "g-funk", "G-Funk Bass", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.01f, 0.5f, 0.85f, 0.2f);
              P.set(kPolyMode, 2); P.set(kGlide, 0.25f); P.set(kCutoff, 0.62f); P.set(kFiltDrive, 0.3f);
              fx(P, kFxComp, 0.4f, 0.3f, 0.35f, 1.f);
          }},
-        {"Basse Ouest", "basse", "west coast", "OB Bass", "", [](ParamStore& P) {
+        {"Basse Ouest", "basse", "west coast", "OB Bass", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.5f, 0.8f, 0.2f);
              P.set(kPolyMode, 1); P.set(kGlide, 0.15f); P.set(kSubLvl, 0.35f); P.set(kSubOct, 1); P.set(kCutoff, 0.6f);
              fx(P, kFxDist, 0.3f, 0.5f, 0.5f, 0.35f);
          }},
-        {"Piano Trap", "pad", "trap", "Grand Piano", "", [](ParamStore& P) {
+        {"Piano Trap", "pad", "trap", "Grand Piano", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.7f, 0.6f, 0.5f);
              P.set(kCutoff, 0.72f);
              fx(P, kFxRev, 0.55f, 0.65f, 0.15f, 0.35f); fx(P, kFxEq, 0.4f, 0.5f, 0.45f, 1.f);
          }},
-        {"Vibes Jazz Hop", "pluck", "lo-fi", "Vibraphone", "", [](ParamStore& P) {
+        {"Vibes Jazz Hop", "pluck", "lo-fi", "Vibraphone", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.7f, 0.6f, 0.5f);
-             P.set(kChord, 5); P.set(kChordStrum, 0.4f);
+            
              fx(P, kFxVintage, 0.4f, 0.45f, 0.25f, 1.f); fx(P, kFxRev, 0.4f, 0.55f, 0.1f, 0.25f);
          }},
-        {"Sax Lo-Fi", "lead", "lo-fi", "Alto Sax", "", [](ParamStore& P) {
+        {"Sax Lo-Fi", "lead", "lo-fi", "Alto Sax", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.03f, 0.6f, 0.9f, 0.35f);
              P.set(kPolyMode, 2); P.set(kGlide, 0.15f); P.set(kCutoff, 0.8f);
              fx(P, kFxVintage, 0.55f, 0.4f, 0.3f, 1.f); fx(P, kFxRev, 0.35f, 0.5f, 0.1f, 0.25f);
          }},
-        {"Orgue d'Église Soul", "pad", "soul", "OB Rotary Organ", "", [](ParamStore& P) {
+        {"Orgue d'Église Soul", "pad", "soul", "OB Rotary Organ", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.02f, 0.5f, 1.f, 0.4f);
-             P.set(kChord, 2); P.set(kCutoff, 0.8f);
+             P.set(kCutoff, 0.8f);
              fx(P, kFxChor, 0.5f, 0.5f, 0.6f, 0.4f); fx(P, kFxRev, 0.55f, 0.5f, 0.2f, 0.3f);
          }},
-        {"Hymne Cuivres", "pad", "trap", "OB Brass J60", "String Machine", [](ParamStore& P) {
+        {"Hymne Cuivres", "pad", "trap", "OB Brass J60", "String Machine", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.15f, 0.6f, 0.9f, 0.5f);
              P.set(kBLvl, 0.65f); P.set(kCutoff, 0.75f);
              fx(P, kFxRev, 0.6f, 0.55f, 0.2f, 0.35f); fx(P, kFxComp, 0.35f, 0.3f, 0.3f, 1.f);
          }},
-        {"Ballade FM", "pluck", "r&b", "FM Piano", "", [](ParamStore& P) {
+        {"Ballade FM", "pluck", "r&b", "FM Piano", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.65f, 0.55f, 0.45f);
-             P.set(kChord, 4); P.set(kChordStrum, 0.2f);
+            
              fx(P, kFxChor, 0.3f, 0.5f, 0.45f, 0.4f); fx(P, kFxRev, 0.45f, 0.5f, 0.1f, 0.25f);
          }},
-        {"Pianet Poussière", "pluck", "lo-fi", "Pianet T", "", [](ParamStore& P) {
+        {"Pianet Poussière", "pluck", "lo-fi", "Pianet T", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.7f, 0.75f, 0.35f);
              P.set(kCutoff, 0.8f);
              fx(P, kFxVintage, 0.5f, 0.6f, 0.5f, 1.f); fx(P, kFxComp, 0.6f, 0.5f, 0.5f, 1.f); fx(P, kFxPump, 0.35f, 0.3f, 0.6f, 1.f);
          }},
-        {"Chœur Drill", "pad", "drill", "OB Choir Aah", "Grand Piano", [](ParamStore& P) {
+        {"Chœur Drill", "pad", "drill", "OB Choir Aah", "Grand Piano", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.2f, 0.6f, 0.85f, 0.6f);
              P.set(kBLvl, 0.6f); P.set(kCutoff, 0.7f);
              fx(P, kFxRev, 0.7f, 0.6f, 0.2f, 0.4f); fx(P, kFxDly, 0.4f, 0.3f, 0.5f, 0.15f);
          }},
-        {"Basse Slap Funk", "basse", "funk", "OB Slap Bass", "", [](ParamStore& P) {
+        {"Basse Slap Funk", "basse", "funk", "OB Slap Bass", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.45f, 0.6f, 0.2f);
              P.set(kPolyMode, 1); P.set(kCutoff, 0.72f); P.set(kVelCut, 0.5f);
              fx(P, kFxComp, 0.5f, 0.4f, 0.4f, 1.f);
          }},
-        {"Arpège Disco", "arp", "french touch", "OB Funk Lead", "", [](ParamStore& P) {
+        {"Funk Disco", "pluck", "french touch", "OB Funk Lead", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.f, 0.4f, 0.5f, 0.3f);
-             P.set(kArpOn, 1); P.set(kArpMode, 2); P.set(kArpRate, 3); P.set(kArpOct, 2); P.set(kArpGate, 0.5f); P.set(kChord, 5);
+             P.set(kCutoff, 0.72f); P.set(kReso, 0.3f); P.set(kVelCut, 0.4f);
              fx(P, kFxDly, 0.3f, 0.4f, 0.4f, 0.25f); fx(P, kFxPump, 0.5f, 0.3f, 0.5f, 1.f);
          }},
-        {"Nappe Chaude", "pad", "soul", "OB Pad Warmth", "", [](ParamStore& P) {
+        {"Nappe Chaude", "pad", "soul", "OB Pad Warmth", "", [](Model& M) {
+             ParamStore& P = M.params;
              env(P, 0.4f, 0.6f, 0.9f, 0.6f);
              P.set(kCutoff, 0.7f);
              fx(P, kFxVintage, 0.35f, 0.25f, 0.f, 1.f); fx(P, kFxRev, 0.6f, 0.55f, 0.2f, 0.35f);
+         }},
+        // ---- FUSION : un instrument réel (OSC A) + un synthé wavetable (OSC B) ------------------
+        {"Fusion Wurli Sub", "pluck", "lo-fi", "Wurlitzer EP200", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Sine, 0.f, 0.f, "sub");
+             env(P, 0.f, 0.65f, 0.55f, 0.35f);
+             P.set(kBLvl, 0.62f); P.set(kBOct, -1); P.set(kCutoff, 0.7f);
+             fx(P, kFxVintage, 0.4f, 0.3f, 0.3f, 1.f); fx(P, kFxComp, 0.45f, 0.35f, 0.4f, 1.f);
+         }},
+        {"Fusion Piano Scie", "pad", "trap", "Grand Piano", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.6f, 1.f, "scie");
+             env(P, 0.f, 0.7f, 0.6f, 0.5f);
+             P.set(kEnvLink, 0); P.set(kEnvBAttack, 0.35f); P.set(kEnvBSustain, 0.8f); P.set(kEnvBRelease, 0.55f);
+             P.set(kBLvl, 0.55f); P.set(kBWarpMode, kWmBendP); P.set(kBWarp, 0.3f);
+             P.set(kFiltSlope, 1); P.set(kCutoff, 0.66f); P.set(kReso, 0.2f);
+             fx(P, kFxHyper, 0.35f, 0.4f, 0.5f, 0.35f); fx(P, kFxRev, 0.55f, 0.6f, 0.15f, 0.3f);
+         }},
+        {"Fusion Rhodes Verre", "pluck", "r&b", "CP80 Electric Grand", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Glass, 0.2f, 0.9f, "verre");
+             env(P, 0.f, 0.6f, 0.5f, 0.45f);
+             P.set(kBLvl, 0.5f); P.set(kBOct, 1); P.set(kBWarpMode, kWmFm); P.set(kBWarp, 0.35f);
+             P.set(kCutoff, 0.75f);
+             fx(P, kFxChor, 0.3f, 0.5f, 0.45f, 0.35f); fx(P, kFxDly, 0.3f, 0.35f, 0.5f, 0.18f); fx(P, kFxRev, 0.45f, 0.5f, 0.1f, 0.25f);
+         }},
+        {"Fusion Sax Vapeur", "lead", "lo-fi", "Alto Sax", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Square, 0.2f, 0.6f, "carr\xC3\xA9");
+             env(P, 0.03f, 0.6f, 0.9f, 0.35f);
+             P.set(kPolyMode, 2); P.set(kGlide, 0.15f);
+             P.set(kBLvl, 0.4f); P.set(kBWarpMode, kWmPwm); P.set(kBWarp, 0.35f);
+             P.set(kFiltSlope, 1); P.set(kCutoff, 0.72f); P.set(kReso, 0.25f);
+             route(M, 1, kBWarp, 30);  // LFO 2 : la largeur de l'onde carrée respire
+             fx(P, kFxVintage, 0.5f, 0.4f, 0.3f, 1.f); fx(P, kFxRev, 0.4f, 0.5f, 0.1f, 0.25f);
+         }},
+        {"Fusion Basse G-Funk", "basse", "g-funk", "G-Funk Bass", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.3f, 0.3f, "scie");
+             env(P, 0.01f, 0.5f, 0.85f, 0.2f);
+             P.set(kPolyMode, 2); P.set(kGlide, 0.25f);
+             P.set(kBLvl, 0.45f); P.set(kSubLvl, 0.3f); P.set(kSubOct, 1);
+             P.set(kFiltSlope, 1); P.set(kCutoff, 0.5f); P.set(kReso, 0.35f); P.set(kFiltDrive, 0.35f);
+             P.set(kEnv3Decay, 0.4f); P.set(kEnv3Sustain, 0.f);
+             route(M, kRouteSrcEnv3, kCutoff, 35, 30, kRouteSrcVel);  // le filtre s'ouvre à l'attaque, plus fort si on tape
+             fx(P, kFxComp, 0.4f, 0.3f, 0.35f, 1.f);
+         }},
+        {"Fusion Cordes Hybrides", "pad", "soul", "String Machine", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.8f, 1.f, "scie");
+             env(P, 0.35f, 0.6f, 0.9f, 0.55f);
+             P.set(kBLvl, 0.5f); P.set(kBSt, 7); P.set(kBWarpMode, kWmMirror); P.set(kBWarp, 0.25f);
+             P.set(kFiltType, kFtPeak); P.set(kCutoff, 0.62f); P.set(kReso, 0.4f);
+             route(M, 1, kCutoff, 20);  // LFO 2 : le pic du filtre balaie lentement
+             fx(P, kFxChor, 0.35f, 0.5f, 0.6f, 0.45f); fx(P, kFxRev, 0.55f, 0.45f, 0.2f, 0.35f);
+         }},
+        {"Fusion Clavi Acide", "pluck", "funk", "Clavisynth", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.5f, 0.5f, "scie");
+             env(P, 0.f, 0.35f, 0.3f, 0.2f);
+             P.set(kBLvl, 0.55f); P.set(kBOct, -1);
+             P.set(kFiltSlope, 1); P.set(kCutoff, 0.35f); P.set(kReso, 0.7f); P.set(kFiltDrive, 0.3f);
+             P.set(kEnv3Decay, 0.35f); P.set(kEnv3Sustain, 0.f);
+             route(M, kRouteSrcEnv3, kCutoff, 45, -30, kRouteSrcVel);
+             fx(P, kFxDist, 0.3f, 0.5f, 0.5f, 0.3f); fx(P, kFxDly, 0.28f, 0.35f, 0.45f, 0.18f);
+         }},
+        {"Fusion Ch\xC5\x93ur Formant", "pad", "drill", "OB Choir Aah", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.7f, 1.f, "scie");
+             env(P, 0.25f, 0.6f, 0.85f, 0.6f);
+             P.set(kBLvl, 0.45f);
+             P.set(kFiltType, kFtFormant); P.set(kFiltMorph, 0.15f); P.set(kFiltMix, 0.75f); P.set(kCutoff, 0.5f); P.set(kReso, 0.5f);
+             route(M, 1, kFiltMorph, 35);  // LFO 2 : la voyelle change (A -> E -> O)
+             fx(P, kFxRev, 0.7f, 0.6f, 0.2f, 0.4f); fx(P, kFxDly, 0.4f, 0.3f, 0.5f, 0.15f);
+         }},
+        {"Fusion Vibes Cloche", "pluck", "lo-fi", "Vibraphone", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Sine, 0.f, 0.f, "sinus");
+             env(P, 0.f, 0.7f, 0.5f, 0.5f);
+             P.set(kEnvLink, 0); P.set(kEnvBDecay, 0.45f); P.set(kEnvBSustain, 0.f); P.set(kEnvBRelease, 0.4f);
+             P.set(kBLvl, 0.5f); P.set(kBOct, 2); P.set(kBWarpMode, kWmFm); P.set(kBWarp, 0.5f);
+             P.set(kCutoff, 0.82f);
+             fx(P, kFxVintage, 0.35f, 0.4f, 0.2f, 1.f); fx(P, kFxRev, 0.45f, 0.55f, 0.1f, 0.3f);
+         }},
+        {"Fusion Orgue Sync", "lead", "house", "OB Tonewheels", "", [](Model& M) {
+             ParamStore& P = M.params;
+             table(M, 1, Shape::Saw, 0.4f, 0.4f, "scie");
+             env(P, 0.01f, 0.5f, 1.f, 0.25f);
+             P.set(kBLvl, 0.5f); P.set(kBWarpMode, kWmSync); P.set(kBWarp, 0.2f);
+             P.set(kCutoff, 0.78f); P.set(kNoiseLvl, 0.06f); P.set(kNoiseType, kNzCrackle);
+             route(M, kRouteSrcPress, kBWarp, 50);  // pression (aftertouch / MPE) : le sync monte
+             route(M, kRouteSrcWheel, kBWarp, 40);
+             fx(P, kFxChor, 0.6f, 0.5f, 0.7f, 0.45f); fx(P, kFxDist, 0.25f, 0.5f, 0.5f, 0.3f); fx(P, kFxRev, 0.3f, 0.5f, 0.1f, 0.2f);
          }},
     };
     return R;
@@ -236,13 +372,14 @@ int main(int argc, char** argv) {
         P.set(kAPlay, 1.f);
         P.set(kALvl, 0.85f);
         P.set(kBLvl, 0.f);
+        m.routes.clear();
         P.set(kM1, 0.f);
         P.set(kM2, 10.f);
         P.set(kM3, 0.f);
         P.set(kCutoff, 0.8f);
         P.set(kReso, 0.1f);
         if (r.instB[0]) P.set(kBPlay, 1.f);
-        r.set(P);
+        r.set(m);
         m.instruments.scan();
         if (m.instruments.loadByName(0, r.instA) && (!r.instB[0] || m.instruments.loadByName(1, r.instB)))
             calibrate(m, std::string(r.category) == "basse", r.name);

@@ -11,6 +11,11 @@
 
 namespace raw2 {
 
+uint64_t nextSoundSerial() {
+    static std::atomic<uint64_t> n{1};
+    return n.fetch_add(1, std::memory_order_relaxed);
+}
+
 namespace {
 
 // note SFZ : nombre MIDI ou nom (c4 = 60, c#4, db4)

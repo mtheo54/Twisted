@@ -380,18 +380,10 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
             for (auto& x : voices_)
                 if (!v || x.order < v->order) v = &x;
     }
-    // voix volée (autre note) : elle s'éteint en 3 ms dans une voix « fantôme », la nouvelle part de zéro
-    if (v->active && v->note != note) {
-        int gi = 0;
-        for (int k = 1; k < kGhosts; ++k)
-            if (ghosts_[(size_t)k].ghost < ghosts_[(size_t)gi].ghost) gi = k;
-        ghosts_[(size_t)gi] = *v;
-        ghosts_[(size_t)gi].ghost = stealLen_;
-        if (filtType_ == kFtCombP || filtType_ == kFtCombN)  // le fantôme garde la résonance du COMB
-            std::copy(combOf((int)(v - voices_.data())), combOf((int)(v - voices_.data())) + 2 * (size_t)combLen_, combOf(kVoices + gi));
-        ghostTargets_[(size_t)gi] = voiceTargets_[(size_t)(v - voices_.data())];
-        v->active = false;
-    }
+    // voix volée (autre note) : elle s'éteint en 3 ms dans une voix « fantôme », la nouvelle part de
+    // zéro ; même chose pour une note rejouée qui lit un instrument ou un son déposé (sinon le son
+    // continuerait là où il en était au lieu de repartir du début : la note « s'allongeait »)
+    if (v->active && (v->note != note || playsSamples(*v))) toGhost(*v);
     const bool wasActive = v->active;
     // une note est-elle déjà tenue ? (sinon : départ « frais », les LFO repartent de leur phase)
     const Voice* held = nullptr;
@@ -501,13 +493,34 @@ void Engine::startVoice(int note, float vel, int u, int U, float glideFrom) {
     forceControl();  // recalcul immédiat des modulations
 }
 
+void Engine::toGhost(Voice& v) {
+    int gi = 0;
+    for (int k = 1; k < kGhosts; ++k)
+        if (ghosts_[(size_t)k].ghost < ghosts_[(size_t)gi].ghost) gi = k;
+    const int vi = (int)(&v - voices_.data());
+    ghosts_[(size_t)gi] = v;
+    ghosts_[(size_t)gi].ghost = stealLen_;
+    if (filtType_ == kFtCombP || filtType_ == kFtCombN)  // le fantôme garde la résonance du COMB
+        std::copy(combOf(vi), combOf(vi) + 2 * (size_t)combLen_, combOf(kVoices + gi));
+    ghostTargets_[(size_t)gi] = voiceTargets_[(size_t)vi];
+    v.active = false;
+}
+
+void Engine::dropStaleSounds(Voice& v) const {
+    if (v.zoneA && (!inst_[0] || inst_[0]->serial != v.instA)) { v.zoneA = nullptr; v.lostA = true; }
+    if (v.zoneB && (!inst_[1] || inst_[1]->serial != v.instB)) { v.zoneB = nullptr; v.lostB = true; }
+    if (v.smpDataA && (!smpSet_[0] || smpSet_[0]->serial != v.smpSetA)) v.smpDataA = nullptr;
+    if (v.smpDataB && (!smpSet_[1] || smpSet_[1]->serial != v.smpSetB)) v.smpDataB = nullptr;
+}
+
 // SAMPLE : choisit la version STRETCH la plus proche (sinon la transposition se fait en RESAMPLE)
 void Engine::startSample(Voice& v, int osc, float semis) {
     const ParamStore& P = m_.params;
     // instrument multi-échantillonné (prioritaire) : la zone de la note et de la vélocité
     const Instrument* I = inst_[osc];
     const bool useInst = I && P.get(osc ? kBPlay : kAPlay) > 0.5f;
-    (osc ? v.instB : v.instA) = useInst ? I : nullptr;
+    (osc ? v.instB : v.instA) = useInst ? I->serial : 0;
+    (osc ? v.lostB : v.lostA) = false;
     (osc ? v.zoneB : v.zoneA) = useInst ? I->find((int)std::lround(semis), std::clamp((int)std::lround(v.vel * 127.f), 1, 127)) : nullptr;
     if (useInst) {
         const InstZone* z = osc ? v.zoneB : v.zoneA;
@@ -518,7 +531,7 @@ void Engine::startSample(Voice& v, int osc, float semis) {
     const SampleSet* S = smpSet_[osc];
     bool& on = osc ? v.smpB : v.smpA;
     on = S && P.get(osc ? kBPlay : kAPlay) > 0.5f;
-    (osc ? v.smpSetB : v.smpSetA) = S;
+    (osc ? v.smpSetB : v.smpSetA) = S ? S->serial : 0;
     if (!on) return;
     const float d = semis - P.get(osc ? kBSmpRoot : kASmpRoot);
     int dv = 0, len = 0;
@@ -575,7 +588,30 @@ void Engine::retarget(int note, float vel, bool retrigger) {
         v.glide = glideOn ? cur - (float)note : 0.f;
         v.vel = std::clamp(vel, 0.f, 1.f);
         v.order = ++order_;
-        if (retrigger) {
+        if (retrigger && playsSamples(v)) {
+            // MONO sur un instrument / un son déposé : l'ancienne note s'éteint en 3 ms, la nouvelle
+            // repart du début de l'échantillon (zone de la nouvelle note et de sa vélocité)
+            const Voice keep = v;
+            toGhost(v);
+            v = keep;
+            v.active = true;
+            v.released = false;
+            v.envA.lv = v.envB.lv = v.eA = v.eB = v.deA = v.deB = 0.f;
+            v.envA.start(false);
+            v.envB.start(false);
+            v.env3.start(false);
+            v.env4.start(false);
+            v.envCnt = 0;
+            v.envSpan = 0;
+            v.punchT = 0.f;
+            v.glide = 0.f;  // le son repart de sa vraie hauteur (pas de glissé d'échantillon)
+            const ParamStore& P = m_.params;
+            const float bend = P.get(kBendRange) * P.get(kPitchBend) + v.bendSt;
+            startSample(v, 0, (float)note + 12.f * P.get(kAOct) + P.get(kASt) + bend);
+            startSample(v, 1, (float)note + 12.f * P.get(kBOct) + P.get(kBSt) + bend);
+            v.dcInit = true;
+            v.fresh = true;
+        } else if (retrigger) {
             v.envA.lv = v.eA;
             v.envB.lv = v.eB;
             v.envA.start(true);
@@ -1224,12 +1260,12 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
     const int wmA = v.wmA, wmB = v.wmB;
     float lastA = v.lastA, lastB = v.lastB;
     // SAMPLE : le son de départ doit être encore celui de l'oscillateur (sinon il a pu être libéré)
-    const bool sA = v.smpA && v.smpSetA == (const void*)smpSet_[0] && v.smpDataA;
-    // instrument : seulement s'il est encore celui de l'oscillateur (sinon il a pu être libéré)
-    const bool iA = v.zoneA && v.instA == (const void*)inst_[0];
-    const bool iB = v.zoneB && v.instB == (const void*)inst_[1];
+    // (dropStaleSounds a déjà oublié les zones et sons dont l'instrument a changé)
+    const bool sA = v.smpA && v.smpDataA;
+    const bool iA = v.zoneA != nullptr;
+    const bool iB = v.zoneB != nullptr;
     double ipA = v.inPosA, ipB = v.inPosB;
-    const bool sB = v.smpB && v.smpSetB == (const void*)smpSet_[1] && v.smpDataB;
+    const bool sB = v.smpB && v.smpDataB;
     double spA = v.smpPosA, spB = v.smpPosB;
     // voix volée : fondu linéaire jusqu'à zéro
     const float gStep = v.ghost > 0 ? 1.f / (float)stealLen_ : 0.f;
@@ -1487,6 +1523,8 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
         if (iA) {
             readInst(*v.zoneA, ipA, ra, raR);
             ipA += v.inRateA;
+        } else if (v.lostA) {
+            ra = 0.f;
         } else if (v.smpA) {
             ra = sA ? readSmp(v.smpDataA, v.smpLenA, spA) : 0.f;
             spA += v.smpRateA;
@@ -1500,6 +1538,8 @@ bool Engine::renderVoice(Voice& v, const VoiceTargets& t, float* L, float* R, fl
         if (iB) {
             readInst(*v.zoneB, ipB, rb, rbR);
             ipB += v.inRateB;
+        } else if (v.lostB) {
+            rb = 0.f;
         } else if (v.smpB) {
             rb = sB ? readSmp(v.smpDataB, v.smpLenB, spB) : 0.f;
             spB += v.smpRateB;
@@ -1740,6 +1780,12 @@ void Engine::process(float* outL, float* outR, int numSamples, const NoteEvent* 
     smpSet_[1] = m_.samples.audio(1);
     inst_[0] = m_.instruments.audio(0);
     inst_[1] = m_.instruments.audio(1);
+    // un instrument ou un son remplacé depuis le départ d'une note : la voix l'oublie tout de suite
+    // (sa mémoire sera libérée après ce bloc, la lire plantait le plugin)
+    for (auto& v : voices_)
+        if (v.active) dropStaleSounds(v);
+    for (auto& v : ghosts_)
+        if (v.ghost > 0) dropStaleSounds(v);
 
     // PANIC : 5 ms de fondu, puis tout s'arrête (voir plus bas)
     if (m_.panic.exchange(false) && panicFade_ < 0) {
