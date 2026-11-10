@@ -402,7 +402,7 @@ void Editor::drawHeader() {
 
     // --- languette des thèmes ---
     {
-        const Rect r{190.1f, 22.5f, 22.f, 40.f};
+        const Rect r{180.f, 22.5f, 24.f, 40.f};
         const Ui::Interact it = ui_.interact(makeId("themeTab"), r);
         if (it.clicked) {
             thOpen_ = !thOpen_;
@@ -412,7 +412,7 @@ void Editor::drawHeader() {
         s.bg = thOpen_ ? T.tabBg : T.btnBg;
         ui_.drawButton(r, "", s, it.held);
         const Rect rr = it.held ? r.moved(2, 2) : r;
-        ui_.box(Rect{rr.x + 6.f, rr.y + 8.5f, 10.f, 10.f}, T.acc, T.btnEdge, 0.f);
+        ui_.box(Rect{rr.x + 7.f, rr.y + 8.5f, 10.f, 10.f}, T.acc, T.btnEdge, 0.f);
         ui_.textCenter(thOpen_ ? "\xE2\x96\xB4" : "\xE2\x96\xBE", Rect{rr.x, rr.y + 22.5f, rr.w, 10.f}, Font{Face::Mono, 8.f, 0.f}, thOpen_ ? T.tabFg : T.ink);
     }
 
@@ -423,7 +423,7 @@ void Editor::drawHeader() {
     // sombre) et un point orange au-dessus du nom, comme le témoin d'enregistrement.
     {
         const Font f{Face::Mono, 10.f, 0.7f};
-        const Rect block{228.2f, 21.5f, 481.8f, 42.f};
+        const Rect block{218.f, 21.5f, 482.f, 42.f};
         const Color white{1.f, 1.f, 1.f, 1.f};
         const bool dark = (T.chassis.r + T.chassis.g + T.chassis.b) / 3.f < 0.4f;
         const Color metal = dark ? T.chassis.mix(white, 0.10f) : T.chassis;
@@ -483,7 +483,7 @@ void Editor::drawHeader() {
 
     // --- CPU / buffer / PANIC ---
     {
-        const Rect r{717.f, 22.f, 110.6f, 41.f};
+        const Rect r{714.f, 22.5f, 112.f, 40.f};
         const Ui::Interact it = ui_.interact(makeId("perf"), r);
         if (it.clicked) {
             const int L[4] = {32, 64, 128, 256};
@@ -498,7 +498,7 @@ void Editor::drawHeader() {
         const float bx = r.x + 10.f + w + 8.f, frac = std::min(1.f, cpuShown_ / 8.f);
         for (float x = 0; x < 36.f * frac; x += 4.f) c.fillRect(Rect{bx + x, r.y + 9.5f, std::min(3.f, 36.f * frac - x), 6.f}, T.acc);
         ui_.text(fmt("%d SAMPLES", m_.controlBlock.load()) + (st_.xy ? " \xC2\xB7 X-Y" : ""), r.x + 10.f, r.y + 22.f, f, T.scrMuted);
-        if (ui_.button(makeId("panic"), Rect{835.6f, 24.5f, 62.f, 36.f}, "PANIC", ui_.keyStyle())) panicNow();
+        if (ui_.button(makeId("panic"), Rect{840.f, 22.5f, 66.f, 40.f}, "PANIC", ui_.keyStyle())) panicNow();
     }
 
     // --- presets ---
@@ -512,10 +512,10 @@ void Editor::drawHeader() {
         }
         // < > parcourent les presets d'usine (depuis INIT ou un pack : vers 01 ou 72, comme la maquette)
         const int N = kNumFactoryPresets;
-        if (ui_.button(makeId("prev"), Rect{917.6f, 23.5f, 34.f, 38.f}, "<", ui_.keyStyle())) loadPreset(((idx < 0 ? 0 : idx) - 1 + N) % N);
-        if (ui_.button(makeId("next"), Rect{1222.f, 23.5f, 34.f, 38.f}, ">", ui_.keyStyle())) loadPreset(((idx < 0 ? -1 : idx) + 1) % N);
+        if (ui_.button(makeId("prev"), Rect{920.f, 22.5f, 36.f, 40.f}, "<", ui_.keyStyle())) loadPreset(((idx < 0 ? 0 : idx) - 1 + N) % N);
+        if (ui_.button(makeId("next"), Rect{1220.f, 22.5f, 36.f, 40.f}, ">", ui_.keyStyle())) loadPreset(((idx < 0 ? -1 : idx) + 1) % N);
         // nom du preset : un clic ouvre la fenêtre des presets (choisir, enregistrer, packs)
-        const Rect pill{957.6f, 22.5f, 258.4f, 40.f};
+        const Rect pill{962.f, 22.5f, 252.f, 40.f};
         const Ui::Interact it = ui_.interact(makeId("pill"), pill);
         if (it.clicked) {
             pbOpen_ = !pbOpen_;
@@ -533,8 +533,8 @@ void Editor::drawHeader() {
         const float wTri = ui_.width(" \xE2\x96\xBE", f);
         float wr = ui_.width(rest, f);
         bool showTri = true;
-        if (wn + wr + wTri > 238.f) {
-            rest = ui_.fit(rest, f, 238.f - wn);
+        if (wn + wr + wTri > 228.f) {
+            rest = ui_.fit(rest, f, 228.f - wn);
             wr = ui_.width(rest, f);
             showTri = false;
         }
