@@ -367,6 +367,39 @@ void InstrumentBank::clear(int osc) {
     publish(osc, nullptr);
 }
 
+bool InstrumentBank::overview(int osc, int key, int vel, int cols, InstOverview& out) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    const Instrument* in = cur_[(size_t)osc].load();
+    if (!in || in->zones.empty()) return false;
+    const InstZone* z = in->find(key, vel);
+    if (!z) return false;
+    const int zi = (int)(z - in->zones.data());
+    if (out.serial == in->serial && out.zone == zi && (int)out.mx.size() == cols) return true;
+    out.serial = in->serial;
+    out.zone = zi;
+    out.zones = (int)in->zones.size();
+    out.lokey = z->lokey;
+    out.hikey = z->hikey;
+    out.root = z->root;
+    out.loop = z->loop;
+    out.seconds = z->sr > 0.0 ? (double)z->frames / z->sr : 0.0;
+    out.mn.assign((size_t)cols, 0.f);
+    out.mx.assign((size_t)cols, 0.f);
+    const size_t n = (size_t)std::max(0, z->frames), ch = (size_t)std::max(1, z->ch);
+    for (int k = 0; k < cols && n > 0 && z->data; ++k) {
+        const size_t a = n * (size_t)k / (size_t)cols, b = std::max(a + 1, n * (size_t)(k + 1) / (size_t)cols);
+        float lo = 0.f, hi = 0.f;
+        for (size_t i = a; i < b && i < n; ++i) {
+            const float v = z->data[i * ch];
+            lo = std::min(lo, v);
+            hi = std::max(hi, v);
+        }
+        out.mn[(size_t)k] = lo;
+        out.mx[(size_t)k] = hi;
+    }
+    return true;
+}
+
 std::string InstrumentBank::name(int osc) const {
     std::lock_guard<std::mutex> lk(mu_);
     return wantName_[(size_t)osc];

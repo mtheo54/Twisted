@@ -1141,6 +1141,8 @@ void Engine::controlUpdate(int n) {
     R.timbre.store(srcValue(kRouteSrcTimbre, newest), std::memory_order_relaxed);
     R.noteBend.store(newest ? newest->bendSt : 0.f, std::memory_order_relaxed);
     R.smpPos[0].store(newest && newest->smpA && newest->smpLenA > 0 ? std::clamp((float)(newest->smpPosA / (double)newest->smpLenA), 0.f, 1.f) : -1.f, std::memory_order_relaxed);
+    R.instPos[0].store(newest && newest->zoneA && newest->zoneA->frames > 0 ? std::clamp((float)(newest->inPosA / (double)newest->zoneA->frames), 0.f, 1.f) : -1.f, std::memory_order_relaxed);
+    R.instPos[1].store(newest && newest->zoneB && newest->zoneB->frames > 0 ? std::clamp((float)(newest->inPosB / (double)newest->zoneB->frames), 0.f, 1.f) : -1.f, std::memory_order_relaxed);
     R.smpPos[1].store(newest && newest->smpB && newest->smpLenB > 0 ? std::clamp((float)(newest->smpPosB / (double)newest->smpLenB), 0.f, 1.f) : -1.f, std::memory_order_relaxed);
     R.posA.store(posAShow, std::memory_order_relaxed);
     R.posB.store(posBShow, std::memory_order_relaxed);

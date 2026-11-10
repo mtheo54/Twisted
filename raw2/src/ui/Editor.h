@@ -214,6 +214,7 @@ private:
     void soundAs(int osc, int how);
     struct Overview { uint64_t serial = 0; std::vector<float> mn, mx; };
     Overview ovw_[2];  // forme d'onde complète du son déposé (page SON), recalculée quand le son change
+    InstOverview instOvw_[2];  // zone d'instrument jouée (page SON)
     void wtExport();
     void handleDrops();
 

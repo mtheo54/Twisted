@@ -43,6 +43,15 @@ struct Instrument {
     const InstZone* find(int key, int vel) const;
 };
 
+// Aperçu d'une zone d'instrument pour l'interface (forme d'onde min / max, infos)
+struct InstOverview {
+    uint64_t serial = 0;
+    int zone = -1, zones = 0, lokey = 0, hikey = 127, root = 60;
+    double seconds = 0.0;
+    bool loop = false;
+    std::vector<float> mn, mx;
+};
+
 struct InstEntry {
     std::string name, category, path;
 };
@@ -70,6 +79,9 @@ public:
     std::string category(int osc) const;
     std::string lastError(int osc) const;
     json::Value save(int osc) const;     // {"name", "category"}
+    // forme d'onde de la zone jouée par (key, vel), sur cols colonnes ; calculée sous le verrou de la
+    // banque (l'instrument ne peut pas être libéré pendant ce temps), gardée tant que rien ne change
+    bool overview(int osc, int key, int vel, int cols, InstOverview& out) const;
     void loadJson(int osc, const json::Value& v);
 
     // fil audio

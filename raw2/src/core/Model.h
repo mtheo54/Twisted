@@ -126,6 +126,7 @@ struct Readouts {
     std::array<std::atomic<float>, 4> envT{}, envLv{};
     std::atomic<float> press{0.f}, timbre{0.f}, noteBend{0.f};  // expression de la note la plus récente
     std::array<std::atomic<float>, 2> smpPos{};  // lecture du son déposé (0..1) de la note la plus récente, -1 : aucune
+    std::array<std::atomic<float>, 2> instPos{}; // lecture de la zone d'instrument (0..1) de la note la plus récente, -1 : aucune
     std::array<std::atomic<float>, kNumLfos> lfoPh{}, lfoVal{};  // 8 LFO (anneaux de modulation des potards)
     std::atomic<double> sampleRate{48000.0};
     std::atomic<bool> active{false};

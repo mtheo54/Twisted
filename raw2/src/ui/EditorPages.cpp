@@ -312,7 +312,43 @@ void Editor::oscCard(int osc, const Rect& card) {
     c.save();
     c.clip(scr.inset(1.f));
     float rmsAcc = 0.f;
-    if (audioMode) {
+    // forme d'onde complète (enveloppe min / max) et position de lecture, pour un son déposé ou la
+    // zone d'instrument jouée
+    auto drawOverview = [&](const std::vector<float>& mn, const std::vector<float>& mx, float play, const Rect& wa) {
+        const float cy = wa.cy(), hh = wa.h * 0.47f;
+        c.line(Pt{wa.x, cy}, Pt{wa.r(), cy}, T.scrMid, 1.f);
+        const Color wc = osc == 0 ? T.waveA : T.waveB;
+        float pk = 1e-6f;
+        for (size_t k = 0; k < mx.size(); ++k) pk = std::max(pk, std::max(mx[k], -mn[k]));
+        const float gain = 1.f / pk;
+        for (size_t k = 0; k < mx.size(); ++k) {
+            const float x = wa.x + wa.w * ((float)k + 0.5f) / (float)mx.size();
+            const float y0 = cy - mx[k] * gain * hh, y1 = cy - mn[k] * gain * hh;
+            const bool past = play >= 0.f && (float)k / (float)mx.size() <= play;
+            c.fillRect(Rect{x - 0.5f, y0, 1.f, std::max(1.f, y1 - y0)}, past ? T.hl : wc.withAlpha(0.85f));
+        }
+        if (play >= 0.f) c.fillRect(Rect{wa.x + wa.w * play - 1.f, wa.y, 2.f, wa.h}, T.acc);
+    };
+    std::string instInfo;
+    if (instOn) {
+        // zone de la note tenue (sinon du do central), transposition de l'oscillateur comprise
+        const int held = m_.readouts.heldNote.load();
+        const int key = std::clamp((held >= 0 ? held : (mouseNote_ >= 0 ? 48 + mouseNote_ : 60)) + 12 * m_.params.geti(pOct) + m_.params.geti(pSt), 0, 127);
+        InstOverview& io = instOvw_[osc];
+        if (m_.instruments.overview(osc, key, 100, 300, io)) {
+            const Rect wa{scr.x + 46.f, scr.y + 26.f, scr.w - 54.f, scr.h - 60.f};
+            drawOverview(io.mn, io.mx, m_.readouts.instPos[(size_t)osc].load(), wa);
+            static const char* nn[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+            auto nm = [&](int n) { return std::string(nn[((n % 12) + 12) % 12]) + std::to_string(n / 12 - 1); };
+            instInfo = "ZONE " + nm(io.root) + " (" + nm(io.lokey) + "\xE2\x80\x93" + nm(io.hikey) + ")" + fmt(" \xC2\xB7 %d ZONES \xC2\xB7 ", io.zones) +
+                       fmt("%.2f s", io.seconds) + (io.loop ? " \xC2\xB7 BOUCLE" : "");
+        } else {
+            const std::string err = m_.instruments.lastError(osc);
+            ui_.textCenter(m_.instruments.loading(osc) ? std::string("CHARGEMENT\xE2\x80\xA6") : (err.empty() ? std::string("INSTRUMENT VIDE") : upper(err)),
+                           Rect{scr.x + 40.f, scr.cy() - 8.f, scr.w - 50.f, 16.f}, Font{Face::Mono, 10.f, 0.6f}, T.scrMuted);
+        }
+        rmsAcc = 241.f * 0.1f;
+    } else if (audioMode) {
         const SampleSet* s = m_.samples.audio(osc);
         Overview& ov = ovw_[osc];
         constexpr int kCols = 300;
@@ -330,23 +366,7 @@ void Editor::oscCard(int osc, const Rect& card) {
             }
         }
         const Rect wa{scr.x + 46.f, scr.y + 26.f, scr.w - 54.f, strip.y - scr.y - 34.f};
-        const float cy = wa.cy(), hh = wa.h * 0.47f;
-        c.line(Pt{wa.x, cy}, Pt{wa.r(), cy}, T.scrMid, 1.f);
-        const Color wc = osc == 0 ? T.waveA : T.waveB;
-        float pk = 1e-6f;
-        for (size_t k = 0; k < ov.mx.size(); ++k) pk = std::max(pk, std::max(ov.mx[k], -ov.mn[k]));
-        const float gain = 1.f / pk;
-        const float play = m_.readouts.smpPos[(size_t)osc].load();
-        for (size_t k = 0; k < ov.mx.size(); ++k) {
-            const float x = wa.x + wa.w * ((float)k + 0.5f) / (float)ov.mx.size();
-            const float y0 = cy - ov.mx[k] * gain * hh, y1 = cy - ov.mn[k] * gain * hh;
-            const bool past = play >= 0.f && (float)k / (float)ov.mx.size() <= play;
-            c.fillRect(Rect{x - 0.5f, y0, 1.f, std::max(1.f, y1 - y0)}, past ? T.hl : wc.withAlpha(0.85f));
-        }
-        if (play >= 0.f) {
-            const float x = wa.x + wa.w * play;
-            c.fillRect(Rect{x - 1.f, wa.y, 2.f, wa.h}, T.acc);
-        }
+        drawOverview(ov.mn, ov.mx, m_.readouts.smpPos[(size_t)osc].load(), wa);
         rmsAcc = 241.f * 0.1f;
     } else {
         c.line(Pt{area.x, area.cy()}, Pt{area.r(), area.cy()}, T.scrMid, 1.f);
@@ -381,7 +401,10 @@ void Editor::oscCard(int osc, const Rect& card) {
         c.fillRect(Rect{gx, gy, 1.f, gh}, T.scrMid);
         static const char* lab[4] = {"+6dB", "0dB", "-6dB", "-\xE2\x88\x9E"};
         for (int k = 0; k < 4; ++k) ui_.text(lab[k], gx + 5.f, gy + (gh - 8.f) * (float)k / 3.f, sf, T.scrMuted, 8.f);
-        if (audioMode) {
+        if (instOn) {
+            tele_[osc] = ui_.fit(upper(m_.instruments.name(osc)), Font{Face::Mono, 9.f, 0.72f}, scr.w - 70.f);
+            teleT_[osc] = now_;
+        } else if (audioMode) {
             tele_[osc] = ui_.fit(upper(m_.samples.name(osc)), Font{Face::Mono, 9.f, 0.72f}, scr.w - 90.f) + fmt(" // %.2f s", m_.samples.seconds(osc));
             teleT_[osc] = now_;
         } else if (now_ - teleT_[osc] > 120.0 || tele_[osc].empty()) {
@@ -393,6 +416,24 @@ void Editor::oscCard(int osc, const Rect& card) {
         }
         const Font tf{Face::Mono, 9.f, 0.72f};
         ui_.textRight(tele_[osc], scr.r() - 11.f, scr.y + 7.f, tf, T.scrMuted);
+    }
+    if (instOn && !instInfo.empty())
+        ui_.textCenter(instInfo, Rect{scr.x + 40.f, scr.b() - 28.f, scr.w - 50.f, 14.f}, Font{Face::Mono, 9.f, 0.5f}, T.scrText);
+    // oscillateur qui ne joue pas (niveau à -inf sans route, ou BLEND tout de l'autre côté) : écran éteint
+    {
+        bool routed = false;
+        for (int i = 0; i < m_.routes.count(); ++i) routed = routed || m_.routes.r[(size_t)i].id.load() == (int)pLvl;
+        const float bl = P(kBlend);
+        const bool blendOff = osc == 0 ? bl >= 0.9995f : bl <= 0.0005f;
+        const bool lvlOff = P(pLvl) <= 0.0005f && !routed;
+        if (lvlOff || blendOff) {
+            c.fillRect(scr.inset(1.f), Color{0, 0, 0, 0.72f});
+            const Rect lr{scr.x, scr.cy() - 22.f, scr.w, 18.f};
+            ui_.textCenter(std::string(osc ? "OSC B" : "OSC A") + " \xC3\x89TEINT", lr, Font{Face::MonoBold, 12.f, 2.f}, T.scrMuted);
+            ui_.textCenter(lvlOff ? std::string("niveau \xC3\xA0 -\xE2\x88\x9E \xC2\xB7 monte NIVEAU pour l'allumer")
+                                  : std::string("BLEND tout sur ") + (osc ? "A" : "B") + " \xC2\xB7 page JEU",
+                           Rect{scr.x, scr.cy() + 2.f, scr.w, 14.f}, Font{Face::Mono, 9.f, 0.5f}, T.scrMuted);
+        }
     }
     if (hasSmp) {
         const char* lab[3] = {"AUDIO", "WAVETABLE", "RESYNTH\xC3\x88SE"};

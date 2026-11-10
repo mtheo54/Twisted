@@ -421,6 +421,15 @@ int main() {
         std::printf("instrument SFZ : %d zones, A5 joué à %d Hz (880 attendu), boucle tenue après 3 s : crête %.2f\n", in ? (int)in->zones.size() : 0, zc, pk);
         CHECK(std::abs(zc - 880) <= 3);
         CHECK(pk > 0.02f);
+        // position de lecture de la zone (affichée dans l'écran de l'oscillateur, page SON)
+        CHECK(m.readouts.instPos[0].load() >= 0.f && m.readouts.instPos[0].load() <= 1.f);
+        {
+            InstOverview io;
+            CHECK(m.instruments.overview(0, 81, 100, 300, io) && io.mx.size() == 300 && io.zones == 2 && io.root == 69);
+            float top = 0.f;
+            for (float v : io.mx) top = std::max(top, v);
+            CHECK(top > 0.4f);
+        }
 
         // note rejouée vite (pendant sa relâche) : l'échantillon repart du début, en POLY et en MONO
         // (avant : la voix continuait l'ancien échantillon, la note « s'allongeait » au lieu de rejouer)
