@@ -80,6 +80,7 @@ struct EditorState {
     int wtImpMode = 0;     // import : 0 AUTO, 1 CYCLES, 2 RESYNTHÈSE (ImportMode)
     int wtImpFrames = 64;  // frames voulues pour un son quelconque (64, 128, 256)
     bool openAbout = false;        // demande d'ouverture de la fenêtre À PROPOS (captures)
+    std::array<int, 2> soundAs{{1, 1}};  // son déposé joué en table : 1 cycles, 2 resynthèse (page SON)
     std::array<bool, 2> envAlt{};  // page ENV / LFO : la carte du haut montre ENV 3, celle du bas ENV 4
     float pSm = 0.5f, pDist = 0.35f, pTsm = 0.4f;
     bool autoNorm = false;
@@ -209,6 +210,10 @@ private:
     void wtOp(const std::string& label, int kind, bool forceNorm);
     void wtAction(int id);
     void wtImport(const std::string& path, bool toOsc, int osc);
+    // son déposé sur un oscillateur : 0 AUDIO (joué tel quel), 1 WAVETABLE (cycles), 2 RESYNTHÈSE
+    void soundAs(int osc, int how);
+    struct Overview { uint64_t serial = 0; std::vector<float> mn, mx; };
+    Overview ovw_[2];  // forme d'onde complète du son déposé (page SON), recalculée quand le son change
     void wtExport();
     void handleDrops();
 

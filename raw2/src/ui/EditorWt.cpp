@@ -178,6 +178,34 @@ void Editor::wtAction(int id) {
     }
 }
 
+void Editor::soundAs(int osc, int how) {
+    const uint32_t idPlay = osc ? kBPlay : kAPlay;
+    if (how == 0) {  // AUDIO : le son tel quel (STRETCH / RESAMPLE, ROOT)
+        m_.instruments.clear(osc);
+        setParam(idPlay, 1.f);
+        return;
+    }
+    const SampleSet* s = m_.samples.audio(osc);  // fil de l'interface : seul lui remplace le son
+    if (!s || s->base.empty()) return;
+    const std::vector<float> data = s->base;
+    const double sr = s->sr;
+    std::string base = s->name;
+    if (base.size() > 4 && base.compare(base.size() - 4, 4, ".wav") == 0) base.resize(base.size() - 4);
+    Wavetable t;
+    const int r = tableFromAudioEx(data, sr, base, how == 2 ? kImpSpectral : kImpAuto, st_.wtImpFrames, t);
+    if (!r) { wtSay("SON TROP COURT POUR UNE TABLE"); return; }
+    {
+        std::lock_guard<std::mutex> lk(m_.tableMutex);
+        t.name = base + (how == 2 ? " (resynth.)" : ".wav");
+        m_.edit[(size_t)osc] = t;
+    }
+    m_.tablesChanged(osc);
+    m_.setMounted(osc, true);
+    m_.instruments.clear(osc);
+    setParam(idPlay, 0.f);
+    st_.soundAs[(size_t)osc] = how;
+}
+
 void Editor::wtImport(const std::string& path, bool toOsc, int osc) {
     std::vector<unsigned char> bytes;
     std::vector<float> data;
@@ -203,6 +231,11 @@ void Editor::wtImport(const std::string& path, bool toOsc, int osc) {
         }
         m_.tablesChanged(osc);
         m_.setMounted(osc, true);
+        // un vrai son (pas une table toute faite, pas un cycle) : joué tel quel ; le choix AUDIO /
+        // WAVETABLE / RESYNTHÈSE reste dans l'écran de l'oscillateur (page SON)
+        const bool isTable = r == kImpTable || data.size() < (size_t)(0.1 * sr);
+        st_.soundAs[(size_t)osc] = r == kImpSpectral ? 2 : 1;
+        setParam(osc ? kBPlay : kAPlay, isTable ? 0.f : 1.f);
         return;
     }
     const int prevTgt = st_.wtTgt;

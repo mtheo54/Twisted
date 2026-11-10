@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -51,6 +52,15 @@ int main(int argc, char** argv) {
         json::Value v;
         m.instruments.scan();
         if (files::readText(p, t) && json::Value::parse(t, v)) m.applyPresetJson(v, nullptr);
+    }
+    if (opt == "sample") {  // un son déposé sur l'OSC A, joué tel quel (page SON : forme d'onde complète)
+        std::vector<float> x(48000 * 2);
+        for (size_t i = 0; i < x.size(); ++i) {
+            const double t = (double)i / 48000.0, env = std::exp(-1.6 * t) * (1.0 - std::exp(-60.0 * t));
+            x[i] = (float)(env * (std::sin(2.0 * 3.14159265 * 110.0 * t) + 0.4 * std::sin(2.0 * 3.14159265 * 330.0 * t * (1.0 + 0.1 * t))) * (0.6 + 0.4 * std::sin(9.0 * t)));
+        }
+        m.samples.load(0, "vocal chop.wav", x, 48000.0);
+        m.params.set(kAPlay, 1.f);
     }
     m.theme = theme;
     m.setTab(tab);

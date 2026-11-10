@@ -228,6 +228,9 @@ void Editor::oscCard(int osc, const Rect& card) {
     if (instOn) {
         mounted = true;
         tname = std::string("INST \xC2\xB7 ") + m_.instruments.name(osc);
+    } else if (m_.samples.has(osc) && P(osc ? kBPlay : kAPlay) > 0.5f) {  // son déposé joué tel quel
+        mounted = true;
+        tname = std::string("AUDIO \xC2\xB7 ") + m_.samples.name(osc);
     }
     // octave / demi-tons et badge de la table, alignés à droite
     const Font pf{Face::Mono, 10.f, 0.6f};
@@ -300,11 +303,53 @@ void Editor::oscCard(int osc, const Rect& card) {
         u -= std::floor(u);
         return warpPhasePreview(u, wmode, warp, std::sin(6.2831853f * u));
     };
+    // son déposé : bande de choix AUDIO / WAVETABLE / RESYNTHÈSE en bas de l'écran ; en AUDIO,
+    // l'écran montre le son entier (enveloppe min / max) et la position de lecture
+    const uint32_t pPlay = osc ? kBPlay : kAPlay;
+    const bool hasSmp = m_.samples.has(osc) && !instOn;
+    const bool audioMode = hasSmp && P(pPlay) > 0.5f;
+    const Rect strip{scr.x + 46.f, scr.b() - 33.f, scr.w - 54.f, 25.f};
     c.save();
     c.clip(scr.inset(1.f));
-    c.line(Pt{area.x, area.cy()}, Pt{area.r(), area.cy()}, T.scrMid, 1.f);
     float rmsAcc = 0.f;
-    {
+    if (audioMode) {
+        const SampleSet* s = m_.samples.audio(osc);
+        Overview& ov = ovw_[osc];
+        constexpr int kCols = 300;
+        if (s && ov.serial != s->serial) {  // recalcul seulement quand le son change
+            ov.serial = s->serial;
+            ov.mn.assign(kCols, 0.f);
+            ov.mx.assign(kCols, 0.f);
+            const size_t n = s->base.size();
+            for (int k = 0; k < kCols && n > 0; ++k) {
+                const size_t a = n * (size_t)k / kCols, b = std::max(a + 1, n * (size_t)(k + 1) / kCols);
+                float lo = 0.f, hi = 0.f;
+                for (size_t i = a; i < b && i < n; ++i) { lo = std::min(lo, s->base[i]); hi = std::max(hi, s->base[i]); }
+                ov.mn[(size_t)k] = lo;
+                ov.mx[(size_t)k] = hi;
+            }
+        }
+        const Rect wa{scr.x + 46.f, scr.y + 26.f, scr.w - 54.f, strip.y - scr.y - 34.f};
+        const float cy = wa.cy(), hh = wa.h * 0.47f;
+        c.line(Pt{wa.x, cy}, Pt{wa.r(), cy}, T.scrMid, 1.f);
+        const Color wc = osc == 0 ? T.waveA : T.waveB;
+        float pk = 1e-6f;
+        for (size_t k = 0; k < ov.mx.size(); ++k) pk = std::max(pk, std::max(ov.mx[k], -ov.mn[k]));
+        const float gain = 1.f / pk;
+        const float play = m_.readouts.smpPos[(size_t)osc].load();
+        for (size_t k = 0; k < ov.mx.size(); ++k) {
+            const float x = wa.x + wa.w * ((float)k + 0.5f) / (float)ov.mx.size();
+            const float y0 = cy - ov.mx[k] * gain * hh, y1 = cy - ov.mn[k] * gain * hh;
+            const bool past = play >= 0.f && (float)k / (float)ov.mx.size() <= play;
+            c.fillRect(Rect{x - 0.5f, y0, 1.f, std::max(1.f, y1 - y0)}, past ? T.hl : wc.withAlpha(0.85f));
+        }
+        if (play >= 0.f) {
+            const float x = wa.x + wa.w * play;
+            c.fillRect(Rect{x - 1.f, wa.y, 2.f, wa.h}, T.acc);
+        }
+        rmsAcc = 241.f * 0.1f;
+    } else {
+        c.line(Pt{area.x, area.cy()}, Pt{area.r(), area.cy()}, T.scrMid, 1.f);
         std::lock_guard<std::mutex> lk(m_.tableMutex);
         const Wavetable& tab = m_.mounted[(size_t)osc] ? m_.edit[(size_t)osc] : fallbackTable();
         std::vector<Pt> pts;
@@ -336,7 +381,10 @@ void Editor::oscCard(int osc, const Rect& card) {
         c.fillRect(Rect{gx, gy, 1.f, gh}, T.scrMid);
         static const char* lab[4] = {"+6dB", "0dB", "-6dB", "-\xE2\x88\x9E"};
         for (int k = 0; k < 4; ++k) ui_.text(lab[k], gx + 5.f, gy + (gh - 8.f) * (float)k / 3.f, sf, T.scrMuted, 8.f);
-        if (now_ - teleT_[osc] > 120.0 || tele_[osc].empty()) {
+        if (audioMode) {
+            tele_[osc] = ui_.fit(upper(m_.samples.name(osc)), Font{Face::Mono, 9.f, 0.72f}, scr.w - 90.f) + fmt(" // %.2f s", m_.samples.seconds(osc));
+            teleT_[osc] = now_;
+        } else if (now_ - teleT_[osc] > 120.0 || tele_[osc].empty()) {
             teleT_[osc] = now_;
             const int noteRel = std::max(heldN, 0);
             const float f0 = 130.81f * std::pow(2.f, (float)noteRel / 12.f) * ratio * bend;
@@ -345,6 +393,16 @@ void Editor::oscCard(int osc, const Rect& card) {
         }
         const Font tf{Face::Mono, 9.f, 0.72f};
         ui_.textRight(tele_[osc], scr.r() - 11.f, scr.y + 7.f, tf, T.scrMuted);
+    }
+    if (hasSmp) {
+        const char* lab[3] = {"AUDIO", "WAVETABLE", "RESYNTH\xC3\x88SE"};
+        const int cur = audioMode ? 0 : std::clamp(st_.soundAs[(size_t)osc], 1, 2);
+        const float bw = (strip.w - 8.f) / 3.f;
+        for (int k = 0; k < 3; ++k) {
+            ButtonStyle s = ui_.miniStyle(k == cur);
+            s.font = Font{Face::Mono, 9.f, 0.5f};
+            if (ui_.button(makeId("soundAs", osc * 3 + k), Rect{strip.x + (float)k * (bw + 4.f), strip.y, bw, strip.h}, lab[k], s) && k != cur) soundAs(osc, k);
+        }
     }
     if (osc == 0 ? dropA_ : dropB_) {
         c.fillRect(scr, T.scr.withAlpha(0.85f));
