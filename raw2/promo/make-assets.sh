@@ -3,7 +3,9 @@
 #   - captures de l'interface en 2560 x 1920 (raw2_snap, RAW2_SNAP_SCALE=2)
 #   - musiques jouées par le moteur RAW 2 (raw2_promo_audio + partitions de ce dossier)
 #   - forme d'onde d'un vrai échantillon de Wurlitzer (plan « instruments »)
-# Usage : promo/make-assets.sh <dossier de la banque d'instruments>
+# Usage : promo/make-assets.sh <dossier de la banque d'instruments> [musique]
+#   avec une musique (mp3, wav…) : le meilleur passage est choisi pour chaque pub (pick_segment.py),
+#   le montage suit son tempo ; sans musique : les morceaux joués par RAW 2 (partitions de ce dossier)
 #   (le dossier qui contient « Wurlitzer EP200 », « Alto Sax »…, voir docs/INSTRUMENTS.md)
 # Nécessite un build Linux avec -DRAW2_BUILD_TRAINER=ON (raw2_snap, raw2_inst_pack, raw2_promo_audio).
 set -euo pipefail
@@ -39,9 +41,16 @@ for th in 0 1 2 3 4 5; do snap "theme$th.png" 0 "$th" & done
 wait
 snap inst.png 0 0 RAW2_SNAP_PRESETFILE="$PACK/25 Fusion Wurli Sub.raw" RAW2_SNAP_FRAMES=200
 
-# musiques (les partitions désignent le pack par ../build/promo-pack)
-(cd "$HERE" && "$BUILD/raw2_promo_audio" lancement.txt "$OUT/lancement.wav")
-(cd "$HERE" && "$BUILD/raw2_promo_audio" le-son.txt "$OUT/le-son.wav")
+# musiques
+if [ -n "${2:-}" ]; then
+    MUSIC="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+    for a in lancement le-son; do python3 "$HERE/pick_segment.py" "$MUSIC" "$a" "$OUT/$a.wav" "$OUT/$a-meta.json"; done
+else
+    rm -f "$OUT/lancement-meta.json" "$OUT/le-son-meta.json"
+    # les partitions désignent le pack par ../build/promo-pack
+    (cd "$HERE" && "$BUILD/raw2_promo_audio" lancement.txt "$OUT/lancement.wav")
+    (cd "$HERE" && "$BUILD/raw2_promo_audio" le-son.txt "$OUT/le-son.wav")
+fi
 # analyse image par image (niveau, graves, aigus, attaques, spectre) : la scène réagit au son
 for a in lancement le-son; do python3 "$HERE/audio_features.py" "$OUT/$a.wav" "$OUT/$a-audio.json"; done
 

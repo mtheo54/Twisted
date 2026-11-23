@@ -63,7 +63,11 @@ function scoreHits(txt) {
     }
     return { bpm, hits };
 }
-const SCORE = scoreHits(scoreTxt);
+// musique externe (pick_segment.py) : le montage, écrit à 120 BPM, suit son tempo
+const META = await fetch(ASSETS + AD + '-meta.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
+const K = META && META.bpm ? META.bpm / 120 : 1;   // temps du montage = temps réel × K
+let REALT = 0;
+const SCORE = META && META.external ? { bpm: 120, hits: [] } : scoreHits(scoreTxt);
 const AUD0 = await (await fetch(ASSETS + AD + '-audio.json')).json();
 if (!SCORE.hits.length) {  // musique externe : coups pris dans les graves (pics de l'attaque basse)
     const k = AUD0.kick;
@@ -83,7 +87,7 @@ function aud(t) {
     return { rms: g('rms'), low: g('low'), mid: g('mid'), high: g('high'), flux: g('flux'), bands: AUD.bands[Math.round(x)] };
 }
 let A = aud(0);   // valeurs de l'image en cours
-let KICK = 0;     // enveloppe des coups de 808
+let KICK = 0, KICK9 = 0, KICK16 = 0;   // enveloppes des coups de grosse caisse (temps réel)
 
 // bruit simplex 3D (Ashima / Ian McEwan, licence MIT) pour les shaders
 const SNOISE = `
@@ -655,7 +659,7 @@ function showEnd(t, t0, yTop, yBot) {
     el.end2.style.opacity = String(eOut(b));
     el.end2.style.transform = `translateY(${(1 - eOut(b)) * 40 * U}px)`;
     // l'appel à l'action « tape » sur les temps
-    const beat = (t - t0) * SCORE.bpm / 60, pulse = Math.exp(-(beat % 1) * 6);
+    const beat = (t - t0) * 2, pulse = Math.exp(-(beat % 1) * 6);
     el.end2.querySelector('.cta').style.transform = `scale(${1 + 0.025 * pulse * (t > t0 + 0.9 ? 1 : 0)})`;
 }
 function flashAt(t, cuts) {
@@ -674,8 +678,9 @@ function grain(frame) {
 }
 function hud(t, extra = '') {
     const s = Math.floor(t), f = Math.floor((t - s) * FPS);
-    el.hudBL.textContent = `T+00:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')} · ${SCORE.bpm} BPM${extra}`;
-    el.rec.style.opacity = Math.floor(t * SCORE.bpm / 60 * 2) % 2 === 0 ? '1' : '0.25';
+    const bpm = META && META.bpm ? Math.round(META.bpm) : SCORE.bpm;
+    el.hudBL.textContent = `T+00:${String(Math.floor(REALT)).padStart(2, '0')}:${String(Math.floor((REALT % 1) * FPS)).padStart(2, '0')} · ${bpm} BPM${extra}`;
+    el.rec.style.opacity = Math.floor(t * 4) % 2 === 0 ? '1' : '0.25';
 }
 const spec = $('spec'), sctx = spec.getContext('2d');
 spec.width = Math.round(24 * U); spec.height = Math.round(320 * U);
@@ -702,11 +707,11 @@ function only(...gs) {
     for (const g of [device, WT.g, LIFE.g, BARS.g, FAN.g, CLOUD.g]) g.visible = gs.includes(g);
 }
 function shake(t, amt = 0.35) {
-    const e = hitEnv(t) * amt;
+    const e = KICK16 * amt;
     return v3(Math.sin(t * 91.7) * e, Math.cos(t * 73.3) * e, 0);
 }
 function pulseStrip(t, obj = device) {
-    const e = hitEnv(t, 9);
+    const e = KICK9;
     obj.userData.strip.material.color.copy(HOT).multiplyScalar(0.5 + 1.2 * e);
     rim.intensity = 180 + 520 * e;
 }
@@ -949,13 +954,16 @@ function adLeSon(t, frame) {
 
 // ---------------------------------------------------------------- point d'entrée
 const AD_FN = { lancement: adLancement, 'le-son': adLeSon }[AD];
-const DURATION = { lancement: 20, 'le-son': 16 }[AD];
+const DURATION = { lancement: 20, 'le-son': 16 }[AD] / K;
 window.DURATION = DURATION;
 CLOUD.mat.uniforms.uScale.value = H / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
-window.renderFrame = t => {
-    const frame = Math.round(t * FPS);
-    A = aud(t);
-    KICK = hitEnv(t, 10);
+window.renderFrame = rt => {
+    // rt : temps réel de la vidéo (musique) ; t : temps du montage (écrit à 120 BPM)
+    REALT = rt;
+    const t = rt * K;
+    const frame = Math.round(rt * FPS);
+    A = aud(rt);
+    KICK = hitEnv(rt, 10); KICK9 = hitEnv(rt, 9); KICK16 = hitEnv(rt, 16);
     fxDefaults(t, frame);
     WT.g.position.set(0, 0, 0);
     LIFE.g.position.set(0, 0, 0);
@@ -965,7 +973,7 @@ window.renderFrame = t => {
     CLOUD.mat.uniforms.uLow.value = A.low;
     AD_FN(t, frame);
     if (device.visible) {
-        const fi = Math.min(AUD.n - 1, Math.round(t * AUD.fps)), sc = AUD.scope[fi] || [];
+        const fi = Math.min(AUD.n - 1, Math.round(rt * AUD.fps)), sc = AUD.scope[fi] || [];
         const sm = sc.map((v, i) => { let s = 0, n = 0; for (let j = -6; j <= 6; ++j) { const x = sc[i + j]; if (x !== undefined) { s += x; ++n; } } return (s / n) * 1.6; });
         SYN.update({ t, A, kick: KICK, chroma: AUD.chroma[fi], scopeA: sc, scopeB: sm, mode: devMode, play: devPlay, cut: devCut, wurli });
     }

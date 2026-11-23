@@ -24,10 +24,27 @@ Aucun objet n'en touche un autre :
 - dans « fusionne-les », la wavetable flotte au-dessus de la grille.
 
 Tout ce qu'on voit et entend vient de RAW 2 :
-- **Les écrans** de l'appareil 3D sont de vraies captures de l'interface v1.0.0.
+- **L'appareil** est un modèle 3D fidèle à la page SON, avec potards, touches, LED et écrans animés par la musique.
 - **La grille** est un vrai jeu de la vie (règle B3/S23, comme le module VIE).
 - **La forme d'onde** est celle d'un vrai échantillon de la banque.
 - **La musique** est jouée par le moteur de RAW 2 : presets d'usine (808 fumée, tic toc, escalier, portail) et presets d'instruments (Wurli, Cordes Disco, Vibes, Sax). Les partitions sont dans `lancement.txt` et `le-son.txt`.
+
+## Avec une autre musique
+
+```sh
+promo/render.sh <dossier de la banque d'instruments> ma-musique.mp3
+```
+
+`pick_segment.py` s'occupe de caler la musique sur le montage :
+- il détecte le tempo de la musique ;
+- il choisit le meilleur passage pour chaque pub : il commence sur une mesure et monte en puissance pile quand l'appareil apparaît ;
+- il découpe l'extrait et écrit le BPM dans `build/promo-assets/<pub>-meta.json`.
+
+Le montage est écrit à 120 BPM : la scène l'étire ou le resserre au tempo trouvé, pour que les
+coupes restent sur les temps. La grosse caisse, les touches enfoncées (notes présentes) et les
+oscilloscopes viennent de l'analyse du son. Pour imposer le début du passage :
+`python3 promo/pick_segment.py musique.mp3 lancement build/promo-assets/lancement.wav build/promo-assets/lancement-meta.json 42.5`
+(puis `audio_features.py` sur l'extrait).
 
 ## Changer les textes, ajouter un prix
 
@@ -56,6 +73,9 @@ node promo/render.cjs lancement 1080 1920 --apercu /tmp/apercu 4.1,9,18
 
 ## Fichiers
 
+- `synth3d.js` : RAW 2 modélisé en 3D d'après la page SON : panneaux, potards, clavier, LED de la VIE,
+  écrans, afficheurs, sérigraphie. Les couleurs viennent de `resources/data/themes.json` (6 thèmes).
+- `pick_segment.py` : choix du passage d'une musique externe et détection de son tempo.
 - `scene.html`, `scene.js` : la scène 3D (three.js, dans `vendor/`, licence MIT) et le montage.
   Les instants clés (drop, coupes) tombent sur les temps de la musique (120 BPM). La caméra
   tremble sur chaque coup de 808, lu dans la partition.

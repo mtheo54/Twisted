@@ -35,7 +35,9 @@ const server = http.createServer((req, res) => {
     const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
     page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log('[page]', m.text()); });
     page.on('pageerror', e => { console.error('[page error]', e.message); });
-    await page.goto(`http://127.0.0.1:${port}/promo/scene.html?ad=${ad}&w=${W}&h=${H}&fps=${FPS}`);
+    // PROMO_ASSETS : autre dossier d'éléments sous build/ (essais)
+    const assetsDir = process.env.PROMO_ASSETS || 'promo-assets';
+    await page.goto(`http://127.0.0.1:${port}/promo/scene.html?ad=${ad}&w=${W}&h=${H}&fps=${FPS}&assets=../build/${assetsDir}/`);
     await page.waitForFunction('window.READY === true', null, { timeout: 120000 });
     const duration = await page.evaluate('window.DURATION');
 
@@ -53,7 +55,7 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    const wav = path.join(ROOT, 'build', 'promo-assets', `${ad}.wav`);
+    const wav = path.join(ROOT, 'build', process.env.PROMO_ASSETS || 'promo-assets', `${ad}.wav`);
     const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(FPS), '-i', '-',
         '-i', wav, '-map', '0:v', '-map', '1:a', '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p',
         '-profile:v', 'high', '-movflags', '+faststart', '-c:a', 'aac', '-b:a', '256k', '-shortest', out], { stdio: ['pipe', 'inherit', 'inherit'] });
