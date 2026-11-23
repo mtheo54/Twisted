@@ -7,7 +7,7 @@ explique ce qui est livré, ce qui a été vérifié et ce qu'il reste à faire 
 
 | Fichier | Pour qui | Contenu |
 |---|---|---|
-| `RAW2-Setup-v1.0.0.exe` | clients Windows | installateur complet : plugin VST3, RAW 2 sans DAW, 23 instruments, pack de 34 presets « RAW 2 · INSTRUMENTS », désinstallation propre |
+| `RAW2-v1.0.0-Windows.zip` | clients Windows | contient `RAW2-Setup-v1.0.0.exe`, installateur complet : plugin VST3, RAW 2 sans DAW, 23 instruments, pack de 34 presets « RAW 2 · INSTRUMENTS », désinstallation propre |
 | `RAW2-macOS-1.0.0.dmg` | clients Mac | `Installer RAW 2.pkg` (VST3 + Audio Unit), copie manuelle, notice |
 | `RAW2-instruments-v1.0.0.zip` | clients Mac | les 23 instruments et le pack de presets, à décompresser dans `~/Documents/Raw 2` (sous Windows, l'installateur s'en charge) |
 | `RAW2-sources-v1.0.0.zip` | développeur | code source complet, pour recompiler et signer |
