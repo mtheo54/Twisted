@@ -42,6 +42,8 @@ snap inst.png 0 0 RAW2_SNAP_PRESETFILE="$PACK/25 Fusion Wurli Sub.raw" RAW2_SNAP
 # musiques (les partitions désignent le pack par ../build/promo-pack)
 (cd "$HERE" && "$BUILD/raw2_promo_audio" lancement.txt "$OUT/lancement.wav")
 (cd "$HERE" && "$BUILD/raw2_promo_audio" le-son.txt "$OUT/le-son.wav")
+# analyse image par image (niveau, graves, aigus, attaques, spectre) : la scène réagit au son
+for a in lancement le-son; do python3 "$HERE/audio_features.py" "$OUT/$a.wav" "$OUT/$a-audio.json"; done
 
 # forme d'onde réelle : Wurlitzer, une note de la 4e octave jouée forte
 python3 - "$BANK/Wurlitzer EP200/samples" "$OUT/wurli.json" <<'EOF'

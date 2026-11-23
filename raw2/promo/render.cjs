@@ -43,8 +43,10 @@ const server = http.createServer((req, res) => {
         const dir = rest[0], times = (rest[1] || '0').split(',').map(Number);
         fs.mkdirSync(dir, { recursive: true });
         for (const t of times) {
+            // le feedback a une mémoire : on rend d'abord les 15 images qui précèdent
+            for (let k = 15; k >= 1; --k) if (t - k / FPS >= 0) await page.evaluate(x => window.renderFrame(x), t - k / FPS);
             await page.evaluate(t => window.renderFrame(t), t);
-            await page.screenshot({ path: path.join(dir, `${ad}-${W}x${H}-${t.toFixed(2)}.png`) });
+            await page.screenshot({ path: path.join(dir, `${ad}-${W}x${H}-${t.toFixed(2)}.png`), timeout: 300000 });
         }
         await browser.close();
         server.close();
@@ -59,7 +61,7 @@ const server = http.createServer((req, res) => {
     const t0 = Date.now();
     for (let f = 0; f < frames; ++f) {
         await page.evaluate(t => window.renderFrame(t), f / FPS);
-        const buf = await page.screenshot({ type: 'jpeg', quality: 95 });
+        const buf = await page.screenshot({ type: 'jpeg', quality: 95, timeout: 300000 });
         if (!ff.stdin.write(buf)) await new Promise(r => ff.stdin.once('drain', r));
         if (f % 60 === 0) process.stdout.write(`${ad} ${W}x${H} : image ${f}/${frames} (${((Date.now() - t0) / 1000).toFixed(0)} s)\n`);
     }

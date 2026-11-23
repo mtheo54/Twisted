@@ -8,6 +8,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { CopyShader } from 'three/addons/shaders/CopyShader.js';
 
 const Q = new URLSearchParams(location.search);
 const AD = Q.get('ad') || 'lancement';
@@ -64,6 +66,36 @@ const hitEnv = (t, k = 16) => {
     return s;
 };
 
+// analyse de la musique image par image (audio_features.py) : graves, médiums, aigus, attaques, spectre
+const AUD = await (await fetch(ASSETS + AD + '-audio.json')).json();
+function aud(t) {
+    const x = clamp(t * AUD.fps, 0, AUD.n - 1.001), i = Math.floor(x), f = x - i;
+    const g = k => lerp(AUD[k][i], AUD[k][i + 1], f);
+    return { rms: g('rms'), low: g('low'), mid: g('mid'), high: g('high'), flux: g('flux'), bands: AUD.bands[Math.round(x)] };
+}
+let A = aud(0);   // valeurs de l'image en cours
+let KICK = 0;     // enveloppe des coups de 808
+
+// bruit simplex 3D (Ashima / Ian McEwan, licence MIT) pour les shaders
+const SNOISE = `
+vec3 mod289(vec3 x){return x-floor(x*(1./289.))*289.;} vec4 mod289(vec4 x){return x-floor(x*(1./289.))*289.;}
+vec4 permute(vec4 x){return mod289(((x*34.)+1.)*x);} vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-.85373472095314*r;}
+float snoise(vec3 v){const vec2 C=vec2(1./6.,1./3.);const vec4 D=vec4(0.,.5,1.,2.);
+ vec3 i=floor(v+dot(v,C.yyy));vec3 x0=v-i+dot(i,C.xxx);vec3 g=step(x0.yzx,x0.xyz);vec3 l=1.-g;
+ vec3 i1=min(g.xyz,l.zxy);vec3 i2=max(g.xyz,l.zxy);vec3 x1=x0-i1+C.xxx;vec3 x2=x0-i2+C.yyy;vec3 x3=x0-D.yyy;
+ i=mod289(i);vec4 p=permute(permute(permute(i.z+vec4(0.,i1.z,i2.z,1.))+i.y+vec4(0.,i1.y,i2.y,1.))+i.x+vec4(0.,i1.x,i2.x,1.));
+ float n_=.142857142857;vec3 ns=n_*D.wyz-D.xzx;vec4 j=p-49.*floor(p*ns.z*ns.z);vec4 x_=floor(j*ns.z);vec4 y_=floor(j-7.*x_);
+ vec4 x=x_*ns.x+ns.yyyy;vec4 y=y_*ns.x+ns.yyyy;vec4 h=1.-abs(x)-abs(y);vec4 b0=vec4(x.xy,y.xy);vec4 b1=vec4(x.zw,y.zw);
+ vec4 s0=floor(b0)*2.+1.;vec4 s1=floor(b1)*2.+1.;vec4 sh=-step(h,vec4(0.));vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+ vec3 p0=vec3(a0.xy,h.x);vec3 p1=vec3(a0.zw,h.y);vec3 p2=vec3(a1.xy,h.z);vec3 p3=vec3(a1.zw,h.w);
+ vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+ vec4 m=max(.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.);m=m*m;
+ return 42.*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));}
+`;
+const HASH = `float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+ return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}`;
+
 // ---------------------------------------------------------------- rendu
 const canvas = $('gl');
 canvas.width = W; canvas.height = H;
@@ -86,9 +118,101 @@ const composer = new EffectComposer(renderer, rt);
 composer.setPixelRatio(1);
 composer.setSize(W, H);
 composer.addPass(new RenderPass(scene, camera));
+
+// feedback (comme le Feedback TOP de TouchDesigner) : l'image précédente, zoomée, tournée, déplacée
+// par du bruit et assombrie, sous l'image courante ; les traînées tirent vers l'orange
+class FeedbackPass extends Pass {
+    constructor() {
+        super();
+        this.prev = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType });
+        this.mat = new THREE.ShaderMaterial({
+            uniforms: { tCur: { value: null }, tPrev: { value: this.prev.texture }, uDecay: { value: 0 }, uZoom: { value: 0 },
+                        uRot: { value: 0 }, uDisp: { value: 0 }, uTime: { value: 0 } },
+            vertexShader: CopyShader.vertexShader,
+            fragmentShader: HASH + `uniform sampler2D tCur, tPrev; uniform float uDecay, uZoom, uRot, uDisp, uTime; varying vec2 vUv;
+              void main(){
+                vec2 c = vUv - .5; float cs = cos(uRot), sn = sin(uRot);
+                c = mat2(cs, -sn, sn, cs) * c * (1. - uZoom);
+                vec2 n = vec2(vnoise(vUv * 6. + uTime * .5), vnoise(vUv * 6. + 17. - uTime * .5)) - .5;
+                vec4 p = texture2D(tPrev, c + .5 + n * uDisp) * uDecay * vec4(1., .86, .72, 1.);
+                gl_FragColor = max(texture2D(tCur, vUv), p);
+              }`,
+        });
+        this.quad = new FullScreenQuad(this.mat);
+        this.copy = new FullScreenQuad(new THREE.ShaderMaterial(CopyShader));
+    }
+    render(renderer, writeBuffer, readBuffer) {
+        this.mat.uniforms.tCur.value = readBuffer.texture;
+        renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+        this.quad.render(renderer);
+        this.copy.material.uniforms.tDiffuse.value = writeBuffer.texture;
+        renderer.setRenderTarget(this.prev);
+        this.copy.render(renderer);
+    }
+}
+const feedback = new FeedbackPass();
+composer.addPass(feedback);
 const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.85, 0.55, 1.0);
 composer.addPass(bloom);
+// glitch : tranches décalées, déplacement par bruit, aberration chromatique, légère courbure,
+// et trame pixel (dither de Bayer noir / orange / blanc) sur les coupes
+const fxPass = new (class extends Pass {
+    constructor() {
+        super();
+        this.mat = new THREE.ShaderMaterial({
+            uniforms: { tDiffuse: { value: null }, uCA: { value: 0 }, uGlitch: { value: 0 }, uSeed: { value: 0 }, uDisp: { value: 0 },
+                        uTime: { value: 0 }, uDither: { value: 0 }, uWarp: { value: 0 }, uPix: { value: 2 } },
+            vertexShader: CopyShader.vertexShader,
+            fragmentShader: HASH + `uniform sampler2D tDiffuse; uniform float uCA, uGlitch, uSeed, uDisp, uTime, uDither, uWarp, uPix; varying vec2 vUv;
+              float bayer(vec2 p){ p = mod(floor(p), 4.); int i = int(p.x + p.y * 4.);
+                float m[16] = float[16](0.,8.,2.,10.,12.,4.,14.,6.,3.,11.,1.,9.,15.,7.,13.,5.); return m[i] / 16.; }
+              void main(){
+                vec2 uv = vUv; vec2 d = uv - .5; uv = .5 + d * (1. + uWarp * dot(d, d));
+                float band = floor(uv.y * 54.); float h = hash(vec2(band, uSeed));
+                if (h > 1. - uGlitch * .55) uv.x += (hash(vec2(band, uSeed + 3.)) - .5) * uGlitch * .22;
+                uv += (vec2(vnoise(uv * 4. + uTime), vnoise(uv * 4. + 9. - uTime)) - .5) * uDisp;
+                vec2 off = (uv - .5) * uCA;
+                vec3 col = vec3(texture2D(tDiffuse, uv + off).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - off).b);
+                if (uDither > 0.) {
+                  vec2 cell = floor(gl_FragCoord.xy / uPix);
+                  float l = dot(min(col, vec3(1.5)), vec3(.299, .587, .114)); float b = bayer(cell);
+                  vec3 dc = l > .62 + b * .5 ? vec3(1., .96, .9) : (l > .08 + b * .3 ? vec3(1., .3, 0.) : vec3(.02));
+                  col = mix(col, dc, uDither);
+                }
+                gl_FragColor = vec4(col, 1.);
+              }`,
+        });
+        this.quad = new FullScreenQuad(this.mat);
+    }
+    render(renderer, writeBuffer, readBuffer) {
+        this.mat.uniforms.tDiffuse.value = readBuffer.texture;
+        renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+        this.quad.render(renderer);
+    }
+})();
+composer.addPass(fxPass);
 composer.addPass(new OutputPass());
+// réglages des effets pour l'image en cours (chaque plan les modifie)
+let FX;
+function fxDefaults(t, frame) {
+    FX = { decay: 0, zoom: 0, rot: 0, disp: 0, ca: 0.0016 + 0.012 * KICK + 0.004 * A.high, glitch: Math.max(0, A.flux - 0.82) * 2.2,
+           fdisp: 0.003 * KICK, dither: 0, warp: 0.05, bloom: 0.62 + 0.55 * A.low, seed: frame };
+}
+// coupe franche : deux images en trame pixel + glitch, et le feedback repart de zéro
+function cutFx(t, cuts) {
+    for (const c of cuts) {
+        const d = t - c;
+        if (d >= 0 && d < 0.075) { FX.dither = 1; FX.glitch = Math.max(FX.glitch, 0.9); FX.ca = 0.03; }
+        if (d >= 0 && d < 1 / FPS) FX.decay = 0;
+    }
+}
+function applyFx(t) {
+    const f = feedback.mat.uniforms, x = fxPass.mat.uniforms;
+    f.uDecay.value = FX.decay; f.uZoom.value = FX.zoom; f.uRot.value = FX.rot; f.uDisp.value = FX.disp; f.uTime.value = t;
+    x.uCA.value = FX.ca; x.uGlitch.value = clamp(FX.glitch); x.uSeed.value = FX.seed % 97; x.uDisp.value = FX.fdisp;
+    x.uTime.value = t; x.uDither.value = FX.dither; x.uWarp.value = FX.warp; x.uPix.value = Math.max(2, Math.round(3 * U));
+    bloom.strength = FX.bloom;
+}
 
 // distance de caméra pour qu'un objet de largeur w (et hauteur h) tienne dans l'image
 function fitDist(w, h = 0) {
@@ -113,26 +237,43 @@ const fill = new THREE.DirectionalLight(0x9fb4ff, 0.35);
 fill.position.set(10, -4, 6);
 scene.add(fill);
 
-// ---------------------------------------------------------------- sol : grille de points du châssis + balayage orange
+// ---------------------------------------------------------------- sol : grille de lignes vivante (bruit + ondes sur la 808)
+// calme près du centre (r < uCalm) pour ne jamais traverser les objets posés au-dessus
 const floorMat = new THREE.ShaderMaterial({
-    uniforms: { uScan: { value: -999 }, uScanW: { value: 1.5 }, uDot: { value: 0.22 } },
-    vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `varying vec3 vW; uniform float uScan, uScanW, uDot;
+    uniforms: { uScan: { value: -999 }, uScanW: { value: 1.6 }, uT: { value: 0 }, uAmp: { value: 1.3 }, uKick: { value: 0 }, uCalm: { value: 12 } },
+    vertexShader: SNOISE + `uniform float uT, uAmp, uKick, uCalm; varying float vH; varying vec3 vW;
       void main(){
-        vec2 g = fract(vW.xz) - .5; float d = length(g);
-        float px = max(fwidth(vW.x), fwidth(vW.z));
-        float dots = smoothstep(.075 + px, .035, d) * uDot * clamp(.16 / px - .4, 0., 1.);  // pas de moiré au loin
-        vec2 q = vW.xz / 8.; vec2 l = abs(fract(q) - .5); vec2 fw = fwidth(q);
-        vec2 ln = 1. - smoothstep(vec2(0.), fw * 1.2, .5 - l);
-        float big = max(ln.x, ln.y) * .10 * clamp(.06 / max(fw.x, fw.y), 0., 1.);
-        float fade = exp(-length(vW.xz) * .028);
+        vec3 p = position; vec2 q = p.xz; float r = length(q);
+        float h = snoise(vec3(q * .045, uT * .14)) * uAmp + sin(q.x * .21 + uT * 1.3) * sin(q.y * .17 - uT * .9) * uAmp * .3;
+        h += sin(r * .33 - uT * 7.5) * uKick * 1.6 * exp(-r * .025) * step(.01, uAmp + 1.);
+        h *= smoothstep(uCalm * .4, uCalm * 1.6, r);
+        p.y += h; vH = h;
+        vec4 w = modelMatrix * vec4(p, 1.); vW = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: `uniform float uScan, uScanW; varying float vH; varying vec3 vW;
+      void main(){
+        float fade = exp(-length(vW.xz) * .021);
         float s = exp(-pow((vW.z - uScan) / uScanW, 2.));
-        vec3 c = vec3(dots + big) * fade + vec3(3.2, .95, .06) * s * (dots * 4. + .05) * fade;
+        vec3 c = vec3(.26) * fade + vec3(3.2, .95, .06) * (smoothstep(1.1, 2.6, vH) * .8 + s * 1.3) * fade;
         gl_FragColor = vec4(c, 1.);
       }`,
 });
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), floorMat);
-floor.rotation.x = -Math.PI / 2;
+const floor = (() => {
+    const N = 110, E = 170, S = 110, pos = [];
+    for (let k = 0; k <= N; ++k) {
+        const c = (k / N - 0.5) * E;
+        for (let s = 0; s < S; ++s) {
+            const a = (s / S - 0.5) * E, b = ((s + 1) / S - 0.5) * E;
+            pos.push(a, 0, c, b, 0, c, c, 0, a, c, 0, b);
+        }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const m = new THREE.LineSegments(g, floorMat);
+    m.frustumCulled = false;
+    return m;
+})();
 floor.position.y = -6.5;
 scene.add(floor);
 
@@ -175,6 +316,69 @@ scene.add(device);
 // point de l'écran (coordonnées de l'interface 1280 x 960) en coordonnées de l'appareil
 const uiPt = (px, py) => v3((px / 1280 - 0.5) * 12.8, (0.5 - py / 960) * 9.6, 0.478);
 
+// ---------------------------------------------------------------- nuage : chaque pixel de l'interface devient une particule
+// uAsm 0 = nuage dispersé dans un champ de bruit, 1 = particules rangées sur l'écran de l'appareil
+const CLOUD = await (async () => {
+    const CW = 320, CH = 240, n = CW * CH;
+    const bm = await createImageBitmap(await (await fetch(ASSETS + (AD === 'le-son' ? 'inst.png' : 'son.png'))).blob());
+    const cv = new OffscreenCanvas(CW, CH), cx = cv.getContext('2d');
+    cx.drawImage(bm, 0, 0, CW, CH);
+    const px = cx.getImageData(0, 0, CW, CH).data;
+    const tgt = new Float32Array(n * 3), col = new Float32Array(n * 3), sd = new Float32Array(n * 4), spk = new Float32Array(n);
+    const r = rng(4242);
+    for (let j = 0; j < CH; ++j) for (let i = 0; i < CW; ++i) {
+        const k = j * CW + i;
+        tgt.set([((i + 0.5) / CW - 0.5) * 12.8, (0.5 - (j + 0.5) / CH) * 9.6, 0.5], k * 3);
+        const lin = c => Math.pow(c / 255, 2.2);
+        col.set([lin(px[k * 4]), lin(px[k * 4 + 1]), lin(px[k * 4 + 2])], k * 3);
+        spk[k] = r() < 0.05 ? 1 : 0;  // étincelles orange tant que le nuage est dispersé
+        // direction au hasard dans une boule (rayon en racine cubique : densité uniforme)
+        let x, y, z;
+        do { x = r() * 2 - 1; y = r() * 2 - 1; z = r() * 2 - 1; } while (x * x + y * y + z * z > 1);
+        sd.set([x, y * 0.7, z, r()], k * 4);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(tgt, 3));
+    g.setAttribute('aCol', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aSeed', new THREE.BufferAttribute(sd, 4));
+    g.setAttribute('aSpark', new THREE.BufferAttribute(spk, 1));
+    const mat = new THREE.ShaderMaterial({
+        uniforms: { uT: { value: 0 }, uAsm: { value: 0 }, uR: { value: 24 }, uNoise: { value: 2 }, uLow: { value: 0 }, uSize: { value: 0.055 },
+                    uSpin: { value: 0 }, uBright: { value: 1 }, uScale: { value: 1000 }, uDens: { value: 0.22 }, uPxMax: { value: 4 } },
+        vertexShader: SNOISE + `uniform float uT, uAsm, uR, uNoise, uLow, uSize, uSpin, uScale, uDens, uPxMax; attribute vec3 aCol; attribute vec4 aSeed; attribute float aSpark;
+          varying vec3 vCol; varying float vA;
+          void main(){
+            float a = smoothstep(0., 1., clamp(uAsm * 1.6 - aSeed.w * .6, 0., 1.));
+            vec3 sc = aSeed.xyz * uR; float an = uSpin * (.55 + aSeed.w * .9);
+            sc.xz = mat2(cos(an), -sin(an), sin(an), cos(an)) * sc.xz;
+            vec3 p = mix(sc, position, a);
+            float amp = uNoise * (1. - a * .92) + uLow * .5 * (1. - a * .7);
+            float nz = snoise(p * .09 + vec3(0., 0., uT * .3));   // un seul bruit, tourné en champ de directions
+            float ph = nz * 4.2 + aSeed.w * 6.283;
+            p += vec3(sin(ph) * cos(nz * 3.1), cos(ph * .8 + uT * .7), sin(ph * 1.3 + 1.7)) * amp;
+            vec4 mv = modelViewMatrix * vec4(p, 1.);
+            gl_Position = projectionMatrix * mv;
+            // dispersé : poussière fine et clairsemée (uDens des points, étincelles toujours là) ;
+            // rangé : chaque point couvre son pixel d'écran
+            bool spark = aSpark > .5;
+            float keep = (spark || fract(aSeed.w * 7.13) < mix(uDens, 1., a)) ? 1. : 0.;
+            float size = mix(.018, uSize, a) * (1. + uLow * .5) * uScale / -mv.z;
+            gl_PointSize = keep * clamp(size, 1., mix(2.2, uPxMax, a));
+            vCol = spark ? mix(vec3(3.2, .95, .06), aCol, a) : aCol; vA = spark ? 1. : mix(.32, 1., a);
+          }`,
+        fragmentShader: `uniform float uBright; varying vec3 vCol; varying float vA;
+          void main(){ vec2 d = gl_PointCoord - .5; if (dot(d, d) > .25) discard; gl_FragColor = vec4(vCol * uBright * vA, 1.); }`,
+    });
+    const pts = new THREE.Points(g, mat);
+    pts.frustumCulled = false;
+    const grp = new THREE.Group();
+    grp.add(pts);
+    scene.add(grp);
+    function set(o) { for (const k in o) mat.uniforms[k].value = o[k]; }
+    function follow(obj) { grp.position.copy(obj.position); grp.rotation.copy(obj.rotation); grp.scale.copy(obj.scale); }
+    return { g: grp, set, follow, mat };
+})();
+
 // ---------------------------------------------------------------- wavetable 3D (48 frames)
 const WT = (() => {
     const NF = 48, NP = 220, WD = 12, AMP = 2.3, DZ = 0.3, TH = 0.032;
@@ -204,7 +408,7 @@ const WT = (() => {
         return y / 1.55;
     }
     // reveal : part de frames dessinées ; hot : frame jouée (orange) ; ph : mouvement ; squash : écrasement
-    function update(reveal, hot, ph, squash = 1) {
+    function update(reveal, hot, ph, squash = 1, ampMul = 1) {
         for (let k = 0; k < NF; ++k) {
             const s = strips[k];
             const vis = clamp(reveal * NF - k);
@@ -213,7 +417,7 @@ const WT = (() => {
             const f = k / (NF - 1);
             const isHot = Math.abs(k - hot) < 0.5;
             const th = isHot ? TH * 2.6 : TH;
-            const amp = AMP * eOut(vis) * squash;
+            const amp = AMP * eOut(vis) * squash * ampMul;
             const z = (k - NF / 2) * DZ * (0.25 + 0.75 * squash);
             for (let i = 0; i < NP; ++i) {
                 const x = i / (NP - 1);
@@ -265,7 +469,7 @@ const LIFE = (() => {
     const ages = [new THREE.Color(0xff4d00), new THREE.Color(0xc23a00), new THREE.Color(0x8a2a00), new THREE.Color(0x5a1c04), new THREE.Color(0x3a1406), new THREE.Color(0x241008)];
     const dead = new THREE.Color(0x1d1d1d), black = new THREE.Color(0x000000);
     const capHot = HOT.clone(), capWarm = new THREE.Color(1.3, 0.38, 0.02);
-    function update(gt) {
+    function update(gt, hmul = 1) {
         const gi = clamp(Math.floor(gt), 0, GENS - 1), fr = gt - Math.floor(gt);
         const A = gens[gi];
         for (let i = 0; i < N * N; ++i) {
@@ -273,7 +477,7 @@ const LIFE = (() => {
             let h, c, cap;
             if (a) {
                 const grow = a === 1 ? eOut(clamp(fr * 2.5)) : 1;
-                h = (0.35 + 2.4 * Math.max(0, 1 - (a - 1) / 6)) * grow + 0.06;
+                h = (0.35 + 2.4 * Math.max(0, 1 - (a - 1) / 6)) * grow * hmul + 0.06;
                 c = ages[Math.min(a - 1, 5)];
                 cap = a === 1 ? capHot : a === 2 ? capWarm : c;
             } else { h = 0.06; c = dead; cap = black; }
@@ -329,7 +533,9 @@ const BARS = (() => {
 })();
 scene.add(BARS.g);
 
-// ---------------------------------------------------------------- les 6 thèmes en éventail
+// ---------------------------------------------------------------- les 6 thèmes, sans jamais se toucher
+// 9:16 : une pile verticale (pas de 7,6 > hauteur 6,4) qu'on parcourt ; 1:1 : un carrousel de rayon 26
+// (corde 10,8 > largeur 8,4). Chaque appareil entre par le côté sur sa propre ligne.
 const FAN = (() => {
     const g = new THREE.Group();
     const items = [];
@@ -339,12 +545,17 @@ const FAN = (() => {
         g.add(d);
         items.push(d);
     }
-    function update(open, spin) {
+    function update(t, t0, s) {
         items.forEach((d, i) => {
-            const k = i - 2.5;
-            const a = k * 0.42 * open + spin;
-            d.position.set(Math.sin(a) * 16 * open, (PORTRAIT ? -k * 2.4 : -k * 0.6) * open, Math.cos(a) * 16 * open - 16 * open);
-            d.rotation.set(0, a, 0);
+            const k = i - 2.5, e = eOut(prog(t, t0 + i * 0.07, t0 + 0.45 + i * 0.07)), side = i % 2 ? 1 : -1;
+            if (PORTRAIT) {
+                d.position.set(side * 1.1 + (1 - e) * side * 30, -k * 7.6, 0);
+                d.rotation.set(0.1, side * -0.22 + Math.sin(s * 4 + i) * 0.06, 0);
+            } else {
+                const R = 26, a = k * 0.42 + (s - 0.5) * 0.5;
+                d.position.set(Math.sin(a) * R, (1 - e) * 26 * side, Math.cos(a) * R - R);
+                d.rotation.set(0, a, 0);
+            }
         });
     }
     return { g, update };
@@ -474,6 +685,18 @@ function hud(t, extra = '') {
     el.hudBL.textContent = `T+00:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')} · ${SCORE.bpm} BPM${extra}`;
     el.rec.style.opacity = Math.floor(t * SCORE.bpm / 60 * 2) % 2 === 0 ? '1' : '0.25';
 }
+const spec = $('spec'), sctx = spec.getContext('2d');
+spec.width = Math.round(24 * U); spec.height = Math.round(320 * U);
+// analyseur vertical dans la marge gauche (graves en bas), entre les coins : rien d'autre n'y passe
+function spectrum() {
+    const b = A.bands, n = b.length, hh = spec.height / n, w = spec.width;
+    sctx.clearRect(0, 0, w, spec.height);
+    for (let i = 0; i < n; ++i) {
+        const v = b[i], bw = Math.max(1, Math.round(v * w));
+        sctx.fillStyle = v > 0.82 ? '#FF4D00' : 'rgba(244,244,240,0.65)';
+        sctx.fillRect(0, Math.round(spec.height - (i + 1) * hh), bw, Math.max(1, Math.round(hh - 3 * U)));
+    }
+}
 function shadeBottom(on) { $('shade').style.opacity = on ? '1' : '0'; }
 function hideAll() {
     shadeBottom(false);
@@ -484,7 +707,7 @@ function hideAll() {
 
 // ---------------------------------------------------------------- scène : visibilité et petites aides
 function only(...gs) {
-    for (const g of [device, WT.g, LIFE.g, BARS.g, FAN.g]) g.visible = gs.includes(g);
+    for (const g of [device, WT.g, LIFE.g, BARS.g, FAN.g, CLOUD.g]) g.visible = gs.includes(g);
 }
 function shake(t, amt = 0.35) {
     const e = hitEnv(t) * amt;
@@ -502,19 +725,34 @@ function resetDevice() {
     device.userData.face.material.map = TX.son;
 }
 const DEV_D = fitDist(13.5 * 1.12, 10.3 * 1.12);
+// sol : position, relief et zone calme (les objets ne le touchent jamais)
+function ground(y, amp = 1.3, calm = 12) {
+    floor.position.y = y;
+    floorMat.uniforms.uAmp.value = amp * (0.75 + 0.5 * A.mid);
+    floorMat.uniforms.uCalm.value = calm;
+}
+// nuage autour de l'appareil, en orbite lente (cartons de fin)
+function cloudOrbit(t, bright = 0.55) {
+    CLOUD.follow(device);
+    CLOUD.set({ uAsm: 0, uR: 30, uNoise: 2.2, uSpin: t * 0.18, uBright: bright });
+}
 
 // carton de fin commun : l'appareil tourne lentement entre le logo et l'appel à l'action
 function endShot(t, t0, map, r0, r1) {
-    only(device);
-    floor.position.y = -6.5;
+    only(device, CLOUD.g);
+    ground(-6.5, 1.1, 14);
     const u = prog(t, t0, t0 + 4);
     device.userData.face.material.map = map;
     device.rotation.set(-0.08, lerp(r0, r1, eIO(u)), 0);
     device.scale.setScalar(PORTRAIT ? 0.78 : 0.5);
     device.position.set(0, PORTRAIT ? 0.5 : 1.15, 0);
+    cloudOrbit(t, 0.5);
+    // le nuage s'est dispersé à la coupe et revient en orbite
+    CLOUD.set({ uAsm: 1 - eOut(prog(t, t0, t0 + 0.8)), uNoise: lerp(5, 2.2, prog(t, t0, t0 + 1)) });
     setCam(v3(0, 0.6, DEV_D * lerp(1.0, 0.94, u)), v3(0, 0.2, 0));
     pulseStrip(t);
     floorMat.uniforms.uScan.value = lerp(-20, 30, prog(t, t0, t0 + 2));
+    FX.decay = 0.55; FX.zoom = 0.004;
     el.hudTL.style.display = 'none';
     $('hudBot').style.display = PORTRAIT ? 'block' : 'none';
     showEnd(t, t0 + 0.05, PORTRAIT ? 0.12 : 0.06, PORTRAIT ? 0.665 : 0.6);
@@ -527,73 +765,81 @@ function adLancement(t, frame) {
     floorMat.uniforms.uScan.value = -999;
     const L = T.lancement;
     const pts = L.points;
-    const cuts = [{ t: 4, d: 0.35 }, { t: 6, d: 0.12, o: 0.5, c: '#FF4D00' }, { t: 8, d: 0.12, o: 0.5, c: '#FF4D00' }, { t: 10, d: 0.12, o: 0.5, c: '#FF4D00' },
-                  { t: 12, d: 0.12, o: 0.5, c: '#FF4D00' }, { t: 14, d: 0.12, o: 0.5, c: '#FF4D00' }, { t: 16, d: 0.4 }];
+    const cuts = [{ t: 4, d: 0.3, o: 0.8 }, { t: 6, d: 0.12, o: 0.45, c: '#FF4D00' }, { t: 8, d: 0.12, o: 0.45, c: '#FF4D00' }, { t: 10, d: 0.12, o: 0.45, c: '#FF4D00' },
+                  { t: 12, d: 0.12, o: 0.45, c: '#FF4D00' }, { t: 14, d: 0.12, o: 0.45, c: '#FF4D00' }, { t: 16, d: 0.4 }];
     flashAt(t, cuts);
+    cutFx(t, [4, 6, 8, 10, 12, 14, 16]);
     const calloutY = PORTRAIT ? 0.66 : 0.6;
     let extra = '';
     if (t < 4) {
-        // intro : la wavetable se dessine frame après frame
-        only(WT.g);
+        // intro : la wavetable se dessine ; les pixels de l'interface tournent en nuage puis se rangent en écran
+        only(CLOUD.g);
+        if (t < 3.5) WT.g.visible = true;   // la wavetable s'écrase et disparaît avant que l'écran de particules se forme
         const u = t / 4;
-        const squash = t > 3.55 ? 1 - eIO(prog(t, 3.55, 4)) * 0.92 : 1;
-        WT.update(eOut(prog(t, 0.1, 3.2)), Math.floor(prog(t, 0.1, 3.2) * (WT.NF - 1)), t * 1.3, squash);
-        const d = PORTRAIT ? 24 : 21;
-        const a = lerp(-0.55, 0.35, eIO(u));
-        setCam(v3(Math.sin(a) * d, lerp(7, 4, u), Math.cos(a) * d).add(v3(0, 0, 0)), v3(0, -0.3, 0), lerp(0.04, -0.03, u));
-        floor.position.y = -4.2;
+        const squash = t > 2.95 ? 1 - eIO(prog(t, 2.95, 3.5)) * 0.97 : 1;
+        WT.update(eOut(prog(t, 0.1, 3.2)), Math.floor(prog(t, 0.1, 3.2) * (WT.NF - 1)), t * 1.3, squash, 0.8 + 0.5 * A.mid);
+        CLOUD.follow(device);
+        CLOUD.set({ uAsm: eIO(prog(t, 3.05, 3.95)), uR: 30, uNoise: 3.2, uSpin: t * 0.35, uBright: lerp(0.35, 1, prog(t, 2.6, 3.9)) });
+        const d = PORTRAIT ? 26 : 22;
+        const a = lerp(-0.55, 0.18, eIO(u));
+        setCam(v3(Math.sin(a) * d, lerp(7, 2.5, eIO(u)), Math.cos(a) * d), v3(0, PORTRAIT ? -0.6 : -0.3, 0), lerp(0.04, 0, u));
+        ground(-5.2, 1.2, 11);
         floorMat.uniforms.uScan.value = lerp(-30, 30, prog(t, 0.2, 3.8));
+        FX.decay = lerp(0.86, 0.55, prog(t, 3.0, 3.6)); FX.zoom = 0.006; FX.rot = 0.003; FX.disp = 0.004;
+        FX.dither = Math.max(FX.dither, prog(t, 3.75, 3.98));   // l'image se trame juste avant le drop
         showTerm(L.intro, t, 0.15, 4);
-        showTitle(L.presente, t, 2.1, 4, { size: 34, y: PORTRAIT ? 0.74 : 0.72, frame });
+        showTitle(L.presente, t, 2.1, 3.8, { size: 34, y: PORTRAIT ? 0.74 : 0.72, frame });
         extra = ' · FRAME ' + String(Math.floor(prog(t, 0.1, 3.2) * 255) + 1).padStart(3, '0') + '/256';
     } else if (t < 6) {
-        // drop : l'appareil tombe, le logo s'abrase
-        only(device);
-        floor.position.y = -6.5;
-        const p = prog(t, 4, 4.22);
-        device.position.y = lerp(16, PORTRAIT ? 0 : -1.5, eBack(p));
-        if (!PORTRAIT) device.scale.setScalar(0.74);
-        device.rotation.set(lerp(-0.5, -0.12, eOut(p)), lerp(0.4, -0.28, eIO(prog(t, 4, 6))), lerp(0.18, 0, eOut(p)));
+        // drop : l'appareil apparaît là où les pixels se sont rangés, puis le nuage explose
+        only(device, CLOUD.g);
+        ground(-8.5, 1.4, 13);   // sol plus bas : même au rebond, l'appareil ne le touche pas
+        const p = prog(t, 4, 4.3);
         const u = prog(t, 4, 6);
-        const d = DEV_D * lerp(1.05, 1.18, u);
-        setCam(v3(lerp(-2, 2, u), lerp(-1.2, 0.4, u) - (PORTRAIT ? 1.2 : 0), d).add(shake(t, 0.6)), v3(0, PORTRAIT ? -1.6 : -0.3, 0));
+        device.position.y = lerp(1.2, 0, eBack(p));
+        device.rotation.set(lerp(-0.2, -0.1, eOut(p)), lerp(0.18, -0.3, eIO(u)), 0);
+        if (!PORTRAIT) { device.scale.setScalar(0.74); device.position.y -= 1.5; }
+        CLOUD.follow(device);
+        CLOUD.set({ uAsm: 1 - eOut(prog(t, 4, 4.9)), uR: 34, uNoise: lerp(1, 6, prog(t, 4, 4.6)), uSpin: (t - 4) * 0.6, uBright: lerp(1, 0.45, prog(t, 4.2, 6)) });
+        const d = DEV_D * lerp(1.0, 1.16, eOut(u));
+        setCam(v3(lerp(-2, 2, u), lerp(-0.6, 0.4, u) - (PORTRAIT ? 1.2 : 0), d).add(shake(t, 0.6)), v3(0, PORTRAIT ? -1.6 : -0.3, 0));
         pulseStrip(t);
+        FX.decay = t < 4.9 ? 0.82 : 0.5; FX.zoom = t < 4.9 ? 0.012 : 0.004; FX.disp = 0.003;
         showTitle('RAW 2', t, 4, 6, { size: PORTRAIT ? 150 : 120, y: PORTRAIT ? 0.13 : 0.08, accentLast: true, frame });
         showSub(T.accroche, t, 4.35, 6, { size: PORTRAIT ? 21 : 22, y: PORTRAIT ? 0.235 : 0.215 });
         floorMat.uniforms.uScan.value = lerp(-10, 40, prog(t, 4, 5));
     } else if (t < 8) {
-        // [01] oscillateurs : la wavetable en grand, la frame jouée en orange
+        // [01] oscillateurs : la wavetable respire avec la musique, traînées de feedback
         only(WT.g);
         const u = prog(t, 6, 8);
-        WT.update(1, Math.floor(u * 40) % WT.NF, t * 2.2, 1);
-        floor.position.y = -4.2;
+        WT.update(1, Math.floor(u * 40) % WT.NF, t * (1.8 + A.mid), 1, 0.75 + 0.6 * A.mid + 0.25 * KICK);
+        ground(-5.2, 1.3, 11);
         const a = lerp(0.65, 0.2, eIO(u));
         const d = PORTRAIT ? lerp(17, 14, u) : lerp(15, 12, u);
         setCam(v3(Math.sin(a) * d, lerp(2.5, 3.6, u), Math.cos(a) * d).add(shake(t, 0.25)), v3(0, PORTRAIT ? 1.2 : 0, -1), 0.05);
+        FX.decay = 0.78; FX.zoom = 0.003; FX.disp = 0.002;
         showCallout(1, pts[0], t, 6.05, 8, calloutY);
         extra = ' · OSC A/B';
     } else if (t < 10) {
-        // [02] VIE : la grille vit à la double croche (8 générations par seconde)
+        // [02] VIE : la grille vit à la double croche, les cubes poussent avec les graves
         only(LIFE.g);
         const u = prog(t, 8, 10);
-        const st = LIFE.update(12 + (t - 8) * 8);
+        const st = LIFE.update(12 + (t - 8) * 8, 0.7 + 0.6 * A.low);
         const a = lerp(-0.5, 0.25, u);
         const d = PORTRAIT ? 34 : 30;
-        floor.position.y = -0.01;
+        ground(-0.01, 0, 30);   // sol plat sous la grille
         setCam(v3(Math.sin(a) * d, lerp(24, 18, u), Math.cos(a) * d).add(shake(t, 0.3)), v3(0, PORTRAIT ? -6 : 0, PORTRAIT ? 4 : 0));
+        FX.decay = 0.7; FX.zoom = 0.002;
         showCallout(2, pts[1], t, 8.05, 10, calloutY);
         extra = ` · GEN ${String(st.gen).padStart(4, '0')} · ${st.alive}`;
     } else if (t < 12) {
-        // [03] instruments : gros plan sur l'écran de l'OSC A qui joue le Wurlitzer
-        only(device, BARS.g);
+        // [03] instruments : gros plan net sur l'écran de l'OSC A qui joue le Wurlitzer
+        only(device);
         device.userData.face.material.map = TX.inst;
         const u = prog(t, 10, 12);
         const target = uiPt(205, 270);
         const d = PORTRAIT ? lerp(9.5, 7.2, eIO(u)) : lerp(8.5, 6.5, eIO(u));
         setCam(target.clone().add(v3(lerp(3.2, 1.0, u), lerp(-1.5, -0.6, u), d)).add(shake(t, 0.15)), target.clone().add(v3(0, PORTRAIT ? -2.2 : -0.8, 0)), -0.03);
-        BARS.g.position.set(10, 0, -18);
-        BARS.g.rotation.set(0, 0.5, 0);
-        BARS.update(1, u);
         pulseStrip(t);
         showCallout(3, pts[2], t, 10.05, 12, calloutY);
         extra = ' · ZONE C#4 · 36 ZONES';
@@ -610,13 +856,14 @@ function adLancement(t, frame) {
         showCallout(4, pts[3], t, 12.05, 14, calloutY);
         extra = ' · FILTRE · WARP';
     } else if (t < 16) {
-        // [05] thèmes : six appareils en éventail
+        // [05] thèmes : pile verticale (9:16) ou carrousel (1:1), sans contact
         only(FAN.g);
         const u = prog(t, 14, 16);
-        FAN.update(eOut(prog(t, 14, 14.6)), lerp(-0.25, 0.25, eIO(u)));
-        const d = PORTRAIT ? 30 : 26;
-        setCam(v3(lerp(-3, 3, u), PORTRAIT ? 1 : 2, d).add(shake(t, 0.25)), v3(0, PORTRAIT ? -2.5 : 0, -6));
-        floor.position.y = -6.5;
+        FAN.update(t, 14, eIO(u));
+        ground(-12, 1.3, 16);
+        if (PORTRAIT) setCam(v3(lerp(-4, 4, u), lerp(12, -9, eIO(u)) + 3, 26).add(shake(t, 0.25)), v3(0, lerp(12, -9, eIO(u)) - 4, 0), 0.03);
+        else setCam(v3(lerp(-3, 3, u), 2, 26).add(shake(t, 0.25)), v3(0, 0, -6));
+        FX.decay = 0.5; FX.zoom = 0.002;
         showCallout(5, pts[4], t, 14.05, 16, calloutY);
         extra = ' · THÈME ' + ['ALU', 'NOTHING', 'TITANE', 'CRT', 'ULTRAVIOLET', 'ONIRIQUE'][Math.floor(u * 6) % 6];
     } else {
@@ -631,37 +878,45 @@ function adLeSon(t, frame) {
     resetDevice();
     floorMat.uniforms.uScan.value = -999;
     const S = T['le-son'];
-    flashAt(t, [{ t: 2, d: 0.35 }, { t: 8, d: 0.16, o: 0.6, c: '#FF4D00' }, { t: 12, d: 0.4 }]);
+    flashAt(t, [{ t: 2, d: 0.35 }, { t: 8, d: 0.16, o: 0.55, c: '#FF4D00' }, { t: 12, d: 0.4 }]);
+    cutFx(t, [2, 8, 12]);
     let extra = '';
     if (t < 2) {
-        // intro : l'échantillon de Wurlitzer se dresse note après note
-        only(BARS.g);
+        // intro : la vraie forme d'onde du Wurlitzer se dresse note après note, le nuage tourne au loin
+        only(BARS.g, CLOUD.g);
         const notes = [0, 0.25, 0.5, 0.875, 1.25, 1.5];
         let rev = 0;
-        notes.forEach((n, i) => { if (t >= n) rev = Math.max(rev, lerp((i) / notes.length, (i + 1) / notes.length, eOut(prog(t, n, n + 0.22)))); });
+        notes.forEach((n, i) => { if (t >= n) rev = Math.max(rev, lerp(i / notes.length, (i + 1) / notes.length, eOut(prog(t, n, n + 0.22)))); });
         BARS.g.position.set(0, 0, 0);
         BARS.g.rotation.set(0, 0, 0);
         BARS.update(rev, rev);
-        floor.position.y = -5.8;
+        ground(-5.8, 1.2, 9);
+        CLOUD.g.position.set(0, 2, -10); CLOUD.g.rotation.set(0, 0, 0); CLOUD.g.scale.setScalar(1);
+        CLOUD.set({ uAsm: 0, uR: 34, uNoise: 3, uSpin: t * 0.4, uBright: lerp(0.3, 0.7, prog(t, 1.2, 2)) });
         const u = t / 2;
         const a = lerp(1.2, 1.02, eIO(u)), d = PORTRAIT ? lerp(33, 27, u) : lerp(30, 25, u);
         setCam(v3(Math.sin(a) * d, lerp(5, 3, u), Math.cos(a) * d), v3(0, PORTRAIT ? -2.5 : 0, -3), -0.06);
+        FX.decay = 0.86; FX.zoom = 0.005; FX.rot = -0.002; FX.disp = 0.004;
+        FX.dither = Math.max(FX.dither, prog(t, 1.82, 1.98));
         showTitle(S.intro, t, 0.3, 2, { size: PORTRAIT ? 92 : 80, y: PORTRAIT ? 0.16 : 0.12, frame });
         extra = ' · ' + wurli.name.toUpperCase();
     } else if (t < 8) {
-        // 23 instruments : l'appareil tombe, la liste défile sur les temps
-        only(device);
+        // 23 instruments : l'appareil se pose, le nuage explose, la liste défile sur les temps
+        only(device, CLOUD.g);
         device.userData.face.material.map = TX.inst;
         floorMat.uniforms.uScan.value = lerp(-25, 35, ((t - 2) / 2) % 1);
-        const p = prog(t, 2, 2.22);
+        const p = prog(t, 2, 2.3);
         const u = prog(t, 2, 8);
-        device.position.set(0, lerp(16, PORTRAIT ? 1.2 : 2.0, eBack(p)), 0);
-        device.rotation.set(lerp(-0.5, -0.1, eOut(p)), lerp(-0.35, 0.3, eIO(u)), lerp(-0.15, 0, eOut(p)));
+        device.position.set(0, lerp(PORTRAIT ? 2.2 : 3, PORTRAIT ? 1.2 : 2.0, eBack(p)), 0);
+        device.rotation.set(lerp(-0.2, -0.1, eOut(p)), lerp(-0.35, 0.3, eIO(u)), 0);
         device.scale.setScalar(PORTRAIT ? 0.82 : 0.5);
+        CLOUD.follow(device);
+        CLOUD.set({ uAsm: 1 - eOut(prog(t, 2, 2.9)), uR: 34, uNoise: lerp(1, 5, prog(t, 2, 2.7)), uSpin: (t - 2) * 0.3, uBright: lerp(1, 0.4, prog(t, 2.2, 4)) });
+        ground(-7.5, 1.3, 12);
         setCam(v3(0, PORTRAIT ? 0.5 : 0.8, DEV_D * (PORTRAIT ? 0.95 : 1.05)).add(shake(t, 0.5)), v3(0, PORTRAIT ? -1.2 : 0.4, 0));
         pulseStrip(t);
+        FX.decay = t < 2.9 ? 0.88 : 0.45; FX.zoom = t < 2.9 ? 0.012 : 0.003;
         showTitle(PORTRAIT ? S.titre.replace(' RÉELS', '\nRÉELS') : S.titre, t, 2, 8, { size: PORTRAIT ? 84 : 54, y: PORTRAIT ? 0.1 : 0.085, frame });
-        // liste : un instrument par temps (0,5 s)
         const k = Math.floor((t - 2.25) * 2);
         const win = PORTRAIT ? 12 : 5;
         const first = Math.max(0, Math.min(k - win + 1, S.instruments.length - win));
@@ -679,19 +934,20 @@ function adLeSon(t, frame) {
         el.list.style.fontSize = (PORTRAIT ? 25 : 22) * U + 'px';
         extra = ` · INST ${String(Math.min(23, Math.max(1, k + 1))).padStart(2, '0')}/23`;
     } else if (t < 12) {
-        // fusion : la wavetable au-dessus de la grille vivante
+        // fusion : la wavetable flotte bien au-dessus de la grille vivante (aucun contact)
         only(WT.g, LIFE.g);
         const u = prog(t, 8, 12);
-        WT.g.position.set(0, 6.5, 0);
-        WT.update(1, Math.floor(u * 60) % WT.NF, t * 2, 1);
-        LIFE.g.position.set(0, -1, 0);
-        const st = LIFE.update(30 + (t - 8) * 8);
-        floor.position.y = -1.01;
+        LIFE.g.position.set(0, -3, 0);
+        const st = LIFE.update(30 + (t - 8) * 8, 0.7 + 0.5 * A.low);
+        WT.g.position.set(0, 8.5, 0);   // creux de la wavetable >= 8,5 - 2,3 x 1,45 = 5,2 ; cubes <= -3 + 2,4 x 1,2 = -0,1
+        WT.update(1, Math.floor(u * 60) % WT.NF, t * (1.6 + A.mid), 1, 0.8 + 0.55 * A.mid);
+        ground(-3.01, 0, 40);
         const a = lerp(0.6, -0.3, eIO(u));
-        const d = PORTRAIT ? 36 : 30;
-        setCam(v3(Math.sin(a) * d, lerp(15, 11, u), Math.cos(a) * d).add(shake(t, 0.3)), v3(0, PORTRAIT ? 0.5 : 2.5, 0));
+        const d = PORTRAIT ? 38 : 32;
+        setCam(v3(Math.sin(a) * d, lerp(14, 10, u), Math.cos(a) * d).add(shake(t, 0.3)), v3(0, PORTRAIT ? 1.5 : 3, 0));
+        FX.decay = 0.7; FX.zoom = 0.003; FX.disp = 0.002;
         showTitle(S.fusion, t, 8, 12, { size: PORTRAIT ? 96 : 80, y: PORTRAIT ? 0.13 : 0.1, frame });
-        showSub(S.fusionDetail, t, 8.4, 12, { size: PORTRAIT ? 21 : 22, y: PORTRAIT ? 0.2 : 0.2 });
+        showSub(S.fusionDetail, t, 8.4, 12, { size: PORTRAIT ? 21 : 22, y: 0.2 });
         extra = ` · GEN ${String(st.gen).padStart(4, '0')}`;
     } else {
         endShot(t, 12, TX.inst, 0.4, -0.15);
@@ -700,16 +956,24 @@ function adLeSon(t, frame) {
 }
 
 // ---------------------------------------------------------------- point d'entrée
-WT.g.position.set(0, 0, 0);
-LIFE.g.position.set(0, 0, 0);
 const AD_FN = { lancement: adLancement, 'le-son': adLeSon }[AD];
 const DURATION = { lancement: 20, 'le-son': 16 }[AD];
 window.DURATION = DURATION;
+CLOUD.mat.uniforms.uScale.value = H / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
 window.renderFrame = t => {
     const frame = Math.round(t * FPS);
+    A = aud(t);
+    KICK = hitEnv(t, 10);
+    fxDefaults(t, frame);
     WT.g.position.set(0, 0, 0);
     LIFE.g.position.set(0, 0, 0);
+    floorMat.uniforms.uT.value = t;
+    floorMat.uniforms.uKick.value = KICK;
+    CLOUD.mat.uniforms.uT.value = t;
+    CLOUD.mat.uniforms.uLow.value = A.low;
     AD_FN(t, frame);
+    spectrum();
+    applyFx(t);
     grain(frame);
     composer.render();
     return frame;

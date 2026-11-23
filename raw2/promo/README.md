@@ -10,6 +10,19 @@ TikTok, Shorts, stories) et en 1:1 (fil Instagram, Facebook).
 | **LANCEMENT** | 20 s | La wavetable se dessine, puis l'appareil RAW 2 tombe sur le drop. Ensuite viennent 5 fiches : oscillateurs, vie cellulaire, instruments, synthèse et thèmes. La vidéo finit sur le carton ONIRIQUE. |
 | **LE SON** | 16 s | La vraie forme d'onde d'un Wurlitzer s'affiche, suivie des 23 instruments réels au rythme de la musique. La séquence « fusionne-les » montre la wavetable au-dessus de la grille vivante. La vidéo finit sur le carton ONIRIQUE. |
 
+**Effets « TouchDesigner », pilotés par la musique** : `audio_features.py` analyse le WAV image par
+image (graves, médiums, aigus, attaques, 32 bandes). La scène s'en sert pour :
+- le feedback à traînées (image précédente zoomée, tournée, déplacée par du bruit) ;
+- le nuage de particules : les 76 800 pixels de l'interface tournent dans un champ de bruit, se rangent pour former l'écran au drop, puis explosent ;
+- le sol en grille de lignes, qui ondule et lance des ondes sur la 808 ;
+- le glitch par tranches, l'aberration chromatique et la trame pixel (dither noir / orange / blanc) sur les coupes ;
+- l'analyseur de spectre vertical, dans la marge.
+
+Aucun objet n'en touche un autre :
+- le sol reste calme sous les objets ;
+- les thèmes sont posés en pile (9:16) ou en carrousel (1:1) avec un espacement supérieur à leur taille ;
+- dans « fusionne-les », la wavetable flotte au-dessus de la grille.
+
 Tout ce qu'on voit et entend vient de RAW 2 :
 - **Les écrans** de l'appareil 3D sont de vraies captures de l'interface v1.0.0.
 - **La grille** est un vrai jeu de la vie (règle B3/S23, comme le module VIE).
@@ -48,5 +61,6 @@ node promo/render.cjs lancement 1080 1920 --apercu /tmp/apercu 4.1,9,18
   tremble sur chaque coup de 808, lu dans la partition.
 - `render.cjs` : rend chaque image dans Chromium sans fenêtre, puis ffmpeg assemble les images et
   la musique en H.264 + AAC, à 30 images/s.
+- `audio_features.py` : analyse de la musique pour les effets.
 - `make-assets.sh` : prépare les captures en 2560 × 1920 (`raw2_snap` avec `RAW2_SNAP_SCALE=2`),
   les musiques (`raw2_promo_audio`) et la forme d'onde du Wurlitzer.
