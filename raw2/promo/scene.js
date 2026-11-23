@@ -424,6 +424,7 @@ function showCallout(idx, data, t, t0, t1, y) {
     el.callout.style.display = on ? 'block' : 'none';
     if (!on) return;
     shadeBottom(true);
+    if (!PORTRAIT) $('hudBot').style.display = 'none';
     const [tag, h, p] = data;
     const q = prog(t, t0, t0 + 0.35);
     el.callout.style.top = y * H + 'px';
@@ -543,7 +544,7 @@ function adLancement(t, frame) {
         floor.position.y = -4.2;
         floorMat.uniforms.uScan.value = lerp(-30, 30, prog(t, 0.2, 3.8));
         showTerm(L.intro, t, 0.15, 4);
-        showTitle(L.presente, t, 2.1, 4, { size: 34, y: PORTRAIT ? 0.74 : 0.8, frame });
+        showTitle(L.presente, t, 2.1, 4, { size: 34, y: PORTRAIT ? 0.74 : 0.72, frame });
         extra = ' · FRAME ' + String(Math.floor(prog(t, 0.1, 3.2) * 255) + 1).padStart(3, '0') + '/256';
     } else if (t < 6) {
         // drop : l'appareil tombe, le logo s'abrase
