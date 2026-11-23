@@ -1,6 +1,6 @@
 # RAW 2 · ABRASION
 
-Synthé VST3 pour Windows, suite de RAW. C++20, **sans JUCE ni framework** : la seule
+Synthé VST3 (Windows et macOS) et Audio Unit (macOS), suite de RAW. C++20, **sans JUCE ni framework** : la seule
 dépendance externe est l'ensemble des en-têtes d'interface VST3 de Steinberg (licence MIT),
 copiés dans `third_party/vst3/pluginterfaces`. Rien n'est téléchargé pendant la compilation.
 
@@ -35,8 +35,8 @@ les crédits et le journal `Documents/Raw 2/RAW2-journal.txt`.
   n'importe quel son découpé en cycles, ou resynthétisé).
 - **Instruments réels** (ROMpler) : chaque oscillateur peut jouer un instrument multi-échantillonné
   au format SFZ. Une banque de 23 instruments sous licence libre (Wurlitzer, CP80, Pianet, string
-  machines, cuivres, basses et sifflet G-funk, sax, vibraphone…) est livrée à part, avec le pack
-  de 24 presets « RAW 2 · INSTRUMENTS » (French touch, boom bap, G-funk, soul, lo-fi, trap). Voir
+  machines, cuivres, basses et sifflet G-funk, sax, vibraphone…) est installée avec le plugin sous Windows (zip à part sur Mac), avec le pack
+  de 34 presets « RAW 2 · INSTRUMENTS » (French touch, boom bap, G-funk, soul, lo-fi, trap). Voir
   [`docs/INSTRUMENTS.md`](docs/INSTRUMENTS.md).
 
 ![Page SON, thème ALU](docs/img/son-alu.png)

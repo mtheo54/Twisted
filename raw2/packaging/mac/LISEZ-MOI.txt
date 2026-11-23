@@ -1,5 +1,6 @@
-RAW 2 pour macOS (ABRASION)
-===========================
+RAW 2 v1.0.0 pour macOS (ABRASION)
+Distribué par ONIRIQUE - https://onirique.store
+==================================
 
 Contenu
 -------
@@ -34,3 +35,9 @@ Fichiers de RAW 2
 Packs, presets, instruments et exports : ~/Documents/Raw 2 (créé au premier lancement).
 La banque d'instruments (RAW2-instruments.zip) se décompresse dans ~/Documents/Raw 2,
 exactement comme sous Windows ; les packs de presets sont communs aux deux systèmes.
+
+En cas de souci
+---------------
+Contacter le support ONIRIQUE (https://onirique.store) en joignant le fichier
+~/Documents/Raw 2/RAW2-journal.txt (versions, presets chargés, erreurs). Il est aussi
+indiqué dans À PROPOS (bas de la fenêtre, « RAW 2 v1.0.0 // À PROPOS »).
