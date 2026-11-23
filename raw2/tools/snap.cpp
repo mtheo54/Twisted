@@ -98,8 +98,11 @@ int main(int argc, char** argv) {
     ui::CGCanvas canvas;
     canvas.setContext(ctx);
 #else
-    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1280, 960);
+    // RAW2_SNAP_SCALE=2 : image 2560 x 1920 (textures nettes pour les visuels promo)
+    const int sc = std::getenv("RAW2_SNAP_SCALE") ? std::max(1, std::min(4, std::atoi(std::getenv("RAW2_SNAP_SCALE")))) : 1;
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1280 * sc, 960 * sc);
     cairo_t* cr = cairo_create(surf);
+    cairo_scale(cr, sc, sc);
     ui::CairoCanvas canvas(cr);
 #endif
     const auto t0 = std::chrono::steady_clock::now();

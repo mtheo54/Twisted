@@ -1,0 +1,32 @@
+{
+  "_aide": "Textes des vidéos promo. Modifier ici puis relancer promo/render.sh. Un texte vide (\"\") est masqué.",
+  "signature": "PAR ABRASION",
+  "accroche": "SYNTHÉ WAVETABLE · INSTRUMENTS RÉELS · VIE CELLULAIRE",
+  "appel": "DISPONIBLE SUR ONIRIQUE",
+  "site": "onirique.store",
+  "formats": "VST3 · AU · WINDOWS · MAC",
+  "offre": "",
+  "lancement": {
+    "intro": ["> ABRASION // SPEC.NO RAW-02", "> MOTEUR AUDIO ........ OK", "> 256 FRAMES · 2048 PTS"],
+    "presente": "ABRASION PRÉSENTE",
+    "points": [
+      ["OSCILLATEURS", "2 OSCILLATEURS WAVETABLE", "256 FRAMES · 12 WARPS · FM / AM / RM"],
+      ["VIE CELLULAIRE", "UNE GRILLE VIVANTE", "QUI MODULE LE SON EN TEMPS RÉEL"],
+      ["INSTRUMENTS", "23 INSTRUMENTS RÉELS", "WURLITZER · CP80 · SAX · CUIVRES · PIANO"],
+      ["SYNTHÈSE", "FILTRE 10 MODES", "UNISON ×16 · 4 ENVELOPPES · MPE"],
+      ["THÈMES", "6 THÈMES", "ALU · NOTHING · TITANE · CRT · ULTRAVIOLET · ONIRIQUE"]
+    ]
+  },
+  "le-son": {
+    "intro": "UN SYNTHÉ.",
+    "titre": "23 INSTRUMENTS RÉELS.",
+    "fusion": "FUSIONNE-LES.",
+    "fusionDetail": "INSTRUMENT SUR L'OSC A · WAVETABLE SUR L'OSC B",
+    "instruments": [
+      ["WURLITZER EP200", "KEYS", 36], ["CP80 ELECTRIC GRAND", "KEYS", 37], ["PIANET T", "KEYS", 33],
+      ["GRAND PIANO", "PIANO", 118], ["STRING MACHINE", "PAD", 49], ["ALTO SAX", "WINDS", 32],
+      ["VIBRAPHONE", "MALLETS", 22], ["G-FUNK BASS", "BASS", 10], ["G-FUNK WHISTLE", "LEAD", 13],
+      ["OB BRASS J60", "BRASS", 5], ["OB CHOIR AAH", "VOX", 5], ["OB TONEWHEELS", "ORGAN", 5]
+    ]
+  }
+}

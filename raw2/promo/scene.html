@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>RAW 2 promo</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+<style>
+@font-face { font-family: Pix; src: url(../resources/fonts/Silkscreen-Regular.ttf); }
+@font-face { font-family: PixB; src: url(../resources/fonts/Silkscreen-Bold.ttf); }
+@font-face { font-family: Mono; src: url(../resources/fonts/JetBrainsMono-Regular.ttf); }
+@font-face { font-family: MonoM; src: url(../resources/fonts/JetBrainsMono-Medium.ttf); }
+@font-face { font-family: MonoB; src: url(../resources/fonts/JetBrainsMono-Bold.ttf); }
+:root { --u: 1px; --acc: #FF4D00; --ink: #0D0D0D; --paper: #F4F4F0; --chassis: #DCDCD6; --muted: #7A7A75; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; background: #080808; overflow: hidden; }
+#stage { position: absolute; inset: 0; }
+canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.layer { position: absolute; inset: 0; pointer-events: none; }
+#grain { width: 100%; height: 100%; opacity: .07; mix-blend-mode: screen; image-rendering: pixelated; }
+#scan { background: repeating-linear-gradient(to bottom, rgba(0,0,0,.0) 0, rgba(0,0,0,.0) calc(var(--u)*3), rgba(0,0,0,.22) calc(var(--u)*3), rgba(0,0,0,.22) calc(var(--u)*4)); opacity: .35; }
+#vign { background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
+#flash { background: #fff; opacity: 0; }
+#shade { background: linear-gradient(to top, rgba(7,7,7,.94) 0%, rgba(7,7,7,.82) 30%, rgba(7,7,7,0) 50%); opacity: 0; }
+
+/* habillage du plugin : coins, références, plaque du bas */
+.corner { position: absolute; width: calc(var(--u)*46); height: calc(var(--u)*46); border-color: rgba(244,244,240,.55); border-style: solid; border-width: 0; }
+.c-tl { left: calc(var(--u)*30); top: calc(var(--u)*30); border-left-width: calc(var(--u)*3); border-top-width: calc(var(--u)*3); }
+.c-tr { right: calc(var(--u)*30); top: calc(var(--u)*30); border-right-width: calc(var(--u)*3); border-top-width: calc(var(--u)*3); }
+.c-bl { left: calc(var(--u)*30); bottom: calc(var(--u)*30); border-left-width: calc(var(--u)*3); border-bottom-width: calc(var(--u)*3); }
+.c-br { right: calc(var(--u)*30); bottom: calc(var(--u)*30); border-right-width: calc(var(--u)*3); border-bottom-width: calc(var(--u)*3); }
+.hud { position: absolute; font-family: Mono; font-size: calc(var(--u)*17); letter-spacing: .14em; color: rgba(244,244,240,.62); white-space: nowrap; }
+#hudTL { left: calc(var(--u)*62); top: calc(var(--u)*56); }
+#hudTL b { display: block; font-family: PixB; font-weight: normal; font-size: calc(var(--u)*30); letter-spacing: .06em; color: var(--paper); margin-top: calc(var(--u)*6); }
+#hudTL b i { font-style: normal; color: var(--acc); }
+#hudTR { right: calc(var(--u)*62); top: calc(var(--u)*56); text-align: right; }
+#hudTR .rec { display: inline-block; width: calc(var(--u)*12); height: calc(var(--u)*12); background: var(--acc); margin-right: calc(var(--u)*10); vertical-align: middle; }
+#hudBL { left: calc(var(--u)*62); bottom: calc(var(--u)*56); }
+#hudBR { right: calc(var(--u)*62); bottom: calc(var(--u)*56); }
+#hudBR i { font-style: normal; color: var(--acc); }
+#hudBot { left: 0; right: 0; bottom: calc(var(--u)*100); text-align: center; letter-spacing: .5em; font-size: calc(var(--u)*16); }
+#hudBot b { font-family: MonoB; font-weight: normal; color: var(--paper); }
+
+/* terminal */
+#term { position: absolute; left: calc(var(--u)*62); top: calc(var(--u)*190); font-family: MonoM; font-size: calc(var(--u)*30); line-height: 1.55; color: var(--paper); white-space: pre; }
+#term .ok { color: var(--acc); }
+.cur { display: inline-block; width: .6em; height: 1em; background: var(--acc); vertical-align: -.12em; margin-left: .1em; }
+
+/* titres */
+#title { position: absolute; left: 0; right: 0; text-align: center; font-family: PixB; color: var(--paper); white-space: nowrap; }
+#title i { font-style: normal; color: var(--acc); }
+#sub { position: absolute; left: 0; right: 0; text-align: center; font-family: MonoM; color: rgba(244,244,240,.85); letter-spacing: .22em; white-space: nowrap; }
+
+/* fiche technique numérotée */
+#callout { position: absolute; left: calc(var(--u)*62); right: calc(var(--u)*62); }
+#callout .tag { display: inline-block; font-family: PixB; font-size: calc(var(--u)*24); background: var(--acc); color: var(--ink); padding: calc(var(--u)*6) calc(var(--u)*12) calc(var(--u)*4); letter-spacing: .08em; }
+#callout .tag2 { display: inline-block; font-family: MonoM; font-size: calc(var(--u)*20); color: var(--paper); border: calc(var(--u)*2) solid rgba(244,244,240,.7); padding: calc(var(--u)*5) calc(var(--u)*12) calc(var(--u)*4); letter-spacing: .2em; margin-left: calc(var(--u)*10); vertical-align: top; }
+#callout h2 { font-family: PixB; font-weight: normal; font-size: calc(var(--u)*64); color: var(--paper); line-height: 1.05; margin-top: calc(var(--u)*22); letter-spacing: .02em; }
+#callout p { font-family: MonoM; font-size: calc(var(--u)*25); color: rgba(244,244,240,.82); letter-spacing: .12em; margin-top: calc(var(--u)*14); }
+#callout .rule { height: calc(var(--u)*3); background: var(--acc); margin-top: calc(var(--u)*20); transform-origin: left center; }
+#callout .ticks { margin-top: calc(var(--u)*10); height: calc(var(--u)*14); background: repeating-linear-gradient(to right, rgba(244,244,240,.55) 0, rgba(244,244,240,.55) calc(var(--u)*2), transparent calc(var(--u)*2), transparent calc(var(--u)*16)); }
+
+/* liste d'instruments (pub LE SON) */
+#list { position: absolute; left: calc(var(--u)*62); font-family: MonoM; font-size: calc(var(--u)*27); line-height: 1.7; color: rgba(244,244,240,.38); white-space: pre; letter-spacing: .06em; }
+#list .on { color: var(--ink); background: var(--acc); }
+#list .done { color: rgba(244,244,240,.8); }
+
+/* carton de fin */
+#end, #end2 { position: absolute; left: 0; right: 0; text-align: center; }
+.end .logo { display: inline-flex; align-items: center; gap: calc(var(--u)*26); }
+.end .mark { width: calc(var(--u)*120); height: calc(var(--u)*120); background: var(--ink); border: calc(var(--u)*3) solid rgba(244,244,240,.25); display: flex; align-items: center; justify-content: center; }
+.end .mark span { width: calc(var(--u)*44); height: calc(var(--u)*44); background: var(--acc); }
+.end .word { text-align: left; }
+.end .word small { display: block; font-family: Mono; font-size: calc(var(--u)*20); letter-spacing: .5em; color: rgba(244,244,240,.7); }
+.end .word b { display: block; font-family: PixB; font-weight: normal; font-size: calc(var(--u)*120); line-height: .95; color: var(--paper); letter-spacing: .03em; }
+.end .word b i { font-style: normal; color: var(--acc); }
+.end .tagline { font-family: MonoM; font-size: calc(var(--u)*21); letter-spacing: .16em; color: rgba(244,244,240,.85); margin-top: calc(var(--u)*30); }
+.end .cta { display: inline-block; margin-top: calc(var(--u)*46); font-family: PixB; font-size: calc(var(--u)*38); letter-spacing: .06em; background: var(--acc); color: var(--ink); padding: calc(var(--u)*22) calc(var(--u)*40) calc(var(--u)*18); box-shadow: calc(var(--u)*8) calc(var(--u)*8) 0 var(--paper); }
+.end .offre { font-family: PixB; font-size: calc(var(--u)*44); color: var(--acc); margin-top: calc(var(--u)*34); }
+.end .url { font-family: MonoB; font-size: calc(var(--u)*34); color: var(--paper); margin-top: calc(var(--u)*40); letter-spacing: .1em; }
+.end .formats { font-family: Mono; font-size: calc(var(--u)*19); color: rgba(244,244,240,.6); margin-top: calc(var(--u)*16); letter-spacing: .32em; }
+.hide { display: none !important; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl"></canvas>
+  <div class="layer" id="vign"></div>
+  <div class="layer" id="shade"></div>
+  <div class="layer" id="ui">
+    <div class="corner c-tl"></div><div class="corner c-tr"></div><div class="corner c-bl"></div><div class="corner c-br"></div>
+    <div class="hud" id="hudTL">ABRASION<b>RAW<i>2</i></b></div>
+    <div class="hud" id="hudTR"><span class="rec"></span>SPEC.NO: RAW-02<br>PCB REV.C</div>
+    <div class="hud" id="hudBL">T+00:00:00</div>
+    <div class="hud" id="hudBR">MIL-STD <i>●</i> [TP1] <i>●</i> [TP2]</div>
+    <div class="hud" id="hudBot">DISTRIBUÉ SUR <b>ONIRIQUE</b></div>
+    <div id="term"></div>
+    <div id="title"></div>
+    <div id="sub"></div>
+    <div id="callout"><span class="tag"></span><span class="tag2"></span><h2></h2><p></p><div class="rule"></div><div class="ticks"></div></div>
+    <div id="list"></div>
+    <div id="end" class="end">
+      <div class="logo"><div class="mark"><span></span></div><div class="word"><small>ABRASION</small><b>RAW<i>2</i></b></div></div>
+      <div class="tagline"></div>
+    </div>
+    <div id="end2" class="end">
+      <div class="offre"></div>
+      <div><span class="cta"></span></div>
+      <div class="url"></div>
+      <div class="formats"></div>
+    </div>
+  </div>
+  <canvas class="layer" id="grain"></canvas>
+  <div class="layer" id="scan"></div>
+  <div class="layer" id="flash"></div>
+</div>
+<script type="module" src="./scene.js"></script>
+</body>
+</html>
