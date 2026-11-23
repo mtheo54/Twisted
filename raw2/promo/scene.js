@@ -10,6 +10,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { CopyShader } from 'three/addons/shaders/CopyShader.js';
+import { makeSynth } from './synth3d.js';
 
 const Q = new URLSearchParams(location.search);
 const AD = Q.get('ad') || 'lancement';
@@ -45,6 +46,9 @@ const $ = id => document.getElementById(id);
 const T = await (await fetch('./textes.json')).json();
 const scoreTxt = await (await fetch(`./${AD}.txt`)).text();
 const wurli = await (await fetch(ASSETS + 'wurli.json')).json();
+const THEMES = await (await fetch('../resources/data/themes.json')).json();
+for (const f of ['PixB', 'Pix', 'Mono', 'MonoM', 'MonoB']) await document.fonts.load(`20px ${f}`);
+await document.fonts.ready;
 
 // coups de 808 (piste « factory 5 ») tirés de la partition : la caméra et les lumières tapent dessus
 function scoreHits(txt) {
@@ -60,6 +64,11 @@ function scoreHits(txt) {
     return { bpm, hits };
 }
 const SCORE = scoreHits(scoreTxt);
+const AUD0 = await (await fetch(ASSETS + AD + '-audio.json')).json();
+if (!SCORE.hits.length) {  // musique externe : coups pris dans les graves (pics de l'attaque basse)
+    const k = AUD0.kick;
+    for (let i = 1; i < k.length - 1; ++i) if (k[i] > 0.45 && k[i] >= k[i - 1] && k[i] > k[i + 1]) SCORE.hits.push({ t: i / AUD0.fps, v: Math.min(1, k[i] + 0.2) });
+}
 const hitEnv = (t, k = 16) => {
     let s = 0;
     for (const h of SCORE.hits) if (t >= h.t) s = Math.max(s, h.v * Math.exp(-(t - h.t) * k));
@@ -67,7 +76,7 @@ const hitEnv = (t, k = 16) => {
 };
 
 // analyse de la musique image par image (audio_features.py) : graves, médiums, aigus, attaques, spectre
-const AUD = await (await fetch(ASSETS + AD + '-audio.json')).json();
+const AUD = AUD0;
 function aud(t) {
     const x = clamp(t * AUD.fps, 0, AUD.n - 1.001), i = Math.floor(x), f = x - i;
     const g = k => lerp(AUD[k][i], AUD[k][i + 1], f);
@@ -285,36 +294,19 @@ async function tex(name) {
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return t;
 }
-const TX = {};
-for (const n of ['son', 'vie', 'wavetable', 'synth', 'inst', 'theme0', 'theme1', 'theme2', 'theme3', 'theme4', 'theme5']) TX[n] = await tex(n + '.png');
 
 // ---------------------------------------------------------------- l'appareil RAW 2
 const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb9b9b3, metalness: 0.55, roughness: 0.5, envMapIntensity: 0.4 });
 const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.6, roughness: 0.35 });
 const bodyGeo = new RoundedBoxGeometry(13.5, 10.3, 0.95, 5, 0.34);
 const screwGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.08, 20);
-function makeDevice(map) {
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(bodyGeo, bodyMat));
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(12.8, 9.6), new THREE.MeshBasicMaterial({ map, color: 0xededed }));
-    face.position.z = 0.478;
-    g.add(face);
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(11.6, 0.07, 0.06), new THREE.MeshBasicMaterial({ color: HOT.clone() }));
-    strip.position.set(0, -5.02, 0.45);
-    g.add(strip);
-    for (const [x, y] of [[-6.45, 4.85], [6.45, 4.85], [-6.45, -4.85], [6.45, -4.85]]) {
-        const s = new THREE.Mesh(screwGeo, darkMat);
-        s.rotation.x = Math.PI / 2;
-        s.position.set(x, y, 0.47);
-        g.add(s);
-    }
-    g.userData = { face, strip };
-    return g;
-}
-const device = makeDevice(TX.son);
+// le synthé RAW 2 en 3D (synth3d.js), thème ALU ; les écrans changent de mode selon le plan
+const SYN = makeSynth(THEMES.alu, { hot: HOT, seed: 11 });
+const device = SYN.group;
+device.userData = { strip: SYN.strip };
 scene.add(device);
-// point de l'écran (coordonnées de l'interface 1280 x 960) en coordonnées de l'appareil
-const uiPt = (px, py) => v3((px / 1280 - 0.5) * 12.8, (0.5 - py / 960) * 9.6, 0.478);
+let devMode = 'scope', devPlay = 0, devCut = 0.5;
+const uiPt = (px, py) => SYN.uiPt(px, py);
 
 // ---------------------------------------------------------------- nuage : chaque pixel de l'interface devient une particule
 // uAsm 0 = nuage dispersé dans un champ de bruit, 1 = particules rangées sur l'écran de l'appareil
@@ -540,7 +532,7 @@ const FAN = (() => {
     const g = new THREE.Group();
     const items = [];
     for (let i = 0; i < 6; ++i) {
-        const d = makeDevice(TX['theme' + i]);
+        const d = makeSynth(THEMES[['alu', 'nothing', 'titane', 'crt', 'ultraviolet', 'onirique'][i]], { hot: HOT, light: true, seed: 3 + i }).group;
         d.scale.setScalar(0.62);
         g.add(d);
         items.push(d);
@@ -722,7 +714,7 @@ function resetDevice() {
     device.position.set(0, 0, 0);
     device.rotation.set(0, 0, 0);
     device.scale.setScalar(1);
-    device.userData.face.material.map = TX.son;
+    devMode = 'scope';
 }
 const DEV_D = fitDist(13.5 * 1.12, 10.3 * 1.12);
 // sol : position, relief et zone calme (les objets ne le touchent jamais)
@@ -738,11 +730,11 @@ function cloudOrbit(t, bright = 0.55) {
 }
 
 // carton de fin commun : l'appareil tourne lentement entre le logo et l'appel à l'action
-function endShot(t, t0, map, r0, r1) {
+function endShot(t, t0, mode, r0, r1) {
     only(device, CLOUD.g);
     ground(-6.5, 1.1, 14);
     const u = prog(t, t0, t0 + 4);
-    device.userData.face.material.map = map;
+    devMode = mode;
     device.rotation.set(-0.08, lerp(r0, r1, eIO(u)), 0);
     device.scale.setScalar(PORTRAIT ? 0.78 : 0.5);
     device.position.set(0, PORTRAIT ? 0.5 : 1.15, 0);
@@ -752,7 +744,7 @@ function endShot(t, t0, map, r0, r1) {
     setCam(v3(0, 0.6, DEV_D * lerp(1.0, 0.94, u)), v3(0, 0.2, 0));
     pulseStrip(t);
     floorMat.uniforms.uScan.value = lerp(-20, 30, prog(t, t0, t0 + 2));
-    FX.decay = 0.55; FX.zoom = 0.004;
+    FX.decay = 0.3; FX.zoom = 0.002;
     el.hudTL.style.display = 'none';
     $('hudBot').style.display = PORTRAIT ? 'block' : 'none';
     showEnd(t, t0 + 0.05, PORTRAIT ? 0.12 : 0.06, PORTRAIT ? 0.665 : 0.6);
@@ -835,8 +827,8 @@ function adLancement(t, frame) {
     } else if (t < 12) {
         // [03] instruments : gros plan net sur l'écran de l'OSC A qui joue le Wurlitzer
         only(device);
-        device.userData.face.material.map = TX.inst;
         const u = prog(t, 10, 12);
+        devMode = 'wurli'; devPlay = u;
         const target = uiPt(205, 270);
         const d = PORTRAIT ? lerp(9.5, 7.2, eIO(u)) : lerp(8.5, 6.5, eIO(u));
         setCam(target.clone().add(v3(lerp(3.2, 1.0, u), lerp(-1.5, -0.6, u), d)).add(shake(t, 0.15)), target.clone().add(v3(0, PORTRAIT ? -2.2 : -0.8, 0)), -0.03);
@@ -846,12 +838,12 @@ function adLancement(t, frame) {
     } else if (t < 14) {
         // [04] synthèse : travelling sur la page SYNTH (filtre puis warps)
         only(device);
-        device.userData.face.material.map = TX.synth;
         const u = prog(t, 12, 14);
-        const a = uiPt(300, 230), b = uiPt(1000, 250);
-        const look = vl(a, b, eIO(u));
-        const d = PORTRAIT ? 10.5 : 9;
-        setCam(look.clone().add(v3(-2.5 + 5 * u, -2.2, d)).add(shake(t, 0.15)), look.clone().add(v3(0, PORTRAIT ? -2.4 : -0.6, 0)), 0.04);
+        devMode = 'filter'; devCut = 0.25 + 0.55 * eIO(u) + 0.08 * KICK;
+        // des potards de l'OSC B jusqu'à son écran, qui trace la courbe du filtre
+        const look = vl(uiPt(1000, 500), uiPt(1075, 290), eIO(u));
+        const d = PORTRAIT ? lerp(8.5, 10, u) : lerp(7.5, 9, u);
+        setCam(look.clone().add(v3(lerp(-3.2, 1.2, u), -2.6, d)).add(shake(t, 0.15)), look.clone().add(v3(0, PORTRAIT ? -2.2 : -0.6, 0)), 0.04);
         pulseStrip(t);
         showCallout(4, pts[3], t, 12.05, 14, calloutY);
         extra = ' · FILTRE · WARP';
@@ -863,11 +855,11 @@ function adLancement(t, frame) {
         ground(-12, 1.3, 16);
         if (PORTRAIT) setCam(v3(lerp(-4, 4, u), lerp(12, -9, eIO(u)) + 3, 26).add(shake(t, 0.25)), v3(0, lerp(12, -9, eIO(u)) - 4, 0), 0.03);
         else setCam(v3(lerp(-3, 3, u), 2, 26).add(shake(t, 0.25)), v3(0, 0, -6));
-        FX.decay = 0.5; FX.zoom = 0.002;
+        FX.decay = 0.18; FX.zoom = 0;   // pas de copies fantômes des appareils
         showCallout(5, pts[4], t, 14.05, 16, calloutY);
         extra = ' · THÈME ' + ['ALU', 'NOTHING', 'TITANE', 'CRT', 'ULTRAVIOLET', 'ONIRIQUE'][Math.floor(u * 6) % 6];
     } else {
-        endShot(t, 16, TX.son, -0.42, 0.18);
+        endShot(t, 16, 'scope', -0.42, 0.18);
     }
     hud(t, extra);
 }
@@ -903,7 +895,7 @@ function adLeSon(t, frame) {
     } else if (t < 8) {
         // 23 instruments : l'appareil se pose, le nuage explose, la liste défile sur les temps
         only(device, CLOUD.g);
-        device.userData.face.material.map = TX.inst;
+        devMode = 'wurli'; devPlay = ((t - 2) / 2.87) % 1;
         floorMat.uniforms.uScan.value = lerp(-25, 35, ((t - 2) / 2) % 1);
         const p = prog(t, 2, 2.3);
         const u = prog(t, 2, 8);
@@ -950,7 +942,7 @@ function adLeSon(t, frame) {
         showSub(S.fusionDetail, t, 8.4, 12, { size: PORTRAIT ? 21 : 22, y: 0.2 });
         extra = ` · GEN ${String(st.gen).padStart(4, '0')}`;
     } else {
-        endShot(t, 12, TX.inst, 0.4, -0.15);
+        endShot(t, 12, 'wurli', 0.4, -0.15);
     }
     hud(t, extra);
 }
@@ -972,6 +964,11 @@ window.renderFrame = t => {
     CLOUD.mat.uniforms.uT.value = t;
     CLOUD.mat.uniforms.uLow.value = A.low;
     AD_FN(t, frame);
+    if (device.visible) {
+        const fi = Math.min(AUD.n - 1, Math.round(t * AUD.fps)), sc = AUD.scope[fi] || [];
+        const sm = sc.map((v, i) => { let s = 0, n = 0; for (let j = -6; j <= 6; ++j) { const x = sc[i + j]; if (x !== undefined) { s += x; ++n; } } return (s / n) * 1.6; });
+        SYN.update({ t, A, kick: KICK, chroma: AUD.chroma[fi], scopeA: sc, scopeB: sm, mode: devMode, play: devPlay, cut: devCut, wurli });
+    }
     spectrum();
     applyFx(t);
     grain(frame);

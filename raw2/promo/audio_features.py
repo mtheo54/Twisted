@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Analyse la musique d'une pub image par image (30 i/s) pour que la scène réagisse au son :
-# niveau, graves / médiums / aigus, flux spectral (attaques) et 32 bandes de spectre.
+# niveau, graves / médiums / aigus, flux spectral (attaques), 32 bandes de spectre, chroma (12 notes,
+# pour les touches du clavier 3D), coups de grosse caisse détectés dans les graves, et un morceau de
+# la forme d'onde (oscilloscopes 3D).
 #   python3 promo/audio_features.py <musique.wav> <sortie.json> [fps]
 import json, sys, wave
 import numpy as np
@@ -44,8 +46,14 @@ def main():
             m[np.argmin(np.abs(freqs - np.sqrt(edges[i] * edges[i + 1])))] = True
         bidx.append(m)
     lowm, midm, highm = freqs < 150, (freqs >= 150) & (freqs < 2000), (freqs >= 2000) & (freqs < 12000)
-    rms, low, mid, high, flux, bands = [], [], [], [], [], []
+    rms, low, mid, high, flux, bands, chroma, scope, lowflux = [], [], [], [], [], [], [], [], []
     prev = None
+    prevlow = None
+    # classe de note de chaque point FFT (70 Hz à 2 kHz : la partie tonale)
+    pc = np.full(len(freqs), -1)
+    ok = (freqs > 70) & (freqs < 2000)
+    pc[ok] = (np.round(12 * np.log2(freqs[ok] / 440.0)) + 69).astype(int) % 12
+    kickm = (freqs >= 35) & (freqs < 120)
     for f in range(nfr):
         c = win + f * hop
         seg = pad[c - win // 2: c + win // 2] * hann
@@ -58,12 +66,24 @@ def main():
         flux.append(0.0 if prev is None else float(np.sum(np.maximum(0, logm - prev))))
         prev = logm
         bands.append([20 * np.log10(np.mean(mag[m]) + 1e-9) for m in bidx])
+        ch = np.array([np.sum(mag[pc == k] ** 2) for k in range(12)])
+        chroma.append(ch / (ch.max() + 1e-12))
+        lk = np.log10(np.sum(mag[kickm] ** 2) + 1e-9)
+        lowflux.append(0.0 if prevlow is None else max(0.0, lk - prevlow))
+        prevlow = lk
+        # oscilloscope : 256 points à partir d'un passage par zéro montant (image stable)
+        raw = pad[c - 1024: c + 1536]
+        z = np.where((raw[:-1] <= 0) & (raw[1:] > 0))[0]
+        z0 = int(z[0]) if len(z) and z[0] < 1024 else 0
+        sc = raw[z0: z0 + 1024][::4]
+        scope.append(sc / (np.abs(pad).max() + 1e-9))
     bands = np.array(bands)
     bands = np.clip((bands - np.percentile(bands, 20)) / max(np.percentile(bands, 99.5) - np.percentile(bands, 20), 1e-9), 0, 1)
     r3 = lambda v: [round(float(a), 3) for a in v]
     data = {'fps': fps, 'n': nfr, 'rms': r3(norm(np.log10(np.array(rms) + 1e-6))), 'low': r3(norm(np.array(low))),
             'mid': r3(norm(np.array(mid))), 'high': r3(norm(np.array(high))), 'flux': r3(norm(np.array(flux), 10, 99)),
-            'bands': [r3(b) for b in bands]}
+            'bands': [r3(b) for b in bands], 'chroma': [r3(c) for c in chroma],
+            'kick': r3(norm(np.array(lowflux), 50, 99.5)), 'scope': [r3(s) for s in scope]}
     json.dump(data, open(out, 'w'), separators=(',', ':'))
     print(f'analyse : {nfr} images -> {out}')
 
