@@ -44,7 +44,14 @@ Le montage est écrit à 120 BPM : la scène l'étire ou le resserre au tempo tr
 coupes restent sur les temps. La grosse caisse, les touches enfoncées (notes présentes) et les
 oscilloscopes viennent de l'analyse du son. Pour imposer le début du passage :
 `python3 promo/pick_segment.py musique.mp3 lancement build/promo-assets/lancement.wav build/promo-assets/lancement-meta.json 42.5`
-(puis `audio_features.py` sur l'extrait).
+(puis `audio_features.py` sur l'extrait). Un 6e argument impose le BPM.
+
+Avec un tempo connu, les impulsions (caméra, voyants, glitch) tombent sur la grille des temps. Leur
+force suit l'attaque mesurée à chaque temps : elle est faible dans les silences et les breaks.
+
+Version actuelle : « shape » d'omyll, à 132 BPM.
+- LANCEMENT : de 10,85 s à 29,03 s. L'appareil apparaît sur le premier drop (14,48 s, juste après le silence).
+- LE SON : de 56,30 s à 70,85 s. L'appareil se pose sur le drop de la mesure 32 (58,12 s).
 
 ## Changer les textes, ajouter un prix
 

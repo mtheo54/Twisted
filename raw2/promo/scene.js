@@ -69,7 +69,18 @@ const K = META && META.bpm ? META.bpm / 120 : 1;   // temps du montage = temps r
 let REALT = 0;
 const SCORE = META && META.external ? { bpm: 120, hits: [] } : scoreHits(scoreTxt);
 const AUD0 = await (await fetch(ASSETS + AD + '-audio.json')).json();
-if (!SCORE.hits.length) {  // musique externe : coups pris dans les graves (pics de l'attaque basse)
+if (!SCORE.hits.length && META && META.bpm) {
+    // musique externe : l'extrait commence sur une mesure, on tape sur chaque temps avec la force de
+    // l'attaque mesurée là (faible dans les silences et les breaks), plus les gros coups de grave
+    const beat = 60 / META.bpm, f = AUD0.flux, lo = AUD0.low, k = AUD0.kick;
+    for (let b = 0; b * beat < AUD0.n / AUD0.fps; ++b) {
+        const i = Math.round(b * beat * AUD0.fps);
+        let s = 0;
+        for (let j = Math.max(0, i - 2); j <= Math.min(f.length - 1, i + 2); ++j) s = Math.max(s, f[j], k[j]);
+        const v = Math.min(1, 0.3 + 0.9 * s) * Math.min(1, (lo[i] || 0) * 1.4);
+        if (v > 0.28) SCORE.hits.push({ t: b * beat, v: b % 4 === 0 ? Math.min(1, v * 1.15) : v * 0.85 });
+    }
+} else if (!SCORE.hits.length) {  // sans tempo connu : pics de l'attaque basse
     const k = AUD0.kick;
     for (let i = 1; i < k.length - 1; ++i) if (k[i] > 0.45 && k[i] >= k[i - 1] && k[i] > k[i + 1]) SCORE.hits.push({ t: i / AUD0.fps, v: Math.min(1, k[i] + 0.2) });
 }

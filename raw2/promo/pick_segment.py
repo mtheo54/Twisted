@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Choisit le meilleur passage d'une musique pour une pub et le cale sur le montage.
-#   python3 promo/pick_segment.py <musique (mp3, wav, …)> <lancement|le-son> <sortie.wav> <meta.json> [début en s]
+#   python3 promo/pick_segment.py <musique (mp3, wav, …)> <lancement|le-son> <sortie.wav> <meta.json> [début en s] [BPM]
 # 1. tempo détecté (autocorrélation des attaques et de leurs multiples), entre 90 et 160 BPM ;
 # 2. grille des temps (phase qui colle le mieux aux attaques) ;
 # 3. le passage retenu commence sur une mesure et fait « drop » pile quand l'appareil apparaît
@@ -21,7 +21,8 @@ def decode(path, sr, ch):
 
 def main():
     src, ad, out_wav, out_meta = sys.argv[1:5]
-    forced = float(sys.argv[5]) if len(sys.argv) > 5 else None
+    forced = float(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] != '-' else None
+    forced_bpm = float(sys.argv[6]) if len(sys.argv) > 6 else None
     cfg = AD[ad]
     sr = 22050
     x = decode(src, sr, 1)[:, 0]
@@ -52,7 +53,7 @@ def main():
         v *= np.exp(-0.5 * (np.log2(b / 120) / 0.6) ** 2) ** 0.3
         if v > best_v:
             best_b, best_v = b, v
-    bpm = best_b
+    bpm = forced_bpm or best_b
     period = 60 * fps / bpm
     # phase de la grille
     phases = np.arange(0, period, 0.5)
