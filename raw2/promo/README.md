@@ -29,6 +29,27 @@ Tout ce qu'on voit et entend vient de RAW 2 :
 - **La forme d'onde** est celle d'un vrai échantillon de la banque.
 - **La musique** est jouée par le moteur de RAW 2 : presets d'usine (808 fumée, tic toc, escalier, portail) et presets d'instruments (Wurli, Cordes Disco, Vibes, Sax). Les partitions sont dans `lancement.txt` et `le-son.txt`.
 
+## Pub HISTOIRE : le bonhomme d'ABRASION présente RAW 2 (≈ 29 s)
+
+Le bonhomme d'ABRASION (`bonhomme.js`, d'après `game/reference/bonhomme_abrasion.png`) raconte
+l'histoire sur le début de « shape » :
+1. Sa tête tombe et rebondit, son corps surgit, il fait coucou.
+2. Il traverse un RAW 2 géant posé à plat et éteint, puis appuie sur le logo : la machine s'allume en onde.
+3. Il saute sur le clavier et frappe le do pile dans le silence d'avant le drop.
+4. Il montre le plugin, un plan par mesure : il surfe la wavetable, fait naître des anneaux de LED dans la VIE, pousse un potard, court le long de la forme d'onde du Wurlitzer, passe devant les 6 thèmes.
+5. Il s'assoit sur RAW 2 pour le carton ONIRIQUE.
+
+Le scénario est dans `histoire.json` : dialogues, instants, bruitages. `sfx.py` synthétise les
+bruitages (rebonds, pops, pas, clic, mise sous tension, grésillements, cascade de LED, envol, impact,
+bips de texte, cliquets, glitchs, carillon) et les mixe sur la musique. Changer un instant dans
+`histoire.json` déplace à la fois l'image et le son.
+
+```sh
+python3 promo/sfx.py shape.mp3 promo/histoire.json build/promo-assets/histoire.wav build/promo-assets/histoire-meta.json
+python3 promo/audio_features.py build/promo-assets/histoire.wav build/promo-assets/histoire-audio.json
+node promo/render.cjs histoire 1080 1920 build/promo-videos/RAW2-pub-histoire-9x16.mp4
+```
+
 ## Avec une autre musique
 
 ```sh

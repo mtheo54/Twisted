@@ -255,7 +255,8 @@ function setCam(pos, look, roll = 0) {
 }
 
 // lumières : clé blanche, contre-jour orange, appoint froid
-scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const amb = new THREE.AmbientLight(0xffffff, 0.25);
+scene.add(amb);
 const key = new THREE.DirectionalLight(0xffffff, 1.6);
 key.position.set(-8, 14, 12);
 scene.add(key);
@@ -994,9 +995,10 @@ const SPOT = (() => {
     const g = new THREE.Group();
     const cone = new THREE.Mesh(new THREE.ConeGeometry(2.6, 11, 40, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff4e8, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     cone.position.y = 5.5;
+    cone.material.opacity = 0.022;
     const c = document.createElement('canvas'); c.width = c.height = 128;
     const gx = c.getContext('2d'), gr = gx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    gr.addColorStop(0, 'rgba(255,245,235,0.55)'); gr.addColorStop(0.7, 'rgba(255,245,235,0.12)'); gr.addColorStop(1, 'rgba(255,245,235,0)');
+    gr.addColorStop(0, 'rgba(255,245,235,0.32)'); gr.addColorStop(0.6, 'rgba(255,245,235,0.08)'); gr.addColorStop(1, 'rgba(255,245,235,0)');
     gx.fillStyle = gr; gx.fillRect(0, 0, 128, 128);
     const pool = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
     pool.rotation.x = -Math.PI / 2; pool.position.y = 0.03;
@@ -1047,6 +1049,13 @@ function adHistoire(t, frame) {
     flashAt(t, [{ t: T.drop, d: 0.32, o: 0.85 }, ...T.plans.map(x => ({ t: x, d: 0.12, o: 0.45, c: '#FF4D00' })), { t: T.fin, d: 0.3, o: 0.6 }]);
     cutFx(t, [T.marche[0], T.saut[0] - 0.052, T.drop, ...T.plans, T.fin]);
     let extra = '';
+    // machine éteinte : la pièce est dans le noir (le chrome du bonhomme reste visible) ; la lumière
+    // revient avec la mise sous tension
+    if (t < T.saut[0] - 0.052) {
+        const lum = t < T.allumage[0] ? 0 : eOut(prog(t, T.allumage[0], T.allumage[1]));
+        key.intensity = lerp(0.1, 1.6, lum); amb.intensity = lerp(0.03, 0.25, lum); fill.intensity = lerp(0.04, 0.35, lum);
+        scene.environmentIntensity = lerp(0.05, 0.55, lum);
+    }
     if (t < T.marche[0]) {
         // 1. arrivée : la tête tombe et rebondit, le corps surgit, coucou
         only(device);
@@ -1165,7 +1174,8 @@ function adHistoire(t, frame) {
         const u = prog(t, T.drop, p1);
         const a = lerp(-0.7, 0.35, eIO(u)), d = PORTRAIT ? 52 : 44;
         camTo(v3(Math.sin(a) * d - 4, lerp(26, 30, u), Math.cos(a) * d + 4), v3(-4, 2, PORTRAIT ? 6 : 3));
-        FX.decay = t < T.drop + 0.9 ? 0.86 : 0.55; FX.zoom = t < T.drop + 0.9 ? 0.012 : 0.003;
+        FX.decay = t < T.drop + 0.9 ? (PORTRAIT ? 0.86 : 0.7) : 0.55; FX.zoom = t < T.drop + 0.9 ? 0.012 : 0.003;
+        if (!PORTRAIT) FX.bloom *= 0.7;   // en carré, le plateau remplit l'image : moins de halo
         showTitle('RAW 2', t, T.drop, p1, { size: PORTRAIT ? 150 : 120, y: PORTRAIT ? 0.1 : 0.06, accentLast: true, frame });
         showSub(TEXTES.accroche, t, T.drop + 0.3, p1, { size: PORTRAIT ? 21 : 22, y: PORTRAIT ? 0.205 : 0.195 });
     } else if (t < p2) {
@@ -1259,15 +1269,17 @@ function adHistoire(t, frame) {
     } else {
         // 11. fin : assis sur RAW 2, il fait coucou ; puis le carton ONIRIQUE
         endShot(t, T.fin, 'scope', -0.3, 0.1);
-        const s = PORTRAIT ? 0.78 : 0.5;
+        if (!PORTRAIT) device.position.y = 0.95;   // en carré : un peu plus bas, loin du texte du haut
         device.updateMatrixWorld(true);
-        const top = device.localToWorld(v3(2.4, 5.15, 0.05));
+        const top = device.localToWorld(v3(PORTRAIT ? 2.4 : 4.4, 5.15, 0.05));
         const P = POSE.sit(t);
-        const W = POSE.wave(t, eOut(prog(t, T.fin + 0.15, T.fin + 0.45)));
+        const W = POSE.wave(t, eOut(prog(t, T.fin + 0.15, T.fin + 0.45)) * (PORTRAIT ? 1 : 0.5));
         P.hands[1] = W.hands[1]; P.elbows[1] = W.elbows[1];
-        BON.root.scale.setScalar(PORTRAIT ? 0.95 : 0.7);
-        bon(P, top.add(v3(0, -0.07 * (PORTRAIT ? 0.95 : 0.7), 0)), device.rotation.y, { shadow: 0 });
+        const bs = PORTRAIT ? 0.95 : 0.6;
+        BON.root.scale.setScalar(bs);
+        bon(P, top.add(v3(0, -0.07 * bs, 0)), device.rotation.y, { shadow: 0 });
         el.end.style.display = el.end2.style.display = 'none';
+        el.end.querySelector('.tagline').style.display = PORTRAIT ? '' : 'none';   // en carré : place pour le bonhomme assis
         showEnd(t, T.carton, PORTRAIT ? 0.12 : 0.06, PORTRAIT ? 0.665 : 0.6);
         if (t < T.carton) { el.end.style.display = el.end2.style.display = 'none'; }
     }
@@ -1288,6 +1300,7 @@ window.renderFrame = rt => {
     A = aud(rt);
     KICK = hitEnv(rt, 10); KICK9 = hitEnv(rt, 9); KICK16 = hitEnv(rt, 16);
     fxDefaults(t, frame);
+    key.intensity = 1.6; amb.intensity = 0.25; fill.intensity = 0.35; scene.environmentIntensity = 0.55;
     WT.g.position.set(0, 0, 0);
     LIFE.g.position.set(0, 0, 0);
     floorMat.uniforms.uT.value = t;
