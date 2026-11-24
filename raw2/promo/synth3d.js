@@ -298,7 +298,7 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
         rbox(px, py, pw, ph, 0.03, z0, std(TH.scr, 0.3, 0.2), 0.01);
         const d = canvasTex(pw, ph, 3);
         const m = plane(px + 1, py + 1, pw - 2, ph - 2, z0 + 0.031, d.tex, { transparent: false });
-        const o = { d, draw, last: '' };
+        const o = { d, draw, last: '', cx: px + pw / 2, cy: py + ph / 2 };
         displays.push(o);
         return o;
     }
@@ -387,7 +387,7 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
     const ledPos = [];
     for (let j = 0; j < LR; ++j) for (let i = 0; i < LC; ++i) ledPos.push([X(424 + i * 12.2), Y(142 + j * 11.6)]);
     const Mt = new THREE.Matrix4(), Qn = new THREE.Quaternion(), Sv = new THREE.Vector3(), Pv = new THREE.Vector3();
-    const deadC = col(TH.dead), accC = col(acc);
+    const deadC = col(TH.dead), accC = col(acc), Cd = new THREE.Color();
     const ageC = [0.9, 0.42, 0.24, 0.13, 0.07, 0.035].map(k => hot.clone().multiplyScalar(k));  // jeune → ancienne
 
     // ---------------------------------------------------------------- clavier : rail, 14 touches blanches, 10 noires
@@ -517,8 +517,15 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
     const fmtPct = v => `${Math.round(v * 100)} %`;
     let drawnOnce = false;
 
+    // mise sous tension : chaque élément s'allume quand l'onde partie de powerAt (px) l'atteint
+    const onAt = (st, px, py) => {
+        if (st.power >= 1) return 1;
+        const [ox, oy] = st.powerAt || [44, 42];
+        return clamp((st.power * 1.35 - Math.hypot(px - ox, py - oy) / 1500) * 5);
+    };
+    const flick = (t, k) => (Math.sin(t * 61 + k * 7.3) * Math.sin(t * 23 + k) > 0.15 ? 1 : 0.25);
     function update(state) {
-        const st = Object.assign({}, base, state);
+        const st = Object.assign({ power: 1 }, base, state);
         const A = st.A, t = st.t;
         // potards : légère dérive + musique (valeurs affichées comme dans le plugin)
         const kv = [
@@ -527,7 +534,11 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
             0.4 + 0.25 * A.low, 0.25 + 0.3 * A.high, 0.6 + 0.1 * Math.sin(t * 1.1 + 1), 0.6 + 0.2 * A.rms,
             0.7 + 0.2 * A.rms,
         ];
-        knobMeshes.forEach((k, i) => { k.rotation.z = -(-135 + 270 * clamp(kv[i])) * Math.PI / 180; });
+        if (st.knobSet) for (const i in st.knobSet) kv[i] = st.knobSet[i];
+        knobMeshes.forEach((k, i) => {
+            k.rotation.z = -(-135 + 270 * clamp(kv[i])) * Math.PI / 180;
+            k.children[3].material.color.copy(col(TH.ptr || acc)).multiplyScalar(0.15 + 1.45 * onAt(st, knobs[i].x, knobs[i].y));
+        });
         const db = v => `${(-24 + 24 * v).toFixed(1)} dB`;
         const pan = v => { const p = Math.round((v - 0.5) * 40); return p < 0 ? `L ${-p}` : p > 0 ? `R ${p}` : 'C'; };
         st.values = [fmtPct(kv[0]), fmtPct(kv[1]), pan(kv[2]), db(kv[3]), `${(0.2 + kv[4] * 3).toFixed(1)} Hz`, fmtPct(kv[5]), fmtPct(kv[6]),
@@ -537,12 +548,16 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
         // matrice de LED
         const gi = Math.min(gens.length - 1, Math.floor(t * 8)), G = gens[gi];
         let alive = 0;
+        const rip = st.ripples || [];
         for (let i = 0; i < LC * LR; ++i) {
-            const a = G[i];
+            const lx = 424 + (i % LC) * 12.2, ly = 142 + Math.floor(i / LC) * 11.6;
+            const on = onAt(st, lx, ly);
+            let a = on > 0.5 ? G[i] : 0;
+            for (const r of rip) if (Math.abs(Math.hypot(lx - r.x, ly - r.y) - r.r) < r.w) a = 1;  // anneaux autour d'un point
             const [x, y] = ledPos[i];
             Pv.set(x, y, ZC + 0.001); Sv.set(1, 1, 1); Mt.compose(Pv, Qn, Sv);
             domes.setMatrixAt(i, Mt);
-            domes.setColorAt(i, a ? accC : deadC);
+            domes.setColorAt(i, a ? accC : Cd.copy(deadC).multiplyScalar(0.35 + 0.65 * on));
             Sv.setScalar(a ? 1 : 0); Mt.compose(Pv, Qn, Sv);
             glows.setMatrixAt(i, Mt);
             if (a) { ++alive; glows.setColorAt(i, ageC[Math.min(a - 1, 5)]); } else glows.setColorAt(i, deadC);
@@ -556,30 +571,44 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
             const rank = order.indexOf(pc);
             return rank < 3 ? clamp((ch[pc] - 0.55) / 0.35) : 0;
         };
-        for (const w of whites) {
-            const p = press(w.pc) * (w.oct === (order[0] === w.pc ? 0 : 1) ? 1 : 0.0);
+        const hit = st.keyHit || {};
+        const kOn = onAt(st, 380, 800);
+        for (const [wi, w] of whites.entries()) {
+            const p = Math.max(press(w.pc) * (w.oct === (order[0] === w.pc ? 0 : 1) ? 1 : 0.0) * kOn, hit[wi] || 0);
             w.k.position.z = ZK - 0.045 * p;
             w.mat.emissive.copy(hot).multiplyScalar(p * 0.5);
         }
         for (const b of blacks) {
             const p = press(b.pc) * (b.oct === (order[0] === b.pc ? 0 : 1) ? 1 : 0);
             b.k.position.z = ZK - 0.04 * p;
-            b.led.material.color.copy(hot).multiplyScalar(0.25 + 0.9 * Math.max(p, ch[b.pc] * 0.4));
+            b.led.material.color.copy(hot).multiplyScalar((0.25 + 0.9 * Math.max(p, ch[b.pc] * 0.4)) * kOn);
         }
         // voyants qui tapent sur la grosse caisse
-        tabLed.material.color.copy(hot).multiplyScalar(0.5 + 1.0 * st.kick);
-        logoDot.material.color.copy(hot).multiplyScalar(0.35 + 0.9 * st.kick);
-        strip.material.color.copy(hot).multiplyScalar(0.45 + 1.2 * st.kick);
+        tabLed.material.color.copy(hot).multiplyScalar((0.5 + 1.0 * st.kick) * onAt(st, 242, 31));
+        logoDot.material.color.copy(hot).multiplyScalar((0.35 + 0.9 * st.kick) * onAt(st, 44, 42) + (st.logoPress || 0));
+        strip.material.color.copy(hot).multiplyScalar((0.45 + 1.2 * st.kick) * onAt(st, 640, 955));
         if (light && drawnOnce) return;
         // écrans et afficheurs
         drawScope(screens[0], st.scopeA, TH.waveA, st.mode === 'wurli' ? 'wurli' : 'scope', st);
         drawScope(screens[1], st.scopeB, TH.waveB, st.mode === 'filter' ? 'filter' : 'scope', st);
         drawPropo(Object.assign(st, { typed: (t * 26) % 140 }));
+        // écrans éteints ou qui s'allument en grésillant
+        const dark = (d, w, h, on, k) => {
+            if (on >= 1) return;
+            d.g.fillStyle = `rgba(0,0,0,${on <= 0 ? 0.97 : 1 - on * flick(t, k)})`;
+            d.g.fillRect(0, 0, w, h);
+            d.tex.needsUpdate = true;
+        };
+        dark(screens[0].d, screens[0].w, screens[0].h, onAt(st, 205, 280), 1);
+        dark(screens[1].d, screens[1].w, screens[1].h, onAt(st, 1075, 280), 2);
+        dark(propo, 380, 120, onAt(st, 1058, 766), 3);
         const dst = Object.assign(st, { cpu: 1.6 + 2.4 * A.rms + 0.4 * Math.sin(t * 13), gen: gi, alive });
         displays.forEach((o, i) => {
             const vi = valueBoxes.indexOf(o);
             o.d.g.save();
             o.draw(o.d.g, o.d.c.width / 3, o.d.c.height / 3, dst, vi);
+            const on = onAt(st, o.cx, o.cy);
+            if (on < 1) { o.d.g.fillStyle = `rgba(0,0,0,${on <= 0 ? 0.97 : 1 - on * flick(t, i + 5)})`; o.d.g.fillRect(0, 0, o.d.c.width / 3, o.d.c.height / 3); }
             o.d.g.restore();
             o.d.tex.needsUpdate = true;
         });
@@ -587,6 +616,9 @@ export function makeSynth(TH, { hot = new THREE.Color(3.2, 0.95, 0.06), light = 
     }
     for (const p of [P0, P1, P2, keyAtlas]) p.tex.needsUpdate = true;
     update({});
-    const uiPt = (px, py) => new THREE.Vector3(X(px), Y(py), ZC);
-    return { group, update, uiPt, strip };
+    const uiPt = (px, py, z = ZC) => new THREE.Vector3(X(px), Y(py), z);
+    // repères utiles (coordonnées locales) : dessus des panneaux, du châssis, des touches blanches
+    const tops = { panel: ZC, chassis: Z0, key: ZK + 0.16, ledTop: ZC + 0.046, knobTop: ZC + 0.232 };
+    const whiteKey = i => ({ x: X(53 + i * 47.2 + 21), y: Y(835) });
+    return { group, update, uiPt, strip, tops, whiteKey, knobs };
 }

@@ -11,6 +11,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { CopyShader } from 'three/addons/shaders/CopyShader.js';
 import { makeSynth } from './synth3d.js';
+import { makeBonhomme, POSE } from './bonhomme.js';
 
 const Q = new URLSearchParams(location.search);
 const AD = Q.get('ad') || 'lancement';
@@ -47,6 +48,8 @@ const T = await (await fetch('./textes.json')).json();
 const scoreTxt = await (await fetch(`./${AD}.txt`)).text();
 const wurli = await (await fetch(ASSETS + 'wurli.json')).json();
 const THEMES = await (await fetch('../resources/data/themes.json')).json();
+const TEXTES = T;
+const HIST = AD === 'histoire' ? await (await fetch('./histoire.json')).json() : null;
 for (const f of ['PixB', 'Pix', 'Mono', 'MonoM', 'MonoB']) await document.fonts.load(`20px ${f}`);
 await document.fonts.ready;
 
@@ -65,7 +68,7 @@ function scoreHits(txt) {
 }
 // musique externe (pick_segment.py) : le montage, écrit à 120 BPM, suit son tempo
 const META = await fetch(ASSETS + AD + '-meta.json').then(r => (r.ok ? r.json() : null)).catch(() => null);
-const K = META && META.bpm ? META.bpm / 120 : 1;   // temps du montage = temps réel × K
+const K = META && META.bpm && META.warp !== false ? META.bpm / 120 : 1;   // temps du montage = temps réel × K
 let REALT = 0;
 const SCORE = META && META.external ? { bpm: 120, hits: [] } : scoreHits(scoreTxt);
 const AUD0 = await (await fetch(ASSETS + AD + '-audio.json')).json();
@@ -74,11 +77,13 @@ if (!SCORE.hits.length && META && META.bpm) {
     // l'attaque mesurée là (faible dans les silences et les breaks), plus les gros coups de grave
     const beat = 60 / META.bpm, f = AUD0.flux, lo = AUD0.low, k = AUD0.kick;
     for (let b = 0; b * beat < AUD0.n / AUD0.fps; ++b) {
-        const i = Math.round(b * beat * AUD0.fps);
+        const tb = b * beat + (META.phase || 0);
+        if (tb < 0) continue;
+        const i = Math.round(tb * AUD0.fps);
         let s = 0;
         for (let j = Math.max(0, i - 2); j <= Math.min(f.length - 1, i + 2); ++j) s = Math.max(s, f[j], k[j]);
         const v = Math.min(1, 0.3 + 0.9 * s) * Math.min(1, (lo[i] || 0) * 1.4);
-        if (v > 0.28) SCORE.hits.push({ t: b * beat, v: b % 4 === 0 ? Math.min(1, v * 1.15) : v * 0.85 });
+        if (v > 0.28) SCORE.hits.push({ t: tb, v: b % 4 === 0 ? Math.min(1, v * 1.15) : v * 0.85 });
     }
 } else if (!SCORE.hits.length) {  // sans tempo connu : pics de l'attaque basse
     const k = AUD0.kick;
@@ -320,7 +325,7 @@ const SYN = makeSynth(THEMES.alu, { hot: HOT, seed: 11 });
 const device = SYN.group;
 device.userData = { strip: SYN.strip };
 scene.add(device);
-let devMode = 'scope', devPlay = 0, devCut = 0.5;
+let devMode = 'scope', devPlay = 0, devCut = 0.5, devPower = 1, devAt = null, devKeys = null, devKnobs = null, devRipples = null, devLogo = 0;
 const uiPt = (px, py) => SYN.uiPt(px, py);
 
 // ---------------------------------------------------------------- nuage : chaque pixel de l'interface devient une particule
@@ -437,7 +442,9 @@ const WT = (() => {
             s.m.material.opacity = eOut(vis);
         }
     }
-    return { g, update, NF };
+    // hauteur de la frame k au point x (0..1) : pour poser le bonhomme sur la vague
+    const height = (k, x, ph, ampMul = 1) => wave(k / (NF - 1), x, ph) * AMP * ampMul;
+    return { g, update, NF, height, DZ, WD };
 })();
 scene.add(WT.g);
 
@@ -714,6 +721,10 @@ function hideAll() {
 }
 
 // ---------------------------------------------------------------- scène : visibilité et petites aides
+// le bonhomme d'ABRASION (pub HISTOIRE)
+const BON = makeBonhomme();
+scene.add(BON.root);
+BON.root.visible = false;
 function only(...gs) {
     for (const g of [device, WT.g, LIFE.g, BARS.g, FAN.g, CLOUD.g]) g.visible = gs.includes(g);
 }
@@ -730,7 +741,7 @@ function resetDevice() {
     device.position.set(0, 0, 0);
     device.rotation.set(0, 0, 0);
     device.scale.setScalar(1);
-    devMode = 'scope';
+    devMode = 'scope'; devPower = 1; devAt = null; devKeys = null; devKnobs = null; devRipples = null; devLogo = 0;
 }
 const DEV_D = fitDist(13.5 * 1.12, 10.3 * 1.12);
 // sol : position, relief et zone calme (les objets ne le touchent jamais)
@@ -963,9 +974,310 @@ function adLeSon(t, frame) {
     hud(t, extra);
 }
 
+
+// ---------------------------------------------------------------- pub 3 : HISTOIRE (le bonhomme présente RAW 2, ≈ 29 s)
+// RAW 2 posé à plat et agrandi 4 fois : le bonhomme marche sur l'écran de l'OSC A, allume la machine
+// avec le logo, saute sur le clavier et frappe une touche pile sur le drop de « shape ».
+const BOARD_S = 4;
+const surf = { panel: 1.8 + 0.52 * BOARD_S, chassis: 1.8 + 0.45 * BOARD_S, key: 1.8 + 0.73 * BOARD_S, led: 1.8 + 0.566 * BOARD_S };
+function board() {
+    device.scale.setScalar(BOARD_S);
+    device.rotation.set(-Math.PI / 2, 0, 0);
+    device.position.set(0, 1.8, 0);
+    device.updateMatrixWorld(true);
+}
+// point de l'interface (px) → monde, sur le plateau posé à plat
+const bp = (px, py, y) => v3((px / 100 - 6.4) * BOARD_S, y, (py / 100 - 4.8) * BOARD_S);
+const heading = (dx, dz) => Math.atan2(dx, dz);
+// projecteur : cône de lumière et flaque au sol, sur le bonhomme
+const SPOT = (() => {
+    const g = new THREE.Group();
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(2.6, 11, 40, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff4e8, transparent: true, opacity: 0.05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    cone.position.y = 5.5;
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const gx = c.getContext('2d'), gr = gx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,245,235,0.55)'); gr.addColorStop(0.7, 'rgba(255,245,235,0.12)'); gr.addColorStop(1, 'rgba(255,245,235,0)');
+    gx.fillStyle = gr; gx.fillRect(0, 0, 128, 128);
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    pool.rotation.x = -Math.PI / 2; pool.position.y = 0.03;
+    g.add(cone, pool);
+    scene.add(g);
+    g.visible = false;
+    return g;
+})();
+// passerelle orange le long de la forme d'onde (plan Wurlitzer)
+const RAIL = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 60), new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.4 }));
+const RAIL_EDGE = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 60), new THREE.MeshBasicMaterial({ color: HOT.clone().multiplyScalar(0.8) }));
+RAIL.add(RAIL_EDGE); RAIL_EDGE.position.set(-0.55, 0.06, 0);
+scene.add(RAIL); RAIL.visible = false;
+
+function showDialog(t) {
+    const d = $('dialog');
+    const cur = HIST.dialogues.find(x => t >= x.t - 0.12 && t < x.fin + 0.15);
+    if (!cur) { d.style.display = 'none'; return; }
+    d.style.display = 'block';
+    d.style.top = (PORTRAIT ? 0.73 : 0.7) * H + 'px';
+    d.querySelector('.who').textContent = '◼ BONHOMME D\'' + HIST.nom;
+    const n = Math.max(0, Math.floor((t - cur.t) * HIST.cps));
+    const blink = Math.floor(t * 4) % 2 === 0;
+    d.querySelector('.txt').innerHTML = esc(cur.texte.slice(0, n)) + (blink || n < cur.texte.length ? '<span class="cur"></span>' : '');
+    const a = prog(t, cur.t - 0.12, cur.t + 0.05), b = 1 - prog(t, cur.fin, cur.fin + 0.15);
+    d.style.opacity = String(Math.min(a, b));
+    d.style.transform = `translateY(${(1 - eOut(a)) * 24 * U}px) scaleY(${0.6 + 0.4 * eOut(Math.min(a, b))})`;
+}
+// pose finale du bonhomme : P (repère du corps) + position monde + cap
+function bon(P, pos, rotY = 0, extra = {}) {
+    BON.root.visible = true;
+    BON.pose(Object.assign(P, { pos, rotY }, extra));
+}
+function camTo(pos, look, roll = 0) { setCam(pos.add(shake(REALT, 0.12)), look, roll); }
+
+function adHistoire(t, frame) {
+    hideAll();
+    resetDevice();
+    BON.root.visible = false;
+    SPOT.visible = false;
+    RAIL.visible = false;
+    BON.root.scale.setScalar(1);
+    floorMat.uniforms.uScan.value = -999;
+    $('dialog').style.display = 'none';
+    const T = HIST.temps, P5 = HIST.points, beat = 60 / HIST.musique.bpm;
+    const [p1, p2, p3, p4, p5] = T.plans;
+    const calloutY = PORTRAIT ? 0.66 : 0.6;
+    flashAt(t, [{ t: T.drop, d: 0.32, o: 0.85 }, ...T.plans.map(x => ({ t: x, d: 0.12, o: 0.45, c: '#FF4D00' })), { t: T.fin, d: 0.3, o: 0.6 }]);
+    cutFx(t, [T.marche[0], T.saut[0] - 0.052, T.drop, ...T.plans, T.fin]);
+    let extra = '';
+    if (t < T.marche[0]) {
+        // 1. arrivée : la tête tombe et rebondit, le corps surgit, coucou
+        only(device);
+        board();
+        devPower = 0;
+        ground(0, 0.4, 40);
+        const at = bp(205, 290, surf.panel + 0.01);
+        SPOT.visible = true; SPOT.position.copy(at);
+        const [b1, b2, b3] = T.rebonds, R0 = 0.39;
+        let hy;  // hauteur du centre de la tête au-dessus du sol (tête seule)
+        if (t < T.tete) hy = 30;
+        else if (t < b1) hy = lerp(11, R0, Math.pow(prog(t, T.tete, b1), 2));
+        else if (t < b2) { const u = prog(t, b1, b2); hy = R0 + 4 * 0.95 * u * (1 - u); }
+        else if (t < b3) { const u = prog(t, b2, b3); hy = R0 + 4 * 0.32 * u * (1 - u); }
+        else hy = R0;
+        if (t < T.corps) {
+            const P = POSE.idle(0);
+            const squash = t >= b1 && t < b1 + 0.08 ? 0.75 : 1;
+            bon(P, at, 0.35, { head: v3(0, hy - 2.06, 0), show: { head: true, body: false, limbs: false }, shadow: clamp(1.4 - hy / 8) });
+            BON.root.children[0].children[1].scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+        } else {
+            BON.root.children[0].children[1].scale.set(1, 1, 1);
+            const pop = eBack(prog(t, T.corps, T.corps + 0.26));
+            const P = t >= T.coucou ? POSE.wave(t, eOut(prog(t, T.coucou, T.coucou + 0.3))) : POSE.idle(t);
+            const lp = eBack(prog(t, T.membres, T.membres + 0.2));   // les membres jaillissent du corps
+            if (lp < 1) for (const k of [0, 1]) { P.hands[k].lerp(v3(0, 1.2, 0), 1 - lp); P.feet[k].lerp(v3(0, 0.7, 0), 1 - lp); }
+            bon(P, at, lerp(0.35, 0.15, prog(t, T.corps, 3)), { show: { head: true, body: true, limbs: t >= T.membres }, squash: lerp(0.4, 1, pop) * (P.squash || 1) });
+        }
+        const u = prog(t, 0, T.marche[0]);
+        const look = at.clone().add(v3(0, PORTRAIT ? 1.05 : 1.2, 0));
+        const d = PORTRAIT ? lerp(9.5, 7.6, eIO(u)) : lerp(8.2, 6.6, eIO(u));
+        camTo(look.clone().add(v3(lerp(2.2, 1.2, u), lerp(1.6, 0.7, u), d)), look.clone().add(v3(0, lerp(PORTRAIT ? 0.6 : 0.3, 0, u), 0)));
+        FX.decay = 0.35;
+        extra = ' · SIGNAL ABSENT';
+    } else if (t < T.appui - 0.46) {
+        // 2. il traverse l'écran éteint jusqu'au logo
+        only(device);
+        board();
+        devPower = 0;
+        ground(0, 0.4, 40);
+        const [ta, tb] = T.marche;
+        const pts = [[205, 290], [160, 170], [118, 98], [84, 46]];
+        const u = eIO(prog(t, ta + 0.05, tb));
+        const seg = Math.min(2, Math.floor(u * 3)), f = u * 3 - seg;
+        const [x0, y0] = pts[seg], [x1, y1] = pts[seg + 1];
+        const px = lerp(x0, x1, f), py = lerp(y0, y1, f);
+        const y = (py >= 72 ? surf.panel : surf.chassis) + (Math.abs(py - 125) < 6 ? 0.12 : 0);
+        const at = bp(px, py, y);
+        const walking = t < tb;
+        const P = walking ? POSE.walk((t - ta) * 2.2, 0.9) : POSE.idle(t);
+        bon(P, at, heading(x1 - x0, y1 - y0));
+        SPOT.visible = true; SPOT.position.copy(at); SPOT.position.y = y;
+        const look = at.clone().add(v3(0, 1.1, 0));
+        camTo(look.clone().add(v3(PORTRAIT ? 4.5 : 5.5, 2.4, PORTRAIT ? 9.5 : 8.5)), look);
+        FX.decay = 0.4;
+        extra = ' · SIGNAL ABSENT';
+    } else if (t < T.saut[0] - 0.052) {
+        // 3. il appuie sur le logo : la machine s'allume, en onde
+        only(device);
+        board();
+        const [pa, pb] = T.allumage;
+        devPower = eOut(prog(t, pa, pb));
+        devAt = [44, 42];
+        devLogo = t >= T.appui ? 2.5 * Math.exp(-(t - T.appui) * 3) : 0;
+        ground(0, lerp(0.4, 1.1, devPower), 40);
+        const at = bp(86, 46, surf.chassis);
+        const P = POSE.stomp(clamp((t - (T.appui - 0.46)) / 0.66));
+        if (t < T.appui + 0.3) P.hands[0].y -= 0.35 * clamp((t - T.appui + 0.1) / 0.1);
+        bon(P, at, -Math.PI / 2 + 0.25);
+        SPOT.visible = devPower < 0.6; SPOT.position.copy(at);
+        floorMat.uniforms.uScan.value = lerp(-30, 40, prog(t, pa, pb));
+        const u = eIO(prog(t, T.appui - 0.2, T.saut[0] - 0.2));
+        const close = at.clone().add(v3(3.2, 1.6, 6.5)), wide = v3(-4, PORTRAIT ? 46 : 38, PORTRAIT ? 46 : 36);
+        const look = vl(at.clone().add(v3(-0.6, 0.8, 0)), v3(-2, 2, PORTRAIT ? 2 : 0), u);
+        camTo(vl(close, wide, u), look);
+        FX.decay = 0.55; FX.zoom = 0.002;
+        extra = ` · ALIMENTATION ${String(Math.round(devPower * 100)).padStart(3, ' ')} %`;
+    } else if (t < T.drop) {
+        // 4. il saute sur le clavier et frappe le do pile dans le silence d'avant le drop
+        only(device);
+        board();
+        ground(0, 1.0, 40);
+        const [sa, sb] = T.saut;
+        const kF = SYN.whiteKey(3), kC = SYN.whiteKey(7);
+        const pF = v3(kF.x * BOARD_S, surf.key, -kF.y * BOARD_S), pC = v3(kC.x * BOARD_S, surf.key, -kC.y * BOARD_S);
+        const tHit = T.frappe, dn = t >= tHit ? 0.045 * BOARD_S * clamp((t - tHit) / 0.04) : 0;
+        devKeys = { 7: t >= tHit ? 1 : 0 };
+        let P, at, rot;
+        if (t < sa) { P = POSE.jump(0.05); at = pF; rot = Math.PI / 2; }
+        else if (t < sb) { const u = prog(t, sa, sb); P = POSE.jump(u, 2.6); at = vl(pF, pC, eIO(u)); rot = Math.PI / 2; }
+        else if (t < tHit - 0.56) { P = POSE.idle(t); at = pC; rot = lerp(Math.PI / 2, 0.2, eOut(prog(t, sb, sb + 0.4))); }
+        else { P = POSE.stomp(clamp((t - (tHit - 0.56)) / 0.8)); at = pC; rot = 0.2; P.hands[0].y -= 0.25 * clamp((t - tHit + 0.1) / 0.1); }
+        at = at.clone(); at.y -= dn;
+        bon(P, at, rot);
+        const u = prog(t, sb, tHit);
+        const look = pC.clone().add(v3(0, 1.2, 0));
+        const d = PORTRAIT ? lerp(12.5, 8.5, eIO(u)) : lerp(11, 7.5, eIO(u));
+        camTo(look.clone().add(v3(lerp(-5, 2.5, eIO(prog(t, sa, tHit))), lerp(1.2, 0.5, u), d)), look.clone().add(v3(0, PORTRAIT ? 0.6 : 0.2, -2)));
+        FX.decay = 0.45;
+        FX.dither = Math.max(FX.dither, t >= tHit ? 1 : 0);
+        extra = ' · DO 4';
+    } else if (t < p1) {
+        // 5. DROP : tout s'illumine, le nuage de pixels explose, il saute sur chaque temps
+        only(device, CLOUD.g);
+        board();
+        ground(0, 1.6, 40);
+        const kC = SYN.whiteKey(7);
+        const pC = v3(kC.x * BOARD_S, surf.key, -kC.y * BOARD_S);
+        devKeys = { 7: clamp(1 - (t - T.drop) * 1.5) };
+        const bt = ((t - T.drop) / beat) % 1;
+        const P = POSE.jump(bt, 0.9);
+        P.hands = [v3(0.75, 2.4, 0.1), v3(-0.75, 2.4, 0.1)];
+        bon(P, pC, 0.1);
+        CLOUD.follow(device);
+        CLOUD.set({ uAsm: 1 - eOut(prog(t, T.drop, T.drop + 0.9)), uR: 34, uNoise: lerp(1, 6, prog(t, T.drop, T.drop + 0.6)), uSpin: (t - T.drop) * 0.5, uBright: lerp(1, 0.4, prog(t, T.drop + 0.2, p1)) });
+        const u = prog(t, T.drop, p1);
+        const a = lerp(-0.7, 0.35, eIO(u)), d = PORTRAIT ? 52 : 44;
+        camTo(v3(Math.sin(a) * d - 4, lerp(26, 30, u), Math.cos(a) * d + 4), v3(-4, 2, PORTRAIT ? 6 : 3));
+        FX.decay = t < T.drop + 0.9 ? 0.86 : 0.55; FX.zoom = t < T.drop + 0.9 ? 0.012 : 0.003;
+        showTitle('RAW 2', t, T.drop, p1, { size: PORTRAIT ? 150 : 120, y: PORTRAIT ? 0.1 : 0.06, accentLast: true, frame });
+        showSub(TEXTES.accroche, t, T.drop + 0.3, p1, { size: PORTRAIT ? 21 : 22, y: PORTRAIT ? 0.205 : 0.195 });
+    } else if (t < p2) {
+        // 6. il surfe sur la wavetable
+        only(WT.g);
+        const u = prog(t, p1, p2);
+        const am = 0.8 + 0.5 * A.mid, ph = t * (1.6 + A.mid);
+        WT.g.scale.setScalar(1.4);
+        WT.update(1, WT.NF - 1, ph, 1, am);
+        const xs = 0.5 + 0.12 * Math.sin(u * Math.PI * 2);
+        const hy = WT.height(WT.NF - 1, xs, ph, am) * 1.4, hy2 = WT.height(WT.NF - 1, xs + 0.01, ph, am) * 1.4;
+        const at = v3((xs - 0.5) * WT.WD * 1.4, hy + 0.04, (WT.NF - 1 - WT.NF / 2) * WT.DZ * 1.4);
+        const P = POSE.surf(t);
+        P.tilt = Math.atan2(hy2 - hy, 0.01 * WT.WD * 1.4) * 0.8;
+        bon(P, at, 0.15, { shadow: 0 });
+        ground(-5.5, 1.2, 12);
+        const look = at.clone().add(v3(0, 0.8, 0));
+        camTo(look.clone().add(v3(lerp(-6, -3, u), lerp(2.2, 3.4, u), PORTRAIT ? 11 : 9.5)), look.clone().add(v3(0, PORTRAIT ? -1.2 : -0.3, -3)));
+        FX.decay = 0.72; FX.zoom = 0.002;
+        showCallout(1, P5[0], t, p1 + 0.05, p2, calloutY);
+        extra = ' · OSC A/B';
+    } else if (t < p3) {
+        // 7. VIE : il marche sur la matrice, des anneaux de LED partent de ses pieds sur chaque temps
+        only(device);
+        board();
+        ground(0, 1.0, 40);
+        const u = prog(t, p2, p3);
+        const px = lerp(520, 760, u), py = lerp(285, 205, u);
+        const at = bp(px, py, surf.led);
+        bon(POSE.walk((t - p2) * 2.2, 0.8), at, heading(240, -80));
+        devRipples = [];
+        for (let j = 0; j < 5; ++j) {
+            const t0 = p2 + j * beat;
+            if (t >= t0) devRipples.push({ x: px, y: py, r: (t - t0) * 260, w: 7 });
+        }
+        const look = at.clone().add(v3(0, 1, 0));
+        camTo(look.clone().add(v3(-4, PORTRAIT ? 5.5 : 4.5, PORTRAIT ? 10 : 9)), look.clone().add(v3(0, PORTRAIT ? -1.4 : -0.4, 0)));
+        FX.decay = 0.5;
+        showCallout(2, P5[1], t, p2 + 0.05, p3, calloutY);
+        extra = ' · GEN ' + String(Math.floor(t * 8)).padStart(4, '0');
+    } else if (t < p4) {
+        // 8. il fait tourner un potard plus grand que lui (cliquets sur chaque cran)
+        only(device);
+        board();
+        ground(0, 1.0, 40);
+        const u = prog(t, p3, p4);
+        const kc = SYN.knobs[0];
+        const c = bp(kc.x, kc.y, surf.panel);
+        const th = -0.6 + u * 3.2;   // il tourne autour du potard
+        const rr = 0.84 + 0.62;
+        const at = c.clone().add(v3(Math.cos(th) * rr, 0, Math.sin(th) * rr));
+        devKnobs = { 0: clamp(0.15 + u * 0.8) };
+        devMode = 'filter'; devCut = 0.2 + 0.7 * u;
+        const P = POSE.push(t);
+        bon(P, at, heading(-Math.sin(th), Math.cos(th)) + 0.9);
+        const look = c.clone().add(v3(0, 1.0, 0));
+        camTo(look.clone().add(v3(3.5, PORTRAIT ? 6.5 : 5, PORTRAIT ? 9 : 8)), look.clone().add(v3(0, PORTRAIT ? -1.2 : -0.3, 0)), 0.03);
+        FX.decay = 0.25;
+        showCallout(3, P5[2], t, p3 + 0.05, p4, calloutY);
+        extra = ' · POSITION ' + Math.round(clamp(0.15 + u * 0.8) * 100) + ' %';
+    } else if (t < p5) {
+        // 9. il court le long de la forme d'onde du Wurlitzer, un saut par temps
+        only(BARS.g);
+        const u = prog(t, p4, p5);
+        BARS.g.position.set(0, 0, 0); BARS.g.rotation.set(0, 0, 0);
+        const zr = lerp(-14, 14, u);
+        BARS.update(1, clamp((zr + 25.6) / 51.2));
+        RAIL.visible = true; RAIL.position.set(1.5, -0.06, 0);
+        const bt = ((t - p4) / beat) % 1;
+        const P = POSE.jump(bt, 0.55);
+        Object.assign(P, { lean: 0.15 });
+        bon(P, v3(1.5, 0, zr), Math.PI, { shadow: 0.6 });
+        ground(-6.5, 1.2, 10);
+        const look = v3(1.2, 1.2, zr);
+        camTo(look.clone().add(v3(PORTRAIT ? 9 : 8, PORTRAIT ? 3.5 : 2.8, 4)), look.clone().add(v3(0, PORTRAIT ? -1 : -0.2, -2)));
+        FX.decay = 0.45;
+        showCallout(4, P5[3], t, p4 + 0.05, p5, calloutY);
+        extra = ' · ZONE C#4 · 36 ZONES';
+    } else if (t < T.fin) {
+        // 10. les 6 thèmes défilent derrière lui (carrousel espacé : aucun contact)
+        only(FAN.g);
+        const u = prog(t, p5, T.fin);
+        FAN.g.position.set(0, 0, 0);
+        FAN.update(t, p5, eIO(u));
+        ground(-3.6, 1.0, 16);
+        bon(POSE.wave(t, 1), v3(0, -3.6, 5.5), 0, {});
+        camTo(v3(lerp(-2, 2, u), PORTRAIT ? 0.5 : 0.8, PORTRAIT ? 24 : 21), v3(0, PORTRAIT ? -3 : -1.5, -2));
+        FX.decay = 0.15;
+        showCallout(5, P5[4], t, p5 + 0.05, T.fin, calloutY);
+        extra = ' · THÈME ' + ['ALU', 'NOTHING', 'TITANE', 'CRT', 'ULTRAVIOLET', 'ONIRIQUE'][Math.floor(u * 6) % 6];
+    } else {
+        // 11. fin : assis sur RAW 2, il fait coucou ; puis le carton ONIRIQUE
+        endShot(t, T.fin, 'scope', -0.3, 0.1);
+        const s = PORTRAIT ? 0.78 : 0.5;
+        device.updateMatrixWorld(true);
+        const top = device.localToWorld(v3(2.4, 5.15, 0.05));
+        const P = POSE.sit(t);
+        const W = POSE.wave(t, eOut(prog(t, T.fin + 0.15, T.fin + 0.45)));
+        P.hands[1] = W.hands[1]; P.elbows[1] = W.elbows[1];
+        BON.root.scale.setScalar(PORTRAIT ? 0.95 : 0.7);
+        bon(P, top.add(v3(0, -0.07 * (PORTRAIT ? 0.95 : 0.7), 0)), device.rotation.y, { shadow: 0 });
+        el.end.style.display = el.end2.style.display = 'none';
+        showEnd(t, T.carton, PORTRAIT ? 0.12 : 0.06, PORTRAIT ? 0.665 : 0.6);
+        if (t < T.carton) { el.end.style.display = el.end2.style.display = 'none'; }
+    }
+    showDialog(t);
+    hud(t, extra);
+}
+
 // ---------------------------------------------------------------- point d'entrée
-const AD_FN = { lancement: adLancement, 'le-son': adLeSon }[AD];
-const DURATION = { lancement: 20, 'le-son': 16 }[AD] / K;
+const AD_FN = { lancement: adLancement, 'le-son': adLeSon, histoire: adHistoire }[AD];
+const DURATION = (AD === 'histoire' ? HIST.temps.total : { lancement: 20, 'le-son': 16 }[AD]) / K;
 window.DURATION = DURATION;
 CLOUD.mat.uniforms.uScale.value = H / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
 window.renderFrame = rt => {
@@ -986,7 +1298,8 @@ window.renderFrame = rt => {
     if (device.visible) {
         const fi = Math.min(AUD.n - 1, Math.round(rt * AUD.fps)), sc = AUD.scope[fi] || [];
         const sm = sc.map((v, i) => { let s = 0, n = 0; for (let j = -6; j <= 6; ++j) { const x = sc[i + j]; if (x !== undefined) { s += x; ++n; } } return (s / n) * 1.6; });
-        SYN.update({ t, A, kick: KICK, chroma: AUD.chroma[fi], scopeA: sc, scopeB: sm, mode: devMode, play: devPlay, cut: devCut, wurli });
+        SYN.update({ t, A, kick: KICK, chroma: AUD.chroma[fi], scopeA: sc, scopeB: sm, mode: devMode, play: devPlay, cut: devCut, wurli,
+                     power: devPower, powerAt: devAt, keyHit: devKeys, knobSet: devKnobs, ripples: devRipples, logoPress: devLogo });
     }
     spectrum();
     applyFx(t);

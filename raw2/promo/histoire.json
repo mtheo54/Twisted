@@ -1,0 +1,241 @@
+{
+  "_aide": "Pub HISTOIRE : le bonhomme d'ABRASION présente RAW 2. Instants en secondes sur « shape » (132 BPM, mesure n à 14,484 + (n - 8) x 1,8182 s). Lu par scene.js (image) et sfx.py (bruitages) : changer un instant ici déplace les deux.",
+  "musique": {
+    "debut": 0.0,
+    "duree": 29.03,
+    "bpm": 132,
+    "fondu": 1.6,
+    "gain_db": -1.5,
+    "phase": -0.061
+  },
+  "nom": "ABRASION",
+  "dialogues": [
+    {
+      "t": 2.05,
+      "fin": 3.5,
+      "texte": "Salut ! Moi, c'est le bonhomme d'ABRASION."
+    },
+    {
+      "t": 4.0,
+      "fin": 6.6,
+      "texte": "J'ai un truc à te montrer…"
+    },
+    {
+      "t": 8.45,
+      "fin": 10.6,
+      "texte": "Il s'appelle RAW 2."
+    },
+    {
+      "t": 11.85,
+      "fin": 13.9,
+      "texte": "Écoute ça…"
+    },
+    {
+      "t": 25.55,
+      "fin": 26.85,
+      "texte": "Il t'attend sur ONIRIQUE. À toute !"
+    }
+  ],
+  "cps": 30,
+  "temps": {
+    "tete": 0.35,
+    "rebonds": [
+      0.8,
+      1.1,
+      1.28
+    ],
+    "corps": 1.48,
+    "membres": 1.78,
+    "coucou": 1.95,
+    "marche": [
+      3.575,
+      6.7
+    ],
+    "appui": 7.212,
+    "allumage": [
+      7.25,
+      9.6
+    ],
+    "saut": [
+      10.9,
+      11.6
+    ],
+    "frappe": 14.4,
+    "drop": 14.484,
+    "plans": [
+      16.302,
+      18.12,
+      19.939,
+      21.757,
+      23.575
+    ],
+    "fin": 25.393,
+    "carton": 26.95,
+    "total": 29.03
+  },
+  "bruitages": [
+    {
+      "t": 0.35,
+      "son": "chute",
+      "gain": -14
+    },
+    {
+      "t": 0.8,
+      "son": "boing",
+      "gain": -8,
+      "hauteur": 1.0
+    },
+    {
+      "t": 1.1,
+      "son": "boing",
+      "gain": -13,
+      "hauteur": 1.25
+    },
+    {
+      "t": 1.28,
+      "son": "boing",
+      "gain": -18,
+      "hauteur": 1.5
+    },
+    {
+      "t": 1.48,
+      "son": "pop",
+      "gain": -8,
+      "hauteur": 0.8
+    },
+    {
+      "t": 1.78,
+      "son": "pop",
+      "gain": -11,
+      "hauteur": 1.3
+    },
+    {
+      "t": 1.86,
+      "son": "pop",
+      "gain": -12,
+      "hauteur": 1.5
+    },
+    {
+      "t": 3.575,
+      "son": "souffle",
+      "gain": -14
+    },
+    {
+      "t": 7.212,
+      "son": "clac",
+      "gain": -6
+    },
+    {
+      "t": 7.25,
+      "son": "allumage",
+      "gain": -10
+    },
+    {
+      "t": 7.6,
+      "son": "grésille",
+      "gain": -16
+    },
+    {
+      "t": 8.05,
+      "son": "grésille",
+      "gain": -18
+    },
+    {
+      "t": 7.3,
+      "son": "cascade",
+      "gain": -17
+    },
+    {
+      "t": 10.848,
+      "son": "souffle",
+      "gain": -14
+    },
+    {
+      "t": 10.9,
+      "son": "envol",
+      "gain": -11
+    },
+    {
+      "t": 11.6,
+      "son": "atterrit",
+      "gain": -9
+    },
+    {
+      "t": 13.6,
+      "son": "montée",
+      "gain": -16
+    },
+    {
+      "t": 14.4,
+      "son": "touche",
+      "gain": -5
+    },
+    {
+      "t": 14.484,
+      "son": "impact",
+      "gain": -4
+    },
+    {
+      "t": 16.302,
+      "son": "glitch",
+      "gain": -15
+    },
+    {
+      "t": 18.12,
+      "son": "glitch",
+      "gain": -15
+    },
+    {
+      "t": 19.939,
+      "son": "glitch",
+      "gain": -15
+    },
+    {
+      "t": 21.757,
+      "son": "glitch",
+      "gain": -15
+    },
+    {
+      "t": 23.575,
+      "son": "glitch",
+      "gain": -15
+    },
+    {
+      "t": 25.393,
+      "son": "souffle",
+      "gain": -15
+    },
+    {
+      "t": 26.95,
+      "son": "carillon",
+      "gain": -12
+    }
+  ],
+  "points": [
+    [
+      "OSCILLATEURS",
+      "2 OSCILLATEURS WAVETABLE",
+      "256 FRAMES · 12 WARPS · FM / AM / RM"
+    ],
+    [
+      "VIE CELLULAIRE",
+      "UNE GRILLE VIVANTE",
+      "QUI MODULE LE SON EN TEMPS RÉEL"
+    ],
+    [
+      "SYNTHÈSE",
+      "FILTRE 10 MODES",
+      "12 POTARDS · UNISON ×16 · MPE"
+    ],
+    [
+      "INSTRUMENTS",
+      "23 INSTRUMENTS RÉELS",
+      "WURLITZER · CP80 · SAX · PIANO"
+    ],
+    [
+      "THÈMES",
+      "6 THÈMES",
+      "ALU · NOTHING · TITANE · CRT · UV · ONIRIQUE"
+    ]
+  ]
+}
