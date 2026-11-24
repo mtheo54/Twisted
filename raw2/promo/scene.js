@@ -1028,9 +1028,37 @@ function showDialog(t) {
     d.style.transform = `translateY(${(1 - eOut(a)) * 24 * U}px) scaleY(${0.6 + 0.4 * eOut(Math.min(a, b))})`;
 }
 // pose finale du bonhomme : P (repère du corps) + position monde + cap
+// expression de la mascotte selon le moment du récit (yeux en pixels sur la visière)
+function faceAt(t) {
+    const T = HIST.temps, [p1, p2, p3, p4, p5] = T.plans;
+    const blink = (t * 0.77) % 1 < 0.09;   // clignement régulier
+    if (t < T.rebonds[0]) return 'surpris';
+    if (t < T.rebonds[0] + 0.3) return 'aie';
+    if (t < T.coucou) return blink ? 'cligne' : 'neutre';
+    if (t < T.marche[0]) return 'content';
+    if (t < T.appui - 0.46) return blink ? 'cligne' : 'neutre';
+    if (t < T.appui) return 'concentre';
+    if (t < T.appui + 0.9) return 'surpris';
+    if (t < T.saut[0]) return 'content';
+    if (t < T.saut[1]) return 'surpris';
+    if (t < T.frappe - 0.56) return 'malin';
+    if (t < T.frappe) return 'concentre';
+    if (t < T.drop + 0.12) return 'aie';
+    if (t < p1) return 'etoiles';
+    if (t < p2) return 'content';
+    if (t < p3) return t < p2 + 0.5 ? 'surpris' : 'content';
+    if (t < p4) return 'concentre';
+    if (t < p5) return 'content';
+    if (t < T.fin) return blink ? 'cligne' : 'etoiles';
+    return t < T.carton ? 'clin' : 'content';
+}
+function talkAt(t) {
+    const d = HIST.dialogues.find(x => t >= x.t && t < x.t + x.texte.length / HIST.cps);
+    return d ? 0.5 + 0.5 * Math.sin(t * 28) : 0;
+}
 function bon(P, pos, rotY = 0, extra = {}) {
     BON.root.visible = true;
-    BON.pose(Object.assign(P, { pos, rotY }, extra));
+    BON.pose(Object.assign(P, { pos, rotY, face: faceAt(REALT), talk: talkAt(REALT), time: REALT, pulse: 0.25 + 0.75 * KICK }, extra));
 }
 function camTo(pos, look, roll = 0) { setCam(pos.add(shake(REALT, 0.12)), look, roll); }
 
@@ -1074,7 +1102,7 @@ function adHistoire(t, frame) {
         if (t < T.corps) {
             const P = POSE.idle(0);
             const squash = t >= b1 && t < b1 + 0.08 ? 0.75 : 1;
-            bon(P, at, 0.35, { head: v3(0, hy - 2.06, 0), show: { head: true, body: false, limbs: false }, shadow: clamp(1.4 - hy / 8) });
+            bon(P, at, 0.35, { head: v3(0, hy - BON.R.headY, 0), show: { head: true, body: false, limbs: false }, shadow: clamp(1.4 - hy / 8) });
             BON.root.children[0].children[1].scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
         } else {
             BON.root.children[0].children[1].scale.set(1, 1, 1);

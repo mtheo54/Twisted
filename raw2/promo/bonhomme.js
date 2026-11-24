@@ -1,7 +1,11 @@
-// Le bonhomme d'ABRASION (d'après game/reference/bonhomme_abrasion.png et la démo web du jeu) :
-// grosse tête ronde de chrome, flottante et séparée du corps, torse en pilule large, bras et jambes
-// en tubes épais aux bouts ronds. Chrome par matcap (même rendu quelle que soit la lumière), avec un
-// reflet orange en bas : la lumière d'ABRASION.
+// Le bonhomme d'ABRASION, mascotte de la marque (point de départ : game/reference/bonhomme_abrasion.png).
+// Silhouette : grosse tête ronde de chrome, flottante, séparée du corps ; torse en pilule large ; bras
+// et jambes en tubes épais aux bouts ronds. Chrome par matcap (même rendu quelle que soit la lumière).
+// Signes distinctifs (ce qui le rend unique) :
+//   - une visière orange qui affiche ses yeux en pixels et ses expressions (pas de bouche) ;
+//   - le logo ABRASION sur la poitrine (carré noir, carré orange) qui pulse sur le rythme ;
+//   - un anneau orange lumineux dans l'espace entre la tête et le corps ;
+//   - une queue en câble jack, fiche orange au bout, qui traîne derrière lui.
 //   const b = makeBonhomme();  scene.add(b.root);  b.pose(P) à chaque image (voir POSE plus bas)
 import * as THREE from 'three';
 
@@ -32,7 +36,7 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 // Proportions (unités ≈ 1 m) : hauteur totale ≈ 2,3
 const R = {
     hipY: 0.74, torsoY: 1.18, torsoR: 0.36, torsoLen: 0.4, torsoSX: 1.22, torsoSZ: 0.86,
-    headY: 2.06, headR: 0.39, shoulder: V(0.36, 1.46, 0), armR: 0.155, handR: 0.165,
+    headY: 2.24, headR: 0.39, shoulder: V(0.36, 1.46, 0), armR: 0.155, handR: 0.165,
     hip: V(0.2, 0.74, 0), legR: 0.15, footR: 0.165,
 };
 
@@ -52,6 +56,39 @@ export function makeBonhomme() {
     const hands = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.SphereGeometry(R.handR, 24, 16), bodyMat); m.scale.set(1, 1.08, 0.92); body.add(m); return m; });
     const feet = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.SphereGeometry(R.footR, 24, 16), bodyMat); m.scale.set(1, 0.72, 1.45); body.add(m); return m; });
     const limbs = [0, 1, 2, 3].map(() => { const m = new THREE.Mesh(new THREE.BufferGeometry(), bodyMat); body.add(m); return m; });
+    // visière : bandeau sombre sur l'avant de la tête, yeux en pixels orange (canvas, voir FACES)
+    const fc = document.createElement('canvas'); fc.width = 256; fc.height = 72;
+    const fg = fc.getContext('2d');
+    const faceTex = new THREE.CanvasTexture(fc); faceTex.colorSpace = THREE.SRGBColorSpace;
+    faceTex.magFilter = THREE.NearestFilter; faceTex.minFilter = THREE.LinearFilter;
+    const VL = 1.95, VT = 1.4, VH = 0.5;   // largeur (rad), centre et hauteur (rad) du bandeau
+    const visor = new THREE.Mesh(new THREE.SphereGeometry(R.headR * 1.012, 48, 12, Math.PI / 2 - VL / 2, VL, VT - VH / 2, VH),
+        new THREE.MeshBasicMaterial({ map: faceTex, color: new THREE.Color(1.7, 1.7, 1.7), toneMapped: false }));
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(R.headR * 1.022, 48, 12, Math.PI / 2 - VL / 2 - 0.03, VL + 0.06, VT - VH / 2 - 0.03, VH + 0.06),
+        new THREE.MeshMatcapMaterial({ matcap: mc, color: 0x9aa0aa, transparent: true, opacity: 0.28, depthWrite: false }));
+    head.add(visor, glass);
+    // logo ABRASION sur la poitrine
+    const plate = new THREE.Group();
+    const pl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.05), new THREE.MeshMatcapMaterial({ matcap: mc, color: 0x1a1a1c }));
+    const dot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.02), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 0.95, 0.06), toneMapped: false }));
+    dot.position.z = 0.03;
+    plate.add(pl, dot);
+    plate.position.set(0, R.torsoY + 0.12, R.torsoR * R.torsoSZ + 0.005);
+    body.add(plate);
+    // anneau orange entre la tête et le corps
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.026, 12, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 0.95, 0.06), toneMapped: false }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = R.torsoY + R.torsoLen / 2 + R.torsoR + 0.05;
+    body.add(ring);
+    // queue en câble jack (dans le repère du sol, pour que la fiche reste par terre pendant les sauts)
+    const cableMat = new THREE.MeshMatcapMaterial({ matcap: mc, color: 0x2a2b30 });
+    const cable = new THREE.Mesh(new THREE.BufferGeometry(), cableMat);
+    const plug = new THREE.Group();
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.24, 20), bodyMat);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.2, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.6, 0.78, 0.05), toneMapped: false }));
+    tip.position.y = 0.22;
+    plug.add(barrel, tip);
+    root.add(cable, plug);
     // ombre douce au sol
     const sc = document.createElement('canvas'); sc.width = sc.height = 64;
     const sg = sc.getContext('2d'); const gr = sg.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -61,6 +98,15 @@ export function makeBonhomme() {
     shadow.position.y = 0.01;
     root.add(shadow);
 
+    let lastFace = '';
+    function drawFace(name, talk = 0) {
+        const key = name + Math.round(talk * 4);
+        if (key === lastFace) return;
+        lastFace = key;
+        fg.fillStyle = '#060606'; fg.fillRect(0, 0, 256, 72);
+        FACES[name in FACES ? name : 'neutre'](fg, 1 - 0.35 * talk);
+        faceTex.needsUpdate = true;
+    }
     function tube(mesh, a, ctrl, b, r) {
         const curve = new THREE.QuadraticBezierCurve3(a, ctrl, b);
         mesh.geometry.dispose();
@@ -96,6 +142,23 @@ export function makeBonhomme() {
             feet[s].position.copy(foot).add(V(0, 0.02, 0.06));
             limbs[s].visible = limbs[2 + s].visible = hands[s].visible = feet[s].visible = limbsOn;
         }
+        drawFace(P.face || 'neutre', P.talk || 0);
+        dot.material.color.setRGB(3.2, 0.95, 0.06).multiplyScalar(0.35 + 0.9 * (P.pulse ?? 0.6));
+        ring.material.color.setRGB(3.2, 0.95, 0.06).multiplyScalar(0.3 + 0.6 * (P.pulse ?? 0.6));
+        plate.visible = ring.visible = bodyOn;
+        // câble : part du bas du dos, ondule et finit posé au sol derrière lui
+        const airB = P.air || 0, sw = Math.sin((P.time || 0) * 2.3) * 0.18, sw2 = Math.sin((P.time || 0) * 1.7 + 1) * 0.3;
+        const lean = P.lean || 0;
+        const c0 = V(0, 0.88 + airB, -R.torsoR * R.torsoSZ * 0.85 - lean * 0.3);
+        const c1 = V(sw * 0.4, 0.45 + airB * 0.6, -0.7);
+        const c2 = V(sw, 0.07, -1.3);
+        const c3 = V(sw2, 0.07, -1.95 - (P.cableLen || 0));
+        cable.geometry.dispose();
+        cable.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([c0, c1, c2, c3]), 32, 0.045, 10, false);
+        plug.position.copy(c3);
+        const dir = c3.clone().sub(c2).normalize();
+        plug.quaternion.setFromUnitVectors(V(0, 1, 0), dir);
+        cable.visible = plug.visible = show.cable !== false && bodyOn;
         const air = P.air || 0;
         shadow.scale.setScalar(Math.max(0.3, 1 - air * 0.18));
         shadow.material.opacity = Math.max(0.15, 0.9 - air * 0.2) * (P.shadow ?? 1);
@@ -105,6 +168,21 @@ export function makeBonhomme() {
 
 // ---------------------------------------------------------------- poses de base (repère du corps, unités)
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+// expressions sur la visière : yeux en blocs de pixels (8 px), k = hauteur relative (parole)
+const PX = 8;
+function blk(g, x, y, w, h) { g.fillStyle = '#FF5A10'; g.fillRect(x * PX, y * PX, w * PX, h * PX); }
+export const FACES = {
+    neutre(g, k) { const h = Math.max(1, Math.round(4 * k)); blk(g, 10, 5 - h / 2, 2, h); blk(g, 20, 5 - h / 2, 2, h); },
+    cligne(g) { blk(g, 9, 5, 4, 1); blk(g, 19, 5, 4, 1); },
+    clin(g, k) { const h = Math.max(1, Math.round(4 * k)); blk(g, 10, 5 - h / 2, 2, h); blk(g, 19, 5, 4, 1); },
+    content(g) { for (const x of [9, 19]) { blk(g, x, 5, 1, 1); blk(g, x + 1, 4, 2, 1); blk(g, x + 3, 5, 1, 1); } },
+    surpris(g) { for (const x of [9, 19]) { blk(g, x, 3, 4, 1); blk(g, x, 6, 4, 1); blk(g, x, 4, 1, 2); blk(g, x + 3, 4, 1, 2); } },
+    concentre(g) { blk(g, 9, 4, 1, 1); blk(g, 10, 5, 3, 1); blk(g, 19, 5, 3, 1); blk(g, 22, 4, 1, 1); },
+    aie(g) { for (const [x, s] of [[10, 1], [21, -1]]) { blk(g, x - s, 3, 1, 1); blk(g, x, 4, 1, 1); blk(g, x + s, 5, 1, 1); blk(g, x, 6, 1, 1); blk(g, x - s, 7, 1, 1); } },
+    malin(g) { blk(g, 9, 5, 4, 1); blk(g, 10, 4, 2, 1); blk(g, 20, 3, 2, 4); },
+    etoiles(g) { for (const x of [10, 21]) { blk(g, x, 3, 1, 5); blk(g, x - 2, 5, 5, 1); blk(g, x - 1, 4, 3, 3); } },
+};
+
 export const POSE = {
     // debout, bras le long du corps, respiration
     idle(t = 0) {
