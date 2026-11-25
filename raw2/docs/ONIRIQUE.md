@@ -54,10 +54,8 @@ explique ce qui est livré, ce qui a été vérifié et ce qu'il reste à faire 
 
 ## À faire avant la mise en vente
 
-1. **Essai dans de vrais logiciels de musique.** RAW 2 n'a été testé que par des outils
-   automatiques, jamais par une personne dans Ableton, FL Studio ou Logic. Une heure sur
-   Windows et une heure sur Mac : recharger un projet, automation, plusieurs RAW 2 ouverts,
-   changer de preset pendant la lecture, glisser un fichier audio, jouer les instruments.
+1. ~~**Essai dans de vrais logiciels de musique.**~~ Fait : RAW 2 a été essayé par l'auteur
+   sur PC et sur Mac, et fonctionne sur les deux.
 2. **Signature Mac (bloquant).** Le plugin n'a qu'une signature locale : chez les clients,
    macOS le bloque (« impossible de vérifier le développeur ») et il faut passer par
    Réglages Système. Il faut un compte Apple Developer (99 $ par an), un certificat
