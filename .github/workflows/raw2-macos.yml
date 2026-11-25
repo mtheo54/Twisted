@@ -2,7 +2,8 @@
 #   - binaire universel arm64 + x86_64, VST3 et Audio Unit v2 ;
 #   - tests du moteur, hôte VST3 minimal (éditeur ouvert dans une NSWindow), auval ;
 #   - captures de l'interface rendues par CoreGraphics (même code que le plugin) ;
-#   - installeur .pkg et image disque .dmg.
+#   - installeur .pkg et image disque .dmg, avec les 23 instruments et le pack de presets
+#     « RAW 2 · INSTRUMENTS » (posés dans /Library/Application Support/ABRASION/RAW 2).
 name: raw2-macos
 
 on:
@@ -17,11 +18,52 @@ defaults:
     shell: bash  # bash -eo pipefail : un échec avant « | tee » fait échouer l'étape
 
 jobs:
+  # banque d'instruments : construite sous Linux à partir des bibliothèques libres d'origine, gardée en
+  # cache (reconstruite seulement si l'outil ou la liste des sources change)
+  bank:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache de la banque
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: bank
+          key: raw2-bank-${{ hashFiles('raw2/tools/build_instruments.py', 'raw2/tools/fetch_instrument_sources.sh') }}
+      - name: Construction de la banque
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          python3 -m pip install --quiet numpy
+          raw2/tools/fetch_instrument_sources.sh "$RUNNER_TEMP/src"
+          python3 raw2/tools/build_instruments.py "$RUNNER_TEMP/src" bank
+          rm -f bank/REPORT.md
+          rm -rf "$RUNNER_TEMP/src"
+      - name: Contrôle
+        run: |
+          n=$(find bank -maxdepth 1 -mindepth 1 -type d | wc -l)
+          echo "instruments : $n" ; du -sh bank
+          test "$n" -ge 23
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw2-bank
+          path: bank
+          retention-days: 1
+          compression-level: 0
+
   macos:
+    needs: bank
     runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Banque d'instruments
+        uses: actions/download-artifact@v4
+        with:
+          name: raw2-bank
+          path: bank
 
       - name: Configure (universel arm64 + x86_64)
         run: cmake -S raw2 -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DRAW2_BUILD_TRAINER=OFF
@@ -81,7 +123,16 @@ jobs:
             python3 -c 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); [e.update(BundleIsRelocatable=False) for e in d]; plistlib.dump(d,open(p,"wb"))' comp-$k.plist
             pkgbuild --root root-$k --component-plist comp-$k.plist --identifier dev.abrasion.raw2.$k --version "$VER" --install-location / raw2-$k.pkg
           done
-          productbuild --package raw2-vst3.pkg --package raw2-au.pkg "Installer RAW 2.pkg"
+          # contenu d'usine : instruments et pack de presets, communs à tous les utilisateurs ; RAW 2 lit les
+          # instruments sur place et copie le pack dans ~/Documents/Raw 2 au premier lancement
+          FAC="root-content/Library/Application Support/ABRASION/RAW 2"
+          mkdir -p "$FAC/Instruments"
+          cp -R bank/. "$FAC/Instruments/"
+          cp -R raw2/resources/factory/. "$FAC/"
+          chmod -R a+rX root-content
+          du -sh "$FAC"/*
+          pkgbuild --root root-content --identifier dev.abrasion.raw2.content --version "$VER" --install-location / raw2-content.pkg
+          productbuild --package raw2-vst3.pkg --package raw2-au.pkg --package raw2-content.pkg "Installer RAW 2.pkg"
           mkdir -p "dmg/Installation manuelle"
           cp "Installer RAW 2.pkg" dmg/
           cp -R build/VST3/RAW2.vst3 build/AU/RAW2.component "dmg/Installation manuelle/"
@@ -103,7 +154,6 @@ jobs:
         with:
           name: raw2-macos
           path: |
-            RAW2-macOS-*.dmg
             shots/
             build.log
             tests.log

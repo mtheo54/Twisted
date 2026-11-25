@@ -4,9 +4,13 @@ Distribué par ONIRIQUE - https://onirique.store
 
 Contenu
 -------
-- « Installer RAW 2.pkg » : installe les deux formats du plugin
+- « Installer RAW 2.pkg » : installe tout, rien d'autre à faire
     VST3        -> /Library/Audio/Plug-Ins/VST3/RAW2.vst3
     Audio Unit  -> /Library/Audio/Plug-Ins/Components/RAW2.component
+    23 instruments réels et le pack « RAW 2 · INSTRUMENTS » (34 presets)
+                -> /Library/Application Support/ABRASION/RAW 2
+       (RAW 2 les trouve tout seul ; au premier lancement, le pack de presets est copié
+        dans ~/Documents/Raw 2, où tu peux le modifier)
 - « Installation manuelle » : les mêmes plugins, à copier soi-même si on préfère
   (dans ~/Library/Audio/Plug-Ins/VST3 et ~/Library/Audio/Plug-Ins/Components).
 
@@ -32,9 +36,10 @@ Terminal et taper (retire la quarantaine posée par le téléchargement) :
 
 Fichiers de RAW 2
 -----------------
-Packs, presets, instruments et exports : ~/Documents/Raw 2 (créé au premier lancement).
-La banque d'instruments (RAW2-instruments.zip) se décompresse dans ~/Documents/Raw 2,
-exactement comme sous Windows ; les packs de presets sont communs aux deux systèmes.
+Packs, presets et exports : ~/Documents/Raw 2 (créé au premier lancement).
+Les instruments installés sont dans /Library/Application Support/ABRASION/RAW 2/Instruments.
+Tes propres instruments SFZ se placent dans ~/Documents/Raw 2/Instruments.
+Les packs de presets sont communs à Mac et Windows.
 
 En cas de souci
 ---------------

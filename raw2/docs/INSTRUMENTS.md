@@ -6,13 +6,22 @@ d'un ROMpler. Chaque instrument passe ensuite dans toute la chaîne du synthé :
 
 ## Installation
 
-La banque est livrée à part (`RAW2-instruments.zip`, environ 270 Mo une fois décompressée) :
+Les installateurs posent la banque (environ 270 Mo) et le pack `RAW 2 · INSTRUMENTS`, il n'y a rien
+d'autre à faire :
 
-1. Décompresser le dossier `Instruments` dans `Documents\Raw 2\`. On obtient alors
-   `Documents\Raw 2\Instruments\Wurlitzer EP200\…`.
-2. Décompresser le pack de presets `RAW 2 · INSTRUMENTS` dans `Documents\Raw 2\`.
-3. Dans le plugin, page WAVETABLE, cliquer sur **INSTRUMENT ▾**, puis sur **RELIRE**. Les presets
-   du pack se trouvent dans le navigateur, onglet **USER**.
+- **Windows** : `Documents\Raw 2\Instruments` et `Documents\Raw 2\RAW 2 · INSTRUMENTS`.
+- **macOS** : `/Library/Application Support/ABRASION/RAW 2` (dossier d'usine commun à tous les
+  utilisateurs). RAW 2 y lit les instruments directement. Au premier lancement, il copie le pack de
+  presets dans `~/Documents/Raw 2`, où on peut le modifier.
+
+RAW 2 lit aussi `Documents › Raw 2 › Instruments` : c'est là qu'on ajoute ses propres instruments.
+Si un instrument du même nom existe dans les deux dossiers, c'est la version de l'utilisateur qui est
+jouée. Les presets du pack se trouvent dans le navigateur, onglet **USER**.
+
+Sources de la banque : `tools/fetch_instrument_sources.sh` (clones partiels des bibliothèques
+libres), puis `tools/build_instruments.py`. La compilation Mac (GitHub Actions) fait les deux étapes
+et garde la banque en cache. Le pack d'usine est versionné dans
+`resources/factory/RAW 2 · INSTRUMENTS` : `raw2_inst_pack` le régénère.
 
 Un preset qui utilise un instrument retient seulement son **nom**. Si l'instrument n'est pas
 installé, l'oscillateur reste muet et affiche « instrument introuvable ».

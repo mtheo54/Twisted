@@ -198,6 +198,21 @@ std::string wavetableDir() { return join(raw2Dir(), "Wavetables"); }
 std::string exportsDir() { return join(raw2Dir(), "Exports"); }
 std::string legacyPresetDir() { return join(documentsDir(), "RAW2 banque presets"); }
 
+std::string factoryDir() {
+    if (const char* e = std::getenv("RAW2_FACTORY_DIR")) return e;
+#ifdef _WIN32
+    PWSTR p = nullptr;
+    std::string r;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramData, 0, nullptr, &p)) && p) r = join(join(narrow(p), "ABRASION"), "RAW 2");
+    if (p) CoTaskMemFree(p);
+    return r;
+#elif defined(__APPLE__)
+    return "/Library/Application Support/ABRASION/RAW 2";
+#else
+    return "";
+#endif
+}
+
 std::vector<std::string> listDirs(const std::string& dir) {
     std::vector<std::string> out;
 #ifdef _WIN32

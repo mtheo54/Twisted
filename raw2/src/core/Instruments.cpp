@@ -254,7 +254,18 @@ InstrumentBank::~InstrumentBank() {
 
 void InstrumentBank::scan() {
     std::vector<InstEntry> out;
-    for (const std::string& d : files::listDirs(files::join(files::raw2Dir(), "Instruments"))) {
+    // instruments de l'utilisateur (Documents › Raw 2 › Instruments), puis ceux posés par l'installateur
+    // (dossier d'usine) ; un nom déjà présent chez l'utilisateur garde sa version
+    std::vector<std::string> dirs = files::listDirs(files::join(files::raw2Dir(), "Instruments"));
+    const size_t nUser = dirs.size();
+    if (const std::string fd = files::factoryDir(); !fd.empty())
+        for (const std::string& d : files::listDirs(files::join(fd, "Instruments"))) dirs.push_back(d);
+    auto low = [](std::string s) { for (char& c : s) c = (char)std::tolower((unsigned char)c); return s; };
+    std::vector<std::string> userNames;
+    for (size_t i = 0; i < nUser; ++i) userNames.push_back(low(files::baseName(dirs[i])));
+    for (size_t di = 0; di < dirs.size(); ++di) {
+        const std::string& d = dirs[di];
+        if (di >= nUser && std::find(userNames.begin(), userNames.end(), low(files::baseName(d))) != userNames.end()) continue;
         for (const std::string& f : files::listFiles(d, ".sfz")) {
             InstEntry e;
             e.path = f;
@@ -349,7 +360,7 @@ bool InstrumentBank::loadByName(int osc, const std::string& name) {
     if (path.empty()) {
         std::lock_guard<std::mutex> lk(mu_);
         wantName_[(size_t)osc] = name;
-        error_[(size_t)osc] = "instrument introuvable : installe la banque de sons dans Documents \xE2\x80\xBA Raw 2 \xE2\x80\xBA Instruments";
+        error_[(size_t)osc] = "instrument introuvable : r\xC3\xA9installe RAW 2 (instruments inclus) ou place-le dans Documents \xE2\x80\xBA Raw 2 \xE2\x80\xBA Instruments";
         if (!offline_) files::logLine("instrument introuvable : " + name);
         return false;
     }

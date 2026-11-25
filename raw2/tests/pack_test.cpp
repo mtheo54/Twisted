@@ -3,6 +3,7 @@
 // Tout se passe dans un dossier Documents temporaire (HOME redirigé), jamais chez l'utilisateur.
 #include "core/FactoryData.h"
 #include "core/Files.h"
+#include "core/Instruments.h"
 #include "core/Model.h"
 
 #include <cmath>
@@ -142,6 +143,41 @@ int main() {
     CHECK(!ex2.empty() && files::exists(ex2));
     CHECK(m.deletePackPreset(m.findPack(dir), 0, msg));
     CHECK(packAt(m, dir)->presets.size() == 1);
+
+    // --- contenu d'usine posé par l'installateur ---------------------------------------------------
+    {
+        const std::string fac = std::string(home) + "/usine";
+        setenv("RAW2_FACTORY_DIR", fac.c_str(), 1);
+        const std::string region = "<region> sample=a.wav key=60\n";
+        files::makeDirs(fac + "/Instruments/Piano Test");
+        files::writeText(fac + "/Instruments/Piano Test/Piano Test.sfz", "// name: Piano Test\n// category: KEYS\n" + region);
+        files::makeDirs(fac + "/Instruments/Doublon");
+        files::writeText(fac + "/Instruments/Doublon/Doublon.sfz", "// name: Doublon usine\n" + region);
+        files::makeDirs(files::join(root, "Instruments/Doublon"));
+        files::writeText(files::join(root, "Instruments/Doublon/Doublon.sfz"), "// name: Doublon perso\n" + region);
+        const auto raws = files::listFiles(dir, ".raw");
+        CHECK(!raws.empty());
+        files::makeDirs(fac + "/PACK USINE");
+        if (!raws.empty()) files::copyFile(raws[0], fac + "/PACK USINE/01 Son.raw");
+        m.scanPacks();
+        const std::string inst = files::join(root, "PACK USINE");
+        CHECK(files::exists(files::join(inst, "01 Son.raw")));             // copié dans Documents › Raw 2
+        CHECK(packAt(m, inst) && packAt(m, inst)->presets.size() == 1);
+        files::removeFile(files::join(inst, "01 Son.raw"));
+        rmdir(inst.c_str());
+        m.scanPacks();
+        CHECK(!files::exists(inst));                                        // supprimé : il ne revient pas
+        m.instruments.scan();
+        bool piano = false, perso = false, usine = false;
+        for (const InstEntry& e : m.instruments.catalog()) {
+            piano = piano || e.name == "Piano Test";
+            perso = perso || e.name == "Doublon perso";
+            usine = usine || e.name == "Doublon usine";
+        }
+        CHECK(piano);           // instrument d'usine trouvé
+        CHECK(perso && !usine); // même dossier chez l'utilisateur : sa version gagne
+        unsetenv("RAW2_FACTORY_DIR");
+    }
 
     std::printf(failures ? "%d échec(s)\n" : "packs éditables : tout passe\n", failures);
     return failures ? 1 : 0;

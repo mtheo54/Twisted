@@ -464,9 +464,39 @@ std::string Model::exportPack(int pi, std::string& msg) {
     return path;
 }
 
+// packs d'usine posés par l'installateur (dossier d'usine) : copiés une fois dans Documents › Raw 2,
+// où ils se modifient comme les autres ; un pack supprimé ensuite par l'utilisateur ne revient pas
+// (liste des packs déjà installés dans .packs-usine.txt)
+static void installFactoryPacks() {
+    const std::string fd = files::factoryDir();
+    if (fd.empty()) return;
+    const std::string root = files::raw2Dir(), mark = files::join(root, ".packs-usine.txt");
+    std::string done;
+    files::readText(mark, done);
+    if (done.empty()) done = "\n";
+    bool changed = false;
+    for (const std::string& d : files::listDirs(fd)) {
+        const std::string bn = files::baseName(d);
+        if (lower(bn) == "instruments" || done.find("\n" + bn + "\n") != std::string::npos) continue;
+        const std::string dst = files::join(root, bn);
+        if (!files::exists(dst)) {
+            files::makeDirs(root);
+            if (!files::copyTree(d, dst)) {
+                files::logLine("pack d'usine non copi\xC3\xA9 : " + bn);
+                continue;
+            }
+            files::logLine("pack d'usine install\xC3\xA9 : " + bn);
+        }
+        done += bn + "\n";
+        changed = true;
+    }
+    if (changed) files::writeText(mark, done);
+}
+
 void Model::scanPacks() {
     const std::string root = files::raw2Dir(), mine = files::myPresetsDir();
     files::makeDirs(mine);
+    installFactoryPacks();
     // première ouverture : les presets enregistrés par les versions précédentes rejoignent MES PRESETS
     if (files::listFiles(mine, ".raw").empty())
         for (const std::string& f : files::listFiles(files::legacyPresetDir(), ".raw")) files::copyFile(f, files::join(mine, files::baseName(f)));
