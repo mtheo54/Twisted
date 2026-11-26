@@ -120,6 +120,7 @@ struct Readouts {
     std::array<std::atomic<float>, kNumDests> dst;
     std::atomic<float> posA{0.f}, posB{0.f}, lifeMod{0.f}, compGr{0.f}, cpu{0.f}, hit{0.f};
     std::atomic<int> arpStep{-1}, arpNote{-1};  // page JEU : pas et note de l'arpège en cours
+    std::array<std::atomic<float>, 3> mcGain{};    // MULTICOMP : gain de chaque bande (dB)
     std::atomic<int> heldNote{-1}, voices{0};
     // page ENV / LFO
     std::array<std::atomic<int>, 4> envStage{};       // -1 repos, 0 A, 1 D, 2 S, 3 R (ENV A, B, 3, 4)
@@ -263,7 +264,7 @@ public:
     void saveGlobalSettings();
 
     // format des presets écrits par cette version (« version » dans les .raw)
-    static constexpr int kPresetFormat = 6;
+    static constexpr int kPresetFormat = 7;
     void log(const std::string& msg) const;  // journal (Documents/Raw 2), sauf en mode Offline
 
     // --- état complet de l'instance (getState / setState VST3) -----------------------------

@@ -329,6 +329,13 @@ void FxRack::clearFx(int k) {
         case kFxPump:
             pumpG_ = 1.f;
             break;
+        case kFxMulti:
+            for (auto& a : mcX_) for (auto& b : a) for (auto& c : b) c = Svf2{};
+            for (auto& a : mcXh_) for (auto& b : a) for (auto& c : b) c = Svf2{};
+            for (auto& a : mcAp_) for (auto& c : a) c = Svf2{};
+            for (auto& a : mcApH_) for (auto& c : a) c = Svf2{};
+            for (int b = 0; b < 3; ++b) mcEnv_[b] = mcGain_[b] = mcGainOut_[b] = 0.f;
+            break;
         default:
             svf1_[0] = svf1_[1] = svf2_[0] = svf2_[1] = 0.f;
             break;
@@ -336,6 +343,9 @@ void FxRack::clearFx(int k) {
 }
 
 float FxRack::compGainReductionDb() const { return compGrOut_; }
+void FxRack::multiGainsDb(float out[3]) const {
+    for (int b = 0; b < 3; ++b) out[b] = slot_[kFxMulti].live() ? mcGainOut_[b] : 0.f;
+}
 
 // ---- boucle principale --------------------------------------------------------------------
 
@@ -522,6 +532,7 @@ void FxRack::runFx(int k, float* l, float* r, int m, float a) {
         case kFxEq: runEq(l, r, m); break;
         case kFxVintage: runVintage(l, r, m); break;
         case kFxPump: runPump(l, r, m); break;
+        case kFxMulti: runMulti(l, r, m); break;
         default: runFilt(l, r, m); break;
     }
 }
@@ -1054,6 +1065,108 @@ void FxRack::runPump(float* l, float* r, int m) {
         r[i] *= g;
     }
     pumpG_ = g;
+}
+
+
+// ---- MULTICOMP : compresseur multibande « haut et bas » (dans l'esprit des OTT) ----------------
+// 3 bandes séparées par des crossovers Linkwitz-Riley 4 (120 Hz, 2,5 kHz), recombinées sans
+// coloration (passe-tout de compensation sur le grave). Dans chaque bande, stéréo lié :
+//   - au-dessus du seuil haut, compression vers le bas (ratio élevé) ;
+//   - sous le seuil bas, compression vers le haut (les détails faibles remontent), jamais sous
+//     -66 dB (le souffle et le silence ne sont pas relevés).
+// DOSE : quantité de gain appliquée ; TEMPS : attaque 0,5 à 50 ms, relâche 15 à 450 ms ;
+// BAS/HAUT : 0 seulement vers le bas, 1 seulement vers le haut, au milieu les deux.
+
+namespace {
+// SVF trapézoïdal (Simper), Q = 1/sqrt(2) : un étage Butterworth ; renvoie passe-bas et passe-haut
+inline void svfLH(float& s1, float& s2, float x, float g, float k, float& lp, float& hp) {
+    const float a1 = 1.f / (1.f + g * (g + k)), a2 = g * a1, a3 = g * a2;
+    const float v3 = x - s2;
+    const float v1 = a1 * s1 + a2 * v3;
+    const float v2 = s2 + a2 * s1 + a3 * v3;
+    s1 = 2.f * v1 - s1;
+    s2 = 2.f * v2 - s2;
+    lp = v2;
+    hp = x - k * v1 - v2;
+}
+} // namespace
+
+void FxRack::runMulti(float* l, float* r, int m) {
+    const Slot& s = slot_[kFxMulti];
+    const float fs = (float)sr_;
+    const float k = 1.41421356f;  // Q Butterworth
+    const float gLo = std::tan(kPi * 120.f / fs), gHi = std::tan(kPi * std::min(2500.f, 0.45f * fs) / fs);
+    const float dose = s.p[0], tm = s.p[1], ud = s.p[2];
+    // détecteur de niveau instantané (crête, relâche 30 ms) ; TEMPS règle la vitesse du gain : il
+    // descend en 0,5 à 50 ms (attaque), remonte en 15 à 450 ms (relâche). Ainsi un son qui démarre
+    // n'est jamais pris pour un son faible et relevé d'un coup
+    const float detRel = std::exp(-1.f / (0.030f * fs));
+    const float atk = std::exp(-1.f / (0.0005f * std::pow(100.f, tm) * fs)), rel = std::exp(-1.f / (0.015f * std::pow(30.f, tm) * fs));
+    const float wDown = std::min(1.f, 2.f * (1.f - ud)), wUp = std::min(1.f, 2.f * ud);
+    // seuils et ratios par bande (grave, médium, aigu), proches des réglages d'usine d'un OTT
+    static const float kThD[3] = {-33.8f, -30.f, -35.5f}, kThU[3] = {-40.8f, -36.6f, -30.2f};
+    static const float kMakeup[3] = {10.f, 9.f, 11.f};  // compense en partie la compression vers le bas
+    const float slopeD = 1.f - 1.f / 66.f, slopeU = 1.f - 1.f / 4.f;
+    float env[3] = {mcEnv_[0], mcEnv_[1], mcEnv_[2]}, gmax[3] = {0.f, 0.f, 0.f};
+    for (int i = 0; i < m; ++i) {
+        float band[3][2];
+        const float in[2] = {l[i], r[i]};
+        for (int c = 0; c < 2; ++c) {
+            // crossover 120 Hz : LR4 = deux étages Butterworth
+            float lp1v, hp1v, lp2v, hp2v, d;
+            svfLH(mcX_[0][c][0].s1, mcX_[0][c][0].s2, in[c], gLo, k, lp1v, d);
+            svfLH(mcX_[0][c][1].s1, mcX_[0][c][1].s2, lp1v, gLo, k, lp2v, d);
+            svfLH(mcXh_[0][c][0].s1, mcXh_[0][c][0].s2, in[c], gLo, k, d, hp1v);
+            svfLH(mcXh_[0][c][1].s1, mcXh_[0][c][1].s2, hp1v, gLo, k, d, hp2v);
+            const float low = lp2v, rest = hp2v;
+            // crossover 2,5 kHz sur le reste
+            float mlp1, mhp1, mlp2, mhp2;
+            svfLH(mcX_[1][c][0].s1, mcX_[1][c][0].s2, rest, gHi, k, mlp1, d);
+            svfLH(mcX_[1][c][1].s1, mcX_[1][c][1].s2, mlp1, gHi, k, mlp2, d);
+            svfLH(mcXh_[1][c][0].s1, mcXh_[1][c][0].s2, rest, gHi, k, d, mhp1);
+            svfLH(mcXh_[1][c][1].s1, mcXh_[1][c][1].s2, mhp1, gHi, k, d, mhp2);
+            // passe-tout LR4 à 2,5 kHz sur le grave (= LP + HP du même crossover) : phases alignées
+            float alp1, ahp1, alp2, ahp2;
+            svfLH(mcAp_[c][0].s1, mcAp_[c][0].s2, low, gHi, k, alp1, d);
+            svfLH(mcAp_[c][1].s1, mcAp_[c][1].s2, alp1, gHi, k, alp2, d);
+            svfLH(mcApH_[c][0].s1, mcApH_[c][0].s2, low, gHi, k, d, ahp1);
+            svfLH(mcApH_[c][1].s1, mcApH_[c][1].s2, ahp1, gHi, k, d, ahp2);
+            band[0][c] = alp2 + ahp2;
+            band[1][c] = mlp2;
+            band[2][c] = mhp2;
+        }
+        float outL = 0.f, outR = 0.f;
+        for (int b = 0; b < 3; ++b) {
+            const float pk = std::max(std::fabs(band[b][0]), std::fabs(band[b][1]));
+            env[b] = pk > env[b] ? pk : pk + (env[b] - pk) * detRel;
+            const float lev = 8.6858896f * std::log(env[b] + 1e-9f);
+            float gdb = 0.f;
+            if (lev > kThD[b]) gdb -= (lev - kThD[b]) * slopeD * wDown;
+            if (lev < kThU[b]) {
+                const float floorFade = std::clamp((lev + 66.f) / 10.f, 0.f, 1.f);  // rien sous -66 dB
+                gdb += std::min(36.f, (kThU[b] - lev) * slopeU) * wUp * floorFade;
+            }
+            const float want = std::min(24.f, (gdb + kMakeup[b] * wDown) * dose);
+            float& gs = mcGain_[b];
+            gs = want < gs ? want + (gs - want) * atk : want + (gs - want) * rel;
+            gmax[b] = std::fabs(gs) > std::fabs(gmax[b]) ? gs : gmax[b];
+            const float g = std::exp(gs * 0.115129255f);
+            outL += band[b][0] * g;
+            outR += band[b][1] * g;
+        }
+        l[i] = outL;
+        r[i] = outR;
+    }
+    for (int b = 0; b < 3; ++b) {
+        mcEnv_[b] = std::isfinite(env[b]) ? env[b] : 0.f;
+        if (!std::isfinite(mcGain_[b])) mcGain_[b] = 0.f;
+        mcGainOut_[b] = gmax[b];
+    }
+    // états des filtres : pas de NaN qui resterait coincé
+    for (auto& a : mcX_) for (auto& bb : a) for (auto& c : bb) if (!std::isfinite(c.s1) || !std::isfinite(c.s2)) c = Svf2{};
+    for (auto& a : mcXh_) for (auto& bb : a) for (auto& c : bb) if (!std::isfinite(c.s1) || !std::isfinite(c.s2)) c = Svf2{};
+    for (auto& a : mcAp_) for (auto& c : a) if (!std::isfinite(c.s1) || !std::isfinite(c.s2)) c = Svf2{};
+    for (auto& a : mcApH_) for (auto& c : a) if (!std::isfinite(c.s1) || !std::isfinite(c.s2)) c = Svf2{};
 }
 
 } // namespace raw2

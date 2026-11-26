@@ -34,8 +34,10 @@ enum ParamId : uint32_t {
 // Effets (page EFX), dans l'ordre de la maquette.
 // VINTAGE et PUMP (version 5) ont leurs réglages à la fin de la liste (kFx2Base) : les numéros des
 // paramètres déjà publiés ne bougent pas.
-enum FxId { kFxHyper = 0, kFxDist, kFxFlang, kFxPhase, kFxChor, kFxDly, kFxRev, kFxComp, kFxEq, kFxFilt, kFxVintage, kFxPump, kNumFx };
+enum FxId { kFxHyper = 0, kFxDist, kFxFlang, kFxPhase, kFxChor, kFxDly, kFxRev, kFxComp, kFxEq, kFxFilt, kFxVintage, kFxPump, kFxMulti, kNumFx };
 constexpr int kNumFxV1 = 10;  // effets de la version 2, réglages contigus à partir de kFxBase
+constexpr int kNumFxV5 = 12;  // effets jusqu'à la version 5 (VINTAGE, PUMP à partir de kFx2Base) : bloc figé
+// MULTICOMP (version 7) a ses réglages tout à la fin (kFx3Base) : aucun numéro publié ne bouge
 enum FxParam { kFxOn = 0, kFxP0, kFxP1, kFxP2, kFxMix, kFxModDepth, kFxModSrc, kFxParamsPer };
 
 // --- version 3 (page ENV / LFO) : à la suite des effets, toujours ajouter à la fin ---
@@ -89,7 +91,7 @@ enum ParamIdV5 : uint32_t {
     kChord,                        // 0 OFF, puis types d'accords (chordName)
     kChordStrum,                   // 0..1 -> 0..80 ms entre les notes de l'accord
     kFx2Base,                      // puis (kNumFx - kNumFxV1) blocs de kFxParamsPer (VINTAGE, PUMP)
-    kV5End = kFx2Base + (uint32_t)((kNumFx - kNumFxV1) * (int)kFxParamsPer)
+    kV5End = kFx2Base + (uint32_t)((kNumFxV5 - kNumFxV1) * (int)kFxParamsPer)
 };
 // --- version 6 (synthèse : filtre multimode, warps, bruit, unison 16, ENV 3/4, MPE) ---
 enum FiltType { kFtLp = 0, kFtHp, kFtBp, kFtNotch, kFtPeak, kFtPhase, kFtCombP, kFtCombN, kFtFormant, kFtMorph, kNumFiltTypes };
@@ -113,7 +115,12 @@ enum ParamIdV6 : uint32_t {
     kBendRange,                    // amplitude de la molette PITCH, demi-tons
     kV6End
 };
-constexpr uint32_t kNumParams = (uint32_t)kV6End;
+// --- version 7 : compresseur multibande (MULTICOMP), toujours ajouter à la fin ---
+enum ParamIdV7 : uint32_t {
+    kFx3Base = (uint32_t)kV6End,   // puis (kNumFx - kNumFxV5) blocs de kFxParamsPer (MULTICOMP)
+    kV7End = kFx3Base + (uint32_t)((kNumFx - kNumFxV5) * (int)kFxParamsPer)
+};
+constexpr uint32_t kNumParams = (uint32_t)kV7End;
 const char* filtTypeName(int t);   // LP, HP, BP, NOTCH, PEAK, PHASE, COMB +, COMB -, FORMANT, MORPH
 const char* warpModeName(int m, int osc);  // CLASSIQUE, SYNC… ; FM / AM / RM : « FM ← B » pour l'OSC A
 const char* noiseTypeName(int t);  // BLANC, ROSE, CRAQUE, NUMÉRIQUE
@@ -124,13 +131,15 @@ constexpr bool isPerformanceParam(uint32_t id) {
 }
 constexpr uint32_t fxParam(int fx, int what) {
     return fx < kNumFxV1 ? (uint32_t)kFxBase + (uint32_t)(fx * (int)kFxParamsPer + what)
-                         : (uint32_t)kFx2Base + (uint32_t)((fx - kNumFxV1) * (int)kFxParamsPer + what);
+         : fx < kNumFxV5 ? (uint32_t)kFx2Base + (uint32_t)((fx - kNumFxV1) * (int)kFxParamsPer + what)
+                         : (uint32_t)kFx3Base + (uint32_t)((fx - kNumFxV5) * (int)kFxParamsPer + what);
 }
 // effet (ou -1) et réglage d'un identifiant de paramètre d'effet
 inline int fxOfParam(uint32_t id, int* what = nullptr) {
     int f = -1, k = 0;
     if (id >= (uint32_t)kFxBase && id < (uint32_t)kEnvACurve) { f = (int)(id - kFxBase) / kFxParamsPer; k = (int)(id - kFxBase) % kFxParamsPer; }
     else if (id >= (uint32_t)kFx2Base && id < (uint32_t)kV5End) { f = kNumFxV1 + (int)(id - kFx2Base) / kFxParamsPer; k = (int)(id - kFx2Base) % kFxParamsPer; }
+    else if (id >= (uint32_t)kFx3Base && id < (uint32_t)kV7End) { f = kNumFxV5 + (int)(id - kFx3Base) / kFxParamsPer; k = (int)(id - kFx3Base) % kFxParamsPer; }
     if (what) *what = k;
     return f;
 }

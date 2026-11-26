@@ -25,7 +25,8 @@ const char* kCaps[kNumFx] = {"VOIX EN UNISSON \xC2\xB7 \xC3\x89" "CARTEMENT", "T
                              "NOTCHS \xC2\xB7 R\xC3\x89PONSE EN FR\xC3\x89QUENCE", "MODULATION DU RETARD", "\xC3\x89" "CHOS \xC2\xB7 TEMPS \xE2\x86\x92",
                              "R\xC3\x89PONSE IMPULSIONNELLE 3D \xC2\xB7 temps \xE2\x86\x97 \xC2\xB7 fr\xC3\xA9quence \xE2\x86\x92", "COURBE  IN \xE2\x86\x92 OUT",
                              "COURBE PARAM\xC3\x89TRIQUE \xC2\xB7 GLISSER LES POINTS", "COUPURE \xC2\xB7 R\xC3\x89SONANCE",
-                             "BANDE \xC2\xB7 PLEURAGE \xC2\xB7 SOUFFLE \xC2\xB7 BITS", "GAIN SUR LE TEMPO \xC2\xB7 2 MESURES"};
+                             "BANDE \xC2\xB7 PLEURAGE \xC2\xB7 SOUFFLE \xC2\xB7 BITS", "GAIN SUR LE TEMPO \xC2\xB7 2 MESURES",
+                             "3 BANDES \xC2\xB7 GAIN \xE2\x86\x91 VERS LE HAUT \xC2\xB7 \xE2\x86\x93 VERS LE BAS"};
 const char* kDistModes[4] = {"Tape", "Tube", "Fold", "Hard Clip"};
 std::string upperAscii(std::string s) {
     for (auto& ch : s) ch = (char)std::toupper((unsigned char)ch);
@@ -208,6 +209,28 @@ void Editor::fxScreen(int fx, const Rect& area, float a, float b, float cc, floa
             });
             break;
         }
+        case kFxMulti: {
+            // trois bandes (GRAVE 120 Hz | MÉDIUM 2,5 kHz | AIGU) : gain appliqué en direct, vers le haut
+            // (au-dessus du trait du milieu) ou vers le bas ; repères des seuils réglés par BAS/HAUT
+            static const char* kB[3] = {"GRAVE", "M\xC3\x89" "DIUM", "AIGU"};
+            const float mid = area.y + area.h * 0.5f;
+            c.line(Pt{area.x, mid}, Pt{area.r(), mid}, T.scrMuted, 1.f);
+            for (int bnd = 0; bnd < 3; ++bnd) {
+                const float bx = area.x + area.w * (0.17f + 0.33f * (float)bnd), bw = area.w * 0.2f;
+                const float gdb = on ? m_.readouts.mcGain[(size_t)bnd].load() : 0.f;
+                const float hgt = std::clamp(gdb / 24.f, -1.f, 1.f) * area.h * 0.42f;
+                const Rect col{bx - bw * 0.5f, hgt > 0.f ? mid - hgt : mid, bw, std::max(1.5f, std::fabs(hgt))};
+                c.fillRect(col.inset(-2.f), wc.withAlpha(0.18f));
+                c.fillRect(col, wc);
+                ui_.textCenter(kB[bnd], Rect{bx - 40.f, area.b() - 15.f, 80.f, 12.f}, Font{Face::Mono, 9.f, 0.6f}, T.scrMuted);
+                ui_.textCenter(fmt("%+.1f dB", gdb), Rect{bx - 40.f, area.y + 4.f, 80.f, 12.f}, Font{Face::Mono, 9.f, 0.4f}, T.scrText);
+                // doses : flèches haut / bas selon BAS/HAUT
+                const float up = std::min(1.f, 2.f * cc), dn = std::min(1.f, 2.f * (1.f - cc));
+                ui_.textCenter("\xE2\x86\x91", Rect{bx + bw * 0.5f + 2.f, mid - 20.f, 12.f, 12.f}, Font{Face::Mono, 10.f, 0.f}, T.scrText.withAlpha(0.2f + 0.8f * up * a));
+                ui_.textCenter("\xE2\x86\x93", Rect{bx + bw * 0.5f + 2.f, mid + 8.f, 12.f, 12.f}, Font{Face::Mono, 10.f, 0.f}, T.scrText.withAlpha(0.2f + 0.8f * dn * a));
+            }
+            break;
+        }
         default: {
             const float co = 0.15f + 0.8f * a;
             curve([&](float u) { return 1.f / (1.f + std::pow(u / co, 4.f)) * (1.f - 0.1f * m) + b * 0.5f * std::exp(-(u - co) * (u - co) / 0.003f); });
@@ -269,7 +292,7 @@ void Editor::drawEfx() {
         for (int k = 0; k < kNumFx; ++k) m_.fxOrder[(size_t)k].store(order[k]);
     };
     // 12 effets : lignes resserrées pour tenir dans la carte (maquette : 10 lignes de 58,6)
-    const float rowH = 48.f, rowGap = 4.3f, listY = 124.f;
+    const float rowH = kNumFx > 12 ? 44.f : 48.f, rowGap = 4.f, listY = 124.f;  // 13 effets
     for (int k = 0; k < kNumFx; ++k) {
         const int f = order[k];
         const bool on = P(fxParam(f, kFxOn)) > 0.5f, sel = st_.fxSel == f;

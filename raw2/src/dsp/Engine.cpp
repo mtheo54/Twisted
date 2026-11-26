@@ -1725,6 +1725,11 @@ void Engine::renderBlock(float* L, float* R, int n, int span) {
     m_.dryScope.write(L, R, n);
     updateFxSettings();
     fx_.process(L, R, n, fxs_);
+    {
+        float g[3];
+        fx_.multiGainsDb(g);
+        for (int b = 0; b < 3; ++b) m_.readouts.mcGain[(size_t)b].store(g[b], std::memory_order_relaxed);
+    }
     // coupe-continu final, 5 Hz, en double (rien ne laisse de continu en sortie, effets compris)
     for (int c = 0; c < 2; ++c) {
         float* x = c ? R : L;

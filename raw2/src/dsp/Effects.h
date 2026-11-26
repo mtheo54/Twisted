@@ -14,7 +14,7 @@ struct FxSettings {
     bool on[kNumFx] = {};
     float p[kNumFx][3] = {};     // les 3 boutons de chaque effet, 0..1
     float mix[kNumFx] = {};      // MIX de chaque effet, 0..1 (sec / traité)
-    int order[kNumFx] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};  // ordre de la chaîne (permutation de FxId)
+    int order[kNumFx] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};  // ordre de la chaîne (permutation de FxId)
     int distMode = 1;            // 0 Tape, 1 Tube, 2 Fold, 3 Hard Clip
     int oversample = 2;          // 1, 2 ou 4 (distorsion seulement)
     float eqFreq[3] = {0.14f, 0.5f, 0.86f};  // fréquence des 3 bandes d'EQ : 20 Hz * 1000^f
@@ -30,6 +30,8 @@ public:
     // Traite en place un bloc stéréo. Aucun alloc / verrou. n <= maxBlock.
     void process(float* L, float* R, int n, const FxSettings& s);
     float compGainReductionDb() const;               // pour l'affichage (dernier bloc)
+    // MULTICOMP : gain appliqué à chaque bande (dB, + vers le haut, - vers le bas), pour l'affichage
+    void multiGainsDb(float out[3]) const;
 
 private:
     static constexpr int kChunk = 32;        // sous-bloc : lissage et coefficients
@@ -85,6 +87,7 @@ private:
     void runFilt(float* l, float* r, int m);
     void runVintage(float* l, float* r, int m);
     void runPump(float* l, float* r, int m);
+    void runMulti(float* l, float* r, int m);
     float distShape(float x, float dr, float norm) const;
     double distF(double x, double dr, double norm) const;  // primitive du façonneur (ADAA)
     float distAdaa(int ch, float x, float dr, float norm);
@@ -136,6 +139,15 @@ private:
     uint32_t revRng_ = 0x9E3779B9u;
     int revApLen_[2][kRevAp] = {};
     float revLen_[kRevLines] = {};
+
+    // MULTICOMP : crossovers Linkwitz-Riley 4 (deux SVF Butterworth en série) à 120 Hz et 2,5 kHz,
+    // passe-tout de compensation sur la bande grave ; une enveloppe et un gain par bande
+    struct Svf2 { float s1 = 0.f, s2 = 0.f; };
+    Svf2 mcX_[2][2][2] = {};    // crossover (bas, haut) x canal x 2 étages (passe-bas) + passe-haut via même état
+    Svf2 mcXh_[2][2][2] = {};   // états des passe-haut
+    Svf2 mcAp_[2][2] = {};      // passe-tout 2,5 kHz sur la bande grave (canal, étage)
+    Svf2 mcApH_[2][2] = {};
+    float mcEnv_[3] = {}, mcGain_[3] = {}, mcGainOut_[3] = {};
 
     // COMPRESSEUR
     float compGr_ = 0.f, compGrMax_ = 0.f, compGrOut_ = 0.f, compSlow_ = 0.f;

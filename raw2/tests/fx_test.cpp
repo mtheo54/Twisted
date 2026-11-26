@@ -17,7 +17,7 @@ static int failures = 0;
 #define CHECK(c) do { if (!(c)) { std::printf("ÉCHEC %s:%d  %s\n", __FILE__, __LINE__, #c); ++failures; } } while (0)
 
 static const double kPi = 3.14159265358979323846;
-static const char* kNames[kNumFx] = {"HYPER", "DIST", "FLANGER", "PHASER", "CHORUS", "DELAY", "REVERB", "COMP", "EQ", "FILTER", "VINTAGE", "PUMP"};
+static const char* kNames[kNumFx] = {"HYPER", "DIST", "FLANGER", "PHASER", "CHORUS", "DELAY", "REVERB", "COMP", "EQ", "FILTER", "VINTAGE", "PUMP", "MULTICOMP"};
 
 struct Rng {
     uint32_t s = 12345;
@@ -277,6 +277,60 @@ int main() {
         }
         std::printf("filtre %.0f Hz : 250 Hz %.1f dB, 4 kHz %.1f dB (écart %.1f dB)\n", sr, lvl[0], lvl[1], lvl[0] - lvl[1]);
         CHECK(lvl[0] - lvl[1] > 18.0);
+    }
+
+    // ---- MULTICOMP : transparent à DOSE 0, remonte le faible, abaisse le fort, numéros intacts
+    {
+        const double sr = 48000.0;
+        // DOSE 0 : les bandes se recombinent sans changer le niveau (bruit et 3 sinus)
+        for (const float f : {60.f, 1000.f, 8000.f}) {
+            FxRack fx;
+            fx.prepare(sr, 256);
+            std::vector<float> L, R;
+            makeInput(f < 100.f ? kNoise : kSine, sr, 1.0, 1.0, f, 0.3f, L, R);
+            const std::vector<float> in = L;
+            run(fx, solo(kFxMulti, 0.f, 0.5f, 0.5f), L, R);
+            const size_t a = (size_t)(sr * 0.3);
+            const double d = rmsDb(L, a, L.size()) - rmsDb(in, a, L.size());
+            std::printf("multicomp dose 0, %s %.0f Hz : écart %+.2f dB\n", f < 100.f ? "bruit" : "sinus", f, d);
+            CHECK(std::fabs(d) < 0.2);
+        }
+        // DOSE 1 : un son faible remonte, un son fort descend
+        auto gainFor = [&](float amp) {
+            FxRack fx;
+            fx.prepare(sr, 256);
+            std::vector<float> L, R;
+            makeInput(kSine, sr, 1.0, 1.0, 1000.f, amp, L, R);
+            const std::vector<float> in = L;
+            run(fx, solo(kFxMulti, 1.f, 0.5f, 0.5f), L, R);
+            const size_t a = (size_t)(sr * 0.5);
+            float g[3];
+            fx.multiGainsDb(g);
+            float pk;
+            CHECK(allFinite(L, R, pk));
+            return std::make_pair(rmsDb(L, a, L.size()) - rmsDb(in, a, L.size()), g[1]);
+        };
+        const auto weak = gainFor(0.003f), strong = gainFor(0.9f);
+        std::printf("multicomp dose 1 : faible %+.1f dB (affiché %+.1f), fort %+.1f dB (affiché %+.1f)\n", weak.first, weak.second, strong.first, strong.second);
+        CHECK(weak.first > 6.0 && weak.second > 6.f);
+        CHECK(strong.first < -6.0 && strong.second < -6.f);
+        // valeurs extrêmes : rien d'infini
+        {
+            FxRack fx;
+            fx.prepare(44100.0, 64);
+            std::vector<float> L, R;
+            makeInput(kImpulse, 44100.0, 0.5, 0.5, 100.f, 30.f, L, R);
+            run(fx, solo(kFxMulti, 1.f, 0.f, 1.f), L, R, {64, 1, 17});
+            float pk;
+            CHECK(allFinite(L, R, pk));
+        }
+        // les numéros des paramètres publiés n'ont pas bougé (projets et automations des DAW)
+        CHECK(fxParam(kFxPump, kFxModSrc) + 1 == kV5End);
+        CHECK(kFiltType == kV5End);
+        CHECK(fxParam(kFxMulti, kFxOn) == kV6End);
+        CHECK(std::string(paramDef(fxParam(kFxMulti, kFxOn)).key) == "fx_mcomp_on");
+        CHECK(std::string(paramDef(kBendRange).key) == "bendRange");
+        CHECK(fxOfParam(fxParam(kFxMulti, kFxP1)) == kFxMulti);
     }
 
     // ---- 7. compresseur : -40 dB, 20:1

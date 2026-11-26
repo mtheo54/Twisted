@@ -618,6 +618,8 @@ bool Model::applyPresetJson(const json::Value& v, ParamSink* sink) {
     if (v["version"].num(1) < 6)  // d'avant la page SYNTH (filtre multimode, warps, bruit, ENV 3 / 4, MPE)
         for (uint32_t id = kV5End; id < kNumParams; ++id)
             if (!isPerformanceParam(id)) setParam(sink, id, paramDef(id).def);
+    if (v["version"].num(1) < 7)  // d'avant le MULTICOMP
+        for (uint32_t id = kV6End; id < kNumParams; ++id) setParam(sink, id, paramDef(id).def);
     for (const auto& m : v["params"].members()) {
         const int id = paramIdFromKey(m.first.c_str());
         if (id >= 0 && m.second.isNumber()) setParam(sink, (uint32_t)id, (float)m.second.num());

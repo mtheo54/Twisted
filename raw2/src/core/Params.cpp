@@ -78,12 +78,12 @@ const ParamDef kV3[kV3End - kEnvACurve] = {
     {"lfo2Sync", "LFO 2 sync", "", 0.f, 5.f, 0.f, 5},
 };
 
-const char* kFxKeys[kNumFx] = {"hyper", "dist", "flang", "phase", "chor", "dly", "rev", "comp", "eq", "filt", "vint", "pump"};
-const char* kFxNames[kNumFx] = {"HYPER/DIM", "DISTORTION", "FLANGER", "PHASER", "CHORUS", "DELAY", "REVERB", "COMPRESSOR", "EQ", "FILTER", "VINTAGE", "PUMP"};
+const char* kFxKeys[kNumFx] = {"hyper", "dist", "flang", "phase", "chor", "dly", "rev", "comp", "eq", "filt", "vint", "pump", "mcomp"};
+const char* kFxNames[kNumFx] = {"HYPER/DIM", "DISTORTION", "FLANGER", "PHASER", "CHORUS", "DELAY", "REVERB", "COMPRESSOR", "EQ", "FILTER", "VINTAGE", "PUMP", "MULTICOMP"};
 const char* kFxKnobs[kNumFx][3] = {{"RATE", "DETUNE", "UNISON"}, {"DRIVE", "TONE", "BIAS"}, {"RATE", "DEPTH", "FEEDBK"}, {"RATE", "DEPTH", "FREQ"},
                                     {"RATE", "DELAY", "DEPTH"}, {"TIME", "FEEDBK", "FILTER"}, {"SIZE", "DAMP", "PR\xC3\x89"}, {"THRESH", "RATIO", "GAIN"},
                                     {"BAS", "M\xC3\x89" "D", "AIGU"}, {"CUTOFF", "RESO", "DRIVE"}, {"USURE", "SOUFFLE", "LO-FI"},
-                                    {"PROFOND.", "RYTHME", "COURBE"}};
+                                    {"PROFOND.", "RYTHME", "COURBE"}, {"DOSE", "TEMPS", "BAS/HAUT"}};
 
 // Table complète : paramètres de base puis 7 paramètres par effet (noms construits une fois).
 struct Table {
@@ -150,7 +150,7 @@ struct Table {
         defs.push_back({"arpLatch", "Arp latch", "", 0.f, 1.f, 0.f, 1});
         defs.push_back({"chord", "Accord", "", 0.f, (float)(kNumChords - 1), 0.f, kNumChords - 1});
         defs.push_back({"chordStrum", "Accord strum", "ms", 0.f, 1.f, 0.f, 0});
-        for (int f = kNumFxV1; f < kNumFx; ++f) addFx(f);
+        for (int f = kNumFxV1; f < kNumFxV5; ++f) addFx(f);
         // version 6 : synthèse (filtre multimode, warps, bruit, unison, ENV 3/4, expression)
         defs.push_back({"filtType", "Filtre type", "", 0.f, (float)(kNumFiltTypes - 1), 0.f, kNumFiltTypes - 1});
         defs.push_back({"filtMorph", "Filtre morph", "%", 0.f, 1.f, 0.f, 0});
@@ -181,6 +181,8 @@ struct Table {
         defs.push_back({"mpe", "MPE", "", 0.f, 1.f, 0.f, 1});
         defs.push_back({"mpeRange", "MPE pitch bend", "st", 1.f, 96.f, 48.f, 95});
         defs.push_back({"bendRange", "Pitch bend amplitude", "st", 1.f, 24.f, 2.f, 23});
+        // version 7 : MULTICOMP, à la toute fin
+        for (int f = kNumFxV5; f < kNumFx; ++f) addFx(f);
     }
     void addFx(int f) {
         static const char* what[kFxParamsPer] = {"on", "p0", "p1", "p2", "mix", "modDepth", "modSrc"};
