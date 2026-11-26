@@ -915,7 +915,8 @@ void Editor::keyboardCard(const Rect& so) {
             ui_.textRight(ui_.fit(wavMsg_, Font{Face::Mono, 9.f, 0.f}, 520.f), br.x - 10.f, so.y + 18.f, Font{Face::Mono, 9.f, 0.f}, T.hl);
     }
     const float x0 = so.x + 15.f, y0 = so.y + 57.2f;
-    const Rect rail{x0, y0, 684.7f, 194.f};
+    // le rail prend toute la largeur libre à gauche du MASTER
+    const Rect rail{x0, y0, so.w - 30.f - 120.f, 194.f};
     {
         const KbColors kc = kbColors(T);
         c.fillRoundRect(rail, 6.f, kc.railEdge);
@@ -923,7 +924,7 @@ void Editor::keyboardCard(const Rect& so) {
         c.fillRect(Rect{rail.x + 3.f, rail.y + 1.f, rail.w - 6.f, 2.f}, Color{0, 0, 0, 0.12f});
         c.fillRect(Rect{rail.x + 1.f, rail.y + 3.f, 2.f, rail.h - 6.f}, Color{0, 0, 0, 0.12f});
     }
-    keyboard(Rect{rail.x + 11.f, rail.y + 11.f, 662.7f, 172.f});
+    keyboard(Rect{rail.x + 11.f, rail.y + 11.f, rail.w - 22.f, 172.f});
 
     knobCol(kMaster, so.r() - 15.f - 38.f, y0 + 42.4f, 76.f, "MASTER", levelText(P(kMaster)), 0.f, false);
 }
@@ -931,24 +932,27 @@ void Editor::keyboardCard(const Rect& so) {
 void Editor::keyboard(const Rect& area) {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
-    const float kw = area.w / 14.f;
+    // 2 octaves, ou 3 quand la place le permet (page SON : le clavier occupe toute la largeur)
+    const int NW = area.w > 900.f ? 21 : 14, NB = NW / 7 * 5;
+    const float kw = area.w / (float)NW;
     const int WK[7] = {0, 2, 4, 5, 7, 9, 11};
     const int scale = m_.kbScale.load(), ko = m_.kbOct.load() * 12;
     const int heldHost = m_.readouts.heldNote.load();
     const int shown = mouseNote_ >= 0 ? mouseNote_ : (heldHost >= 0 ? heldHost - 48 : -1000);
-    const int blackSlots[10] = {0, 1, 3, 4, 5, 7, 8, 10, 11, 12};
-    Rect blackR[10], whiteR[14];
+    int blackSlots[15];
+    for (int k = 0; k < NB; ++k) blackSlots[k] = (k / 5) * 7 + (int[]){0, 1, 3, 4, 5}[k % 5];
+    Rect blackR[15], whiteR[21];
     const KbColors kc = kbColors(T);
     // clavier de la maquette mise à jour (zone de 172 px) : touches plus grandes
     const bool big = area.h > 150.f;
     const float bw = big ? 30.f : 24.f, bh = big ? 54.f : 44.f, wy = big ? 64.f : 54.f, wpad = big ? 3.f : 2.75f;
-    for (int k = 0; k < 10; ++k) blackR[k] = Rect{area.x + (float)(blackSlots[k] + 1) * kw - bw * 0.5f, area.y, bw, bh};
-    for (int w = 0; w < 14; ++w) whiteR[w] = Rect{area.x + (float)w * kw + wpad, area.y + wy, kw - 2.f * wpad, area.h - wy};
+    for (int k = 0; k < NB; ++k) blackR[k] = Rect{area.x + (float)(blackSlots[k] + 1) * kw - bw * 0.5f, area.y, bw, bh};
+    for (int w = 0; w < NW; ++w) whiteR[w] = Rect{area.x + (float)w * kw + wpad, area.y + wy, kw - 2.f * wpad, area.h - wy};
     int hoverNote = -1;
     const Pt m = ui_.in().mouse;
-    for (int k = 0; k < 10 && hoverNote < 0; ++k)
+    for (int k = 0; k < NB && hoverNote < 0; ++k)
         if (blackR[k].contains(m)) hoverNote = (blackSlots[k] / 7) * 12 + WK[blackSlots[k] % 7] + 1;
-    for (int w = 0; w < 14 && hoverNote < 0; ++w)
+    for (int w = 0; w < NW && hoverNote < 0; ++w)
         if (whiteR[w].contains(m)) hoverNote = (w / 7) * 12 + WK[w % 7];
     const Ui::Interact it = ui_.interact(makeId("kbd"), area, Cursor::Hand);
     if (it.held && hoverNote >= 0 && ui_.hit(area)) noteOn(quantize(scale, hoverNote) + ko);
@@ -956,7 +960,7 @@ void Editor::keyboard(const Rect& area) {
 
     const Font nf{Face::MonoBold, 11.f, 0.22f}, xf{Face::MonoBold, 9.f, 0.18f};
     static const char* NN[7] = {"C", "D", "E", "F", "G", "A", "B"};
-    for (int w = 0; w < 14; ++w) {
+    for (int w = 0; w < NW; ++w) {
         const int n = (w / 7) * 12 + WK[w % 7];
         const bool on = shown == quantize(scale, n) + ko, dim = !inScale(scale, n);
         Rect r = whiteR[w];
@@ -976,7 +980,7 @@ void Editor::keyboard(const Rect& area) {
         ui_.textCenter(mark, Rect{r.x, r.b() - 22.f, r.w, 14.f}, nf, ink);
     }
     static const char* BK[5] = {"C#", "D#", "F#", "G#", "A#"};
-    for (int k = 0; k < 10; ++k) {
+    for (int k = 0; k < NB; ++k) {
         const int s = blackSlots[k];
         const int n = (s / 7) * 12 + WK[s % 7] + 1;
         const bool on = shown == quantize(scale, n) + ko, dim = !inScale(scale, n);
@@ -1073,11 +1077,8 @@ void Editor::drawSon() {
         }
     }
 
-    // --- SORTIE : clavier et molettes ---
-    keyboardCard(Rect{24.f, 648.2f, 814.7f, 287.8f});
-
-    // --- PROPOSITION ---
-    proposition(Rect{848.7f, 648.2f, 407.3f, 287.8f});
+    // --- SORTIE : clavier sur toute la largeur (la PROPOSITION du MIX IA reste dans l'onglet MIX IA) ---
+    keyboardCard(Rect{24.f, 648.2f, 1232.f, 287.8f});
 
     // --- menus déroulants (calque 3) ---
     ui_.setLayer(3);
