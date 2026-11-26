@@ -371,6 +371,7 @@ int main() {
     {
         Model mt(Model::Mode::Offline);
         double worst = 9;
+        int nonFinite = 0;
         for (int p = 0; p < kNumFactoryPresets; ++p) {
             mt.applyFactoryPreset(p, nullptr);
             for (int o = 0; o < 2; ++o) {
@@ -382,12 +383,14 @@ int main() {
                     for (int f = 0; f + 1 < n; f += 3) {
                         const float p0 = (float)f / (float)(n - 1), p1 = (float)(f + 1) / (float)(n - 1);
                         const double a = rms(lv, p0), b = rms(lv, p1), mid = rms(lv, 0.5f * (p0 + p1));
+                        if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(mid)) ++nonFinite;  // NaN : muet dans le moteur
                         if (a + b > 1e-3) worst = std::min(worst, mid / (0.5 * (a + b)));
                     }
             }
         }
-        std::printf("fondu entre frames : niveau au milieu >= %.2f de la moyenne\n", worst);
+        std::printf("fondu entre frames : niveau au milieu >= %.2f de la moyenne, %d lecture(s) non finie(s)\n", worst, nonFinite);
         CHECK(worst > 0.9);
+        CHECK(nonFinite == 0);
     }
 
     std::printf(failures ? "%d échec(s)\n" : "synthèse v6 : tout passe\n", failures);

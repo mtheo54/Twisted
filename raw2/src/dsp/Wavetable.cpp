@@ -177,7 +177,8 @@ void MipTable::buildFrame(const Wavetable& t, int f) {
     if ((size_t)f < rot_.size() && (rot_[(size_t)f] != 0.0 || sgn_[(size_t)f] < 0)) {
         const double tau = rot_[(size_t)f], sg = (double)sgn_[(size_t)f];
         for (int h = 1; h < n / 2; ++h) {
-            const std::complex<double> r = std::polar(sg, 2.0 * 3.14159265358979323846 * (double)h * tau);
+            // std::polar exige un rayon positif (libc++, macOS : NaN sinon) : le signe est appliqué après
+            const std::complex<double> r = sg * std::polar(1.0, 2.0 * 3.14159265358979323846 * (double)h * tau);
             spec[(size_t)h] *= r;
             spec[(size_t)(n - h)] *= std::conj(r);
         }

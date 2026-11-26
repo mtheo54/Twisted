@@ -1,0 +1,3 @@
+// name: Test Pluck
+<control> default_path=samples/
+<region> sample=pluck.wav pitch_keycenter=69

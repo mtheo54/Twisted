@@ -1,0 +1,5 @@
+// name: Test Sine
+// category: SYNTH
+<control> default_path=samples/
+<region> sample=a2.wav lokey=0 hikey=56 pitch_keycenter=45 loop_mode=loop_continuous loop_start=4800 loop_end=9600
+<region> sample=a4.wav lokey=57 hikey=127 pitch_keycenter=69 loop_mode=loop_continuous loop_start=4800 loop_end=48000
