@@ -4,6 +4,7 @@
 #include "core/FactoryData.h"
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <optional>
@@ -107,7 +108,18 @@ public:
             a = A[k] + (A[k + 1] - A[k]) * fr;
             b = B[k] + (B[k + 1] - B[k]) * fr;
         }
-        return a + (b - a) * fz;
+        float y = a + (b - a) * fz;
+        // deux frames voisines peu ressemblantes : le fondu linéaire creuserait le niveau au milieu,
+        // on le compense (niveau = moyenne pondérée des deux frames, comme un fondu à puissance égale)
+        const size_t qi = (size_t)level * (size_t)(last > 0 ? last : 1) + (size_t)i0;
+        if (last > 0 && qi < pg_.size() && pg_[qi].on) {
+            const PairGain& q = pg_[qi];
+            const float u = 1.f - fz;
+            const float E = u * u * q.ea + fz * fz * q.eb + 2.f * u * fz * q.cab;
+            const float T = u * q.ea + fz * q.eb;
+            if (E > 1e-9f) y *= std::min(2.f, std::sqrt(T / E));
+        }
+        return y;
     }
     // lecture fondue entre level et level + 1 (mix 0..1)
     inline float readMix(int level, float mix, float pos, float phase) const {
@@ -125,6 +137,20 @@ private:
     }
     void allocate(int frames);
     void buildFrame(const Wavetable& t, int f);
+    // Recalage des frames pour la lecture : une frame peu ressemblante à la précédente (corrélation
+    // < 0,35) est décalée dans le cycle et/ou inversée pour lui ressembler le plus possible (même son
+    // pris seule, fondu sans creux ni bascule). La table éditée et exportée n'est pas modifiée.
+    // Renvoie vrai si le recalage d'une frame a changé.
+    bool computeAlign(const Wavetable& t);
+    // Compensation du fondu, mesurée sur les données de lecture de chaque niveau (après recalage).
+    void computePairs();
+    struct PairGain {
+        float ea = 0.f, eb = 0.f, cab = 0.f;  // énergies des frames f et f + 1, covariance
+        bool on = false;                       // compensation utile (frames peu corrélées)
+    };
+    std::vector<double> rot_;      // décalage de chaque frame (en cycles)
+    std::vector<signed char> sgn_; // inversion de chaque frame (+1 / -1)
+    std::vector<PairGain> pg_;     // par niveau et par paire de frames voisines : [level * (frames - 1) + f]
     int frames_ = 0;
     size_t off_[kMipLevels] = {};
     std::vector<float> data_;

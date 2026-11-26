@@ -493,10 +493,13 @@ void Editor::drawHeader() {
         }
         ui_.box(r, T.scr, T.scrLine);
         const Font f{Face::Mono, 10.f, 0.6f};
-        const std::string cpu = now_ - panicT_ < 700.0 ? std::string("RESET") : fmt("CPU: %.1f%%", cpuShown_);
-        const float w = ui_.text(cpu, r.x + 10.f, r.y + 6.f, f, T.scrText);
-        const float bx = r.x + 10.f + w + 8.f, frac = std::min(1.f, cpuShown_ / 8.f);
-        for (float x = 0; x < 36.f * frac; x += 4.f) c.fillRect(Rect{bx + x, r.y + 9.5f, std::min(3.f, 36.f * frac - x), 6.f}, T.acc);
+        // pourcentage sans décimale à partir de 10 % ; la jauge est fixée au bord droit du cadre (elle ne
+        // suit plus la longueur du texte et ne déborde jamais)
+        const std::string cpu = now_ - panicT_ < 700.0 ? std::string("RESET")
+                              : (cpuShown_ < 9.95f ? fmt("CPU: %.1f%%", cpuShown_) : fmt("CPU: %.0f%%", std::min(999.f, cpuShown_)));
+        ui_.text(cpu, r.x + 10.f, r.y + 6.f, f, T.scrText);
+        const float barW = 24.f, bx = r.r() - 9.f - barW, frac = std::min(1.f, cpuShown_ / 8.f);
+        for (float x = 0; x < barW * frac; x += 4.f) c.fillRect(Rect{bx + x, r.y + 9.5f, std::min(3.f, barW * frac - x), 6.f}, T.acc);
         ui_.text(fmt("%d SAMPLES", m_.controlBlock.load()) + (st_.xy ? " \xC2\xB7 X-Y" : ""), r.x + 10.f, r.y + 22.f, f, T.scrMuted);
         if (ui_.button(makeId("panic"), Rect{840.f, 22.5f, 66.f, 40.f}, "PANIC", ui_.keyStyle())) panicNow();
     }
@@ -784,8 +787,8 @@ void Editor::drawPresetBrowser() {
         if (ui_.button(makeId("pbX"), Rect{902.6f, 105.5f, 42.4f, 16.f}, "[ X ]", xs)) { pbOpen_ = false; return; }
         // ENREGISTRER : le son actuel va dans USER › MES PRESETS (nom modifiable)
         ButtonStyle ss = ui_.accentStyle();
-        ss.font = Font{Face::MonoBold, 12.f, 0.8f};
-        if (ui_.button(makeId("pbSave"), Rect{536.f, 99.f, 196.f, 34.f}, "ENREGISTRER LE SON", ss)) {
+        ss.font = Font{Face::MonoBold, 10.5f, 0.7f};
+        if (ui_.button(makeId("pbSave"), Rect{548.f, 102.f, 168.f, 28.f}, "ENREGISTRER LE SON", ss)) {
             pbOpen_ = false;
             saveOpen_ = true;
             saveFromPb_ = true;

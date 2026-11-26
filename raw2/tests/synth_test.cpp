@@ -366,6 +366,30 @@ int main() {
         z.set("zoom", 75);
         CHECK(Model::zoomFrom(z) == 75);
     }
+    // position de wavetable modulée : passer d'une frame à la suivante ne doit jamais creuser le niveau
+    // ni le faire basculer (frames voisines peu ressemblantes : recalage + compensation du fondu)
+    {
+        Model mt(Model::Mode::Offline);
+        double worst = 9;
+        for (int p = 0; p < kNumFactoryPresets; ++p) {
+            mt.applyFactoryPreset(p, nullptr);
+            for (int o = 0; o < 2; ++o) {
+                MipTable M;
+                M.build(mt.edit[o]);
+                const int n = M.frames();
+                auto rms = [&](int lv, float pos) { double s = 0; for (int i = 0; i < 256; ++i) { const float y = M.read(lv, pos, (i + 0.5f) / 256.f); s += y * y; } return std::sqrt(s / 256); };
+                for (int lv : {0, 4, 8})
+                    for (int f = 0; f + 1 < n; f += 3) {
+                        const float p0 = (float)f / (float)(n - 1), p1 = (float)(f + 1) / (float)(n - 1);
+                        const double a = rms(lv, p0), b = rms(lv, p1), mid = rms(lv, 0.5f * (p0 + p1));
+                        if (a + b > 1e-3) worst = std::min(worst, mid / (0.5 * (a + b)));
+                    }
+            }
+        }
+        std::printf("fondu entre frames : niveau au milieu >= %.2f de la moyenne\n", worst);
+        CHECK(worst > 0.9);
+    }
+
     std::printf(failures ? "%d échec(s)\n" : "synthèse v6 : tout passe\n", failures);
     return failures ? 1 : 0;
 }

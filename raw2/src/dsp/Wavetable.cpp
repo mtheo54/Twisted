@@ -173,6 +173,15 @@ void MipTable::buildFrame(const Wavetable& t, int f) {
     }
     fft(spec, false);
     const int hMax = n / 2 - 1;
+    // recalage (computeAlign) : décalage circulaire = rotation de phase de chaque harmonique
+    if ((size_t)f < rot_.size() && (rot_[(size_t)f] != 0.0 || sgn_[(size_t)f] < 0)) {
+        const double tau = rot_[(size_t)f], sg = (double)sgn_[(size_t)f];
+        for (int h = 1; h < n / 2; ++h) {
+            const std::complex<double> r = std::polar(sg, 2.0 * 3.14159265358979323846 * (double)h * tau);
+            spec[(size_t)h] *= r;
+            spec[(size_t)(n - h)] *= std::conj(r);
+        }
+    }
     // deux niveaux par IFFT (même longueur) : leurs spectres sont hermitiens (signaux réels), donc
     // IFFT(A + iB) = a + ib, le niveau pair sort en partie réelle, l'impair en partie imaginaire
     for (int level = 0; level < kMipLevels; level += 2) {
@@ -200,15 +209,78 @@ void MipTable::buildFrame(const Wavetable& t, int f) {
     }
 }
 
+bool MipTable::computeAlign(const Wavetable& t) {
+    const int n = t.frames(), L = kPoints;
+    std::vector<double> rot((size_t)n, 0.0);
+    std::vector<signed char> sgn((size_t)n, 1);
+    Frame prev = n > 0 ? t.fr[0] : Frame{};
+    auto energy = [&](const Frame& a) { double e = 0; for (int i = 0; i < L; ++i) e += (double)a[(size_t)i] * a[(size_t)i]; return e; };
+    auto dot = [&](const Frame& a, const Frame& b, int s, int sg) {
+        double d = 0;
+        for (int i = 0; i < L; ++i) d += (double)a[(size_t)i] * sg * b[(size_t)((i + s) % L)];
+        return d;
+    };
+    for (int f = 1; f < n; ++f) {
+        const Frame& cur = t.fr[(size_t)f];
+        const double ea = energy(prev), eb = energy(cur), den = std::sqrt(ea * eb) + 1e-12;
+        double best = dot(prev, cur, 0, 1) / den;
+        int bs = 0, bg = 1;
+        if (best < 0.35) {
+            const double c0 = best;
+            for (int sg : {1, -1})
+                for (int s = 0; s < L; ++s) {
+                    const double c = dot(prev, cur, s, sg) / den;
+                    if (c > best) { best = c; bs = s; bg = sg; }
+                }
+            if (best < c0 + 0.1) { best = c0; bs = 0; bg = 1; }  // gain trop faible : on ne touche à rien
+        }
+        Frame al;
+        for (int i = 0; i < L; ++i) al[(size_t)i] = (float)bg * cur[(size_t)((i + bs) % L)];
+        rot[(size_t)f] = (double)bs / (double)L;
+        sgn[(size_t)f] = (signed char)bg;
+        prev = al;
+    }
+    const bool changed = rot != rot_ || sgn != sgn_;
+    rot_ = std::move(rot);
+    sgn_ = std::move(sgn);
+    return changed;
+}
+
+void MipTable::computePairs() {
+    const int P = std::max(1, frames_ - 1);
+    pg_.assign((size_t)kMipLevels * (size_t)P, PairGain{});
+    if (frames_ < 2) return;
+    for (int L = 0; L < kMipLevels; ++L) {
+        const int len = kMipLens[L];
+        for (int f = 0; f + 1 < frames_; ++f) {
+            const float *a = frame(L, f), *b = frame(L, f + 1);
+            double ea = 0, eb = 0, ab = 0;
+            for (int i = 0; i < len; ++i) { ea += (double)a[i] * a[i]; eb += (double)b[i] * b[i]; ab += (double)a[i] * b[i]; }
+            PairGain& q = pg_[(size_t)L * (size_t)P + (size_t)f];
+            q.ea = (float)(ea / len); q.eb = (float)(eb / len); q.cab = (float)(ab / len);
+            const double c = ab / (std::sqrt(ea * eb) + 1e-12);
+            q.on = c < 0.9 && ea > 1e-9 * len && eb > 1e-9 * len;
+        }
+    }
+}
+
 void MipTable::build(const Wavetable& t) {
     allocate(t.frames());
+    computeAlign(t);
     for (int f = 0; f < frames_; ++f) buildFrame(t, f);
+    computePairs();
 }
 
 void MipTable::rebuildFrames(const Wavetable& t, const std::vector<bool>& dirty) {
     if (t.frames() != frames_) { build(t); return; }
-    for (int f = 0; f < frames_ && f < (int)dirty.size(); ++f)
-        if (dirty[(size_t)f]) buildFrame(t, f);
+    // une retouche peut changer le recalage des frames suivantes : tout est refait dans ce cas
+    if (computeAlign(t)) {
+        for (int f = 0; f < frames_; ++f) buildFrame(t, f);
+    } else {
+        for (int f = 0; f < frames_ && f < (int)dirty.size(); ++f)
+            if (dirty[(size_t)f]) buildFrame(t, f);
+    }
+    computePairs();
 }
 
 float warpPhasePreview(float u, int wm, float w, float other) {
