@@ -349,8 +349,11 @@ void CGCanvas::image(const ImageView& img, const Rect& dst, const Rect& src, flo
     if (!img_ || imgId_ != img.id) {
         if (img_) CGImageRelease(img_);
         img_ = nullptr;
-        imgPx_.assign(img.bgra, img.bgra + (size_t)img.stride * (size_t)img.h);  // copie : l'image vit tant qu'on la garde
-        CGDataProviderRef dp = CGDataProviderCreateWithData(nullptr, imgPx_.data(), imgPx_.size(), nullptr);
+        // copie des pixels possédée par CoreGraphics (libérée avec la dernière référence à l'image)
+        CFDataRef data = CFDataCreate(nullptr, img.bgra, (CFIndex)((size_t)img.stride * (size_t)img.h));
+        CGDataProviderRef dp = data ? CGDataProviderCreateWithCFData(data) : nullptr;
+        if (data) CFRelease(data);
+        if (!dp) return;
         CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
         img_ = CGImageCreate((size_t)img.w, (size_t)img.h, 8, 32, (size_t)img.stride, cs,
                              kCGBitmapByteOrder32Little | (CGBitmapInfo)kCGImageAlphaPremultipliedFirst, dp, nullptr, true, kCGRenderingIntentDefault);
