@@ -17,6 +17,7 @@ struct ID2D1StrokeStyle;
 struct ID2D1BitmapBrush;
 struct ID2D1LinearGradientBrush;
 struct ID2D1RadialGradientBrush;
+struct ID2D1Bitmap;
 struct IDWriteFactory;
 struct IDWriteFontCollection;
 struct IDWriteTextFormat;
@@ -49,6 +50,7 @@ public:
     void rotate(float radians) override;
     void scale(float s) override;
     void clip(const Rect& r) override;
+    void image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) override;
     void fillRect(const Rect& r, Color c) override;
     void fillRoundRect(const Rect& r, float radius, Color c) override;
     void line(Pt a, Pt b, Color c, float width) override;
@@ -83,6 +85,9 @@ private:
     void strokePath(const Pt* p, int n, Color c, float width, bool closed, ID2D1StrokeStyle* style);
 
     ID2D1RenderTarget* rt_ = nullptr;
+    ID2D1Bitmap* img_ = nullptr;  // image du fond (dernier id dessiné)
+    unsigned long long imgId_ = 0;
+    int imgW_ = 0, imgH_ = 0;
     ID2D1SolidColorBrush* brush_ = nullptr;
     ID2D1StrokeStyle* roundJoin_ = nullptr;
     std::map<std::pair<int, int>, ID2D1StrokeStyle*> dashes_;

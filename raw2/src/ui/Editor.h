@@ -4,6 +4,7 @@
 #include "ai/Assistant.h"
 #include "core/Model.h"
 #include "ui/Analyzer.h"
+#include "ui/Backdrop.h"
 #include "ui/Ui.h"
 
 #include <array>
@@ -224,6 +225,18 @@ private:
     Ui ui_;
     Analyzer an_;
     const Theme* T_ = nullptr;
+    // thème PERSO et fond perso (image / vidéo) : copie modifiable du thème de base
+    Theme custom_ = {};
+    Backdrop backdrop_;
+    std::string bgPath_;                  // copie du réglage global, relue à chaque image
+    std::vector<std::string> bgList_;     // fichiers de Documents/Raw 2/Fonds (flèches du panneau)
+    double bgListT_ = -1e9;
+    bool bgOn_ = false;                   // une image de fond est prête pour cette image
+    ImageView bgImg_;
+    std::shared_ptr<const media::Frames> bgKeep_;
+    void pickTheme();
+    void setBackground(const std::string& path);
+    void refreshBgList();
     double now_ = 0.0;
     int tab_ = 0;
 

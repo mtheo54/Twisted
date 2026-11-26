@@ -250,7 +250,14 @@ public:
     void applyFactoryFx(int presetIndex, ParamSink* sink);  // effets d'un preset d'usine (une recette par preset)
 
     // --- réglages d'affichage (sauvés avec l'instance, et comme défaut global) --------------
-    std::atomic<int> theme{0};
+    std::atomic<int> theme{0};          // 0..kNumThemes - 1 : thèmes d'usine ; kNumThemes : PERSO
+    // thème PERSO et fond personnalisé (réglages globaux, comme le thème)
+    std::atomic<int> persoBase{0};          // 0 base claire (ALU), 1 base sombre (NOTHING)
+    std::atomic<uint32_t> persoAcc{0xFF4D00u};  // couleur d'accent (RGB)
+    std::atomic<float> bgDim{0.45f};        // voile couleur du thème posé sur le fond (0..0,9)
+    std::atomic<float> bgPanels{0.85f};     // opacité des panneaux quand un fond est choisi (0,5..1)
+    std::mutex bgMutex;
+    std::string bgPath;                     // image ou vidéo de fond ("" : aucune), sous bgMutex
     // tailles de la fenêtre (% de 1280 x 960) ; 85 % par défaut depuis la v1.0.0
     static constexpr int kZooms[5] = {75, 85, 100, 125, 150};
     static constexpr int kDefaultZoom = 85;

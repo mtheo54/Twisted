@@ -35,6 +35,7 @@ CGCanvas::CGCanvas() {
 }
 
 CGCanvas::~CGCanvas() {
+    if (img_) CGImageRelease(img_);
     for (auto& kv : lines_) CFRelease(kv.second);
     for (auto& kv : fonts_) CFRelease(kv.second);
     for (auto& kv : tiles_) CGImageRelease(kv.second);
@@ -341,6 +342,35 @@ float CGCanvas::textWidth(const std::string& s, const Font& f) {
     if (s.empty()) return 0.f;
     CTLineRef line = lineFor(s, f);
     return line ? (float)CTLineGetTypographicBounds(line, nullptr, nullptr, nullptr) : 0.f;
+}
+
+void CGCanvas::image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) {
+    if (!ctx_ || !img.bgra || img.w <= 0 || img.h <= 0 || src.w <= 0.f || src.h <= 0.f) return;
+    if (!img_ || imgId_ != img.id) {
+        if (img_) CGImageRelease(img_);
+        img_ = nullptr;
+        imgPx_.assign(img.bgra, img.bgra + (size_t)img.stride * (size_t)img.h);  // copie : l'image vit tant qu'on la garde
+        CGDataProviderRef dp = CGDataProviderCreateWithData(nullptr, imgPx_.data(), imgPx_.size(), nullptr);
+        CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        img_ = CGImageCreate((size_t)img.w, (size_t)img.h, 8, 32, (size_t)img.stride, cs,
+                             kCGBitmapByteOrder32Little | (CGBitmapInfo)kCGImageAlphaPremultipliedFirst, dp, nullptr, true, kCGRenderingIntentDefault);
+        CGColorSpaceRelease(cs);
+        CGDataProviderRelease(dp);
+        imgId_ = img.id;
+    }
+    if (!img_) return;
+    CGImageRef sub = CGImageCreateWithImageInRect(img_, CGRectMake(src.x, src.y, src.w, src.h));
+    if (!sub) return;
+    CGContextSaveGState(ctx_);
+    CGContextClipToRect(ctx_, CGRectMake(dst.x, dst.y, dst.w, dst.h));
+    CGContextSetAlpha(ctx_, alpha);
+    CGContextSetInterpolationQuality(ctx_, kCGInterpolationMedium);
+    // le contexte a l'axe y vers le bas : l'image est retournée localement pour être dessinée à l'endroit
+    CGContextTranslateCTM(ctx_, dst.x, dst.y + dst.h);
+    CGContextScaleCTM(ctx_, 1.0, -1.0);
+    CGContextDrawImage(ctx_, CGRectMake(0, 0, dst.w, dst.h), sub);
+    CGContextRestoreGState(ctx_);
+    CGImageRelease(sub);
 }
 
 } // namespace raw2::ui

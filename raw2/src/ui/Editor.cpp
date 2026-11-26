@@ -4,6 +4,7 @@
 #include "core/Files.h"
 #include "core/Wav.h"
 #include "dsp/WavetableOps.h"
+#include "platform/Media.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,7 +23,90 @@ const char* kTabs[9] = {"SON", "VIE", "MODULES", "ENV / LFO", "EFX", "MIX IA", "
 // compatibilité des états)
 const int kTabOrder[9] = {0, 7, 8, 1, 2, 3, 4, 5, 6};
 const char* kCats[7] = {"tous", "basse", "lead", "pad", "pluck", "arp", "fx"};
+const Rect kThPanel{190.1f, 68.5f, 252.f, 340.f};    // fenêtre THÈME (couleurs, fond, zoom)
+
+// teinte pure (saturation et luminosité pleines), h dans 0..1 -> 0xRRGGBB
+uint32_t hueRgb(float h) {
+    h = h - std::floor(h);
+    const float x = h * 6.f, f = x - std::floor(x);
+    float r = 0, g = 0, b = 0;
+    switch ((int)x % 6) {
+        case 0: r = 1; g = f; break;
+        case 1: r = 1 - f; g = 1; break;
+        case 2: g = 1; b = f; break;
+        case 3: g = 1 - f; b = 1; break;
+        case 4: r = f; b = 1; break;
+        default: r = 1; b = 1 - f; break;
+    }
+    auto q = [](float v) { return (uint32_t)std::lround(std::clamp(v, 0.f, 1.f) * 255.f); };
+    return q(r) << 16 | q(g) << 8 | q(b);
+}
+float rgbHue(uint32_t c) {
+    const float r = (float)(c >> 16 & 255) / 255.f, g = (float)(c >> 8 & 255) / 255.f, b = (float)(c & 255) / 255.f;
+    const float mx = std::max({r, g, b}), mn = std::min({r, g, b}), d = mx - mn;
+    if (d <= 1e-6f) return 0.f;
+    float h = mx == r ? (g - b) / d : mx == g ? 2.f + (b - r) / d : 4.f + (r - g) / d;
+    h /= 6.f;
+    return h < 0.f ? h + 1.f : h;
+}
+Color rgbColor(uint32_t c) { return Color::rgb8((int)(c >> 16 & 255), (int)(c >> 8 & 255), (int)(c & 255)); }
 } // namespace
+
+// Thème de l'image : thème d'usine tel quel, ou copie modifiée (PERSO : couleur d'accent choisie sur
+// une base claire ou sombre ; fond perso : cartes un peu transparentes pour laisser voir l'image).
+void Editor::pickTheme() {
+    const int th = std::clamp(m_.theme.load(), 0, kNumThemes);
+    {
+        std::lock_guard<std::mutex> lk(m_.bgMutex);
+        if (bgPath_ != m_.bgPath) bgPath_ = m_.bgPath;
+    }
+    backdrop_.request(bgPath_);
+    bgKeep_.reset();
+    bgOn_ = !bgPath_.empty() && backdrop_.frame(now_, bgImg_, bgKeep_);
+    if (th < kNumThemes && !bgOn_) {
+        T_ = &kThemes[th];
+        return;
+    }
+    custom_ = kThemes[th < kNumThemes ? th : (m_.persoBase.load() ? 1 : 0)];
+    if (th == kNumThemes) {
+        const uint32_t a = m_.persoAcc.load();
+        const Color ac = rgbColor(a);
+        custom_.key = "perso";
+        custom_.name = "PERSO";
+        custom_.label = "Th\xC3\xA8me PERSO";
+        custom_.acc = custom_.hl = custom_.ledTab = custom_.ptr = custom_.waveB = custom_.barPk = ac;
+        custom_.hasTagAcc = false;
+        custom_.accRGB = Rgb8{(int)(a >> 16 & 255), (int)(a >> 8 & 255), (int)(a & 255)};
+        const float lum = 0.2126f * ac.r + 0.7152f * ac.g + 0.0722f * ac.b;
+        custom_.onAcc = lum > 0.55f ? Color::rgb8(13, 13, 13) : Color::rgb8(255, 255, 255);
+    }
+    if (bgOn_) custom_.card = custom_.card.withAlpha(m_.bgPanels.load());
+    T_ = &custom_;
+}
+
+// Fond choisi (glissé sur l'interface ou pris dans la liste) : copié dans Documents/Raw 2/Fonds pour
+// rester disponible même si l'original est déplacé, puis gardé dans les réglages globaux.
+void Editor::setBackground(const std::string& path) {
+    std::string use = path;
+    if (!path.empty()) {
+        const std::string dir = files::backgroundsDir();
+        const std::string dst = files::join(dir, files::baseName(path));
+        if (dst != path && files::makeDirs(dir) && files::copyFile(path, dst)) use = dst;
+    }
+    {
+        std::lock_guard<std::mutex> lk(m_.bgMutex);
+        m_.bgPath = use;
+    }
+    m_.saveGlobalSettings();
+    bgListT_ = -1e9;
+}
+
+void Editor::refreshBgList() {
+    bgList_.clear();
+    for (const std::string& f : files::listFiles(files::backgroundsDir(), ""))
+        if (media::isMediaFile(f)) bgList_.push_back(f);
+    std::sort(bgList_.begin(), bgList_.end());
+}
 
 Editor::Editor(Model& m, ParamSink& sink, EditorState& st) : m_(m), sink_(sink), st_(st) {
     tab_ = m_.tab.load();
@@ -198,7 +282,7 @@ void Editor::frame(Canvas& c, const Input& in) {
     if (st_.sessionT0 < 0.0) st_.sessionT0 = now_;
     const double dtFrame = lastFrame_ > 0.0 ? std::min(100.0, now_ - lastFrame_) : 16.0;
     lastFrame_ = now_;
-    T_ = &kThemes[std::clamp(m_.theme.load(), 0, kNumThemes - 1)];
+    pickTheme();
     if (m_.tab.load() != tab_) tab_ = m_.tab.load();
     an_.update(m_.scope, m_.readouts.sampleRate.load());
 
@@ -225,7 +309,7 @@ void Editor::frame(Canvas& c, const Input& in) {
     }
     if (thOpen_) {
         ui_.addBlocker(Rect{0, 0, (float)kWidth, (float)kHeight}, 5);
-        ui_.addBlocker(Rect{190.1f, 68.5f, 252.f, 146.f}, 6);
+        ui_.addBlocker(kThPanel, 6);
     }
     if (roleOpen_ && tab_ == 0) ui_.addBlocker(Rect{1061.f, 707.2f, 174.f, 190.f}, 3);
     if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(Rect{889.f, 164.f, 153.f, 185.f}, 3);
@@ -281,8 +365,20 @@ void Editor::frame(Canvas& c, const Input& in) {
     // fond de la plaque
     c.fillRect(Rect{0, 0, (float)kWidth, (float)kHeight}, T_->chassis);
     if (amp > 0.4f) c.translate(std::round((fxR_[0] - 0.5f) * 2.f * amp), std::round((fxR_[1] - 0.5f) * 2.f * amp));
-    c.fillRect(Rect{-20, -20, (float)kWidth + 40, (float)kHeight + 40}, T_->chassis);
-    c.dotGrid(Rect{-20, -20, (float)kWidth + 40, (float)kHeight + 40}, 0.f, 0.f, 16.f, 1.1f, T_->chDot);
+    const Rect plate{-20, -20, (float)kWidth + 40, (float)kHeight + 40};
+    if (bgOn_) {
+        // fond perso : l'image couvre toute la plaque (recadrée au centre), voilée par la couleur du thème
+        const float iw = (float)bgImg_.w, ih = (float)bgImg_.h, k = plate.w / plate.h;
+        Rect src{0, 0, iw, ih};
+        if (iw / ih > k) { src.w = ih * k; src.x = (iw - src.w) * 0.5f; }
+        else { src.h = iw / k; src.y = (ih - src.h) * 0.5f; }
+        c.image(bgImg_, plate, src, 1.f);
+        c.fillRect(plate, T_->chassis.withAlpha(m_.bgDim.load()));
+        c.fillRect(Rect{-20.f, 938.f, (float)kWidth + 40.f, 42.f}, T_->chassis.withAlpha(0.8f));  // pied de page lisible
+    } else {
+        c.fillRect(plate, T_->chassis);
+    }
+    c.dotGrid(plate, 0.f, 0.f, 16.f, 1.1f, T_->chDot);
     drawFooter();
     drawHeader();
     ui_.setLayer(0);
@@ -575,32 +671,143 @@ void Editor::drawThemePanel() {
         return;
     }
     ui_.setLayer(6);
-    const Rect panel{190.1f, 68.5f, 252.f, 146.f};
+    const Rect panel = kThPanel;
+    const float x0 = panel.x + 15.f, xs = x0 + 57.f, ws = panel.r() - 15.f - xs;  // libellés, réglages
     const int st = std::min(5, (int)((now_ - thT_) / 160.0 * 6.0));
     c.save();
     c.clip(Rect{panel.x, panel.y, panel.w + 6.f, (panel.h + 6.f) * (float)st / 5.f});
     c.fillRect(panel.moved(4.f, 4.f), T.btnEdge);
-    ui_.box(panel, T.card, T.btnEdge);
-    for (int i = 0; i < kNumThemes; ++i) {
-        const Theme& th = kThemes[i];
-        const Rect r{205.1f + (float)i * 32.f, 81.5f, 26.f, 26.f};
-        const Ui::Interact it = ui_.interact(makeId("sw", i), r);
-        if (it.clicked) {
+    ui_.box(panel, T.card.withAlpha(1.f), T.btnEdge);
+    const Font f{Face::Mono, 10.f, 1.f};
+    const int cur = m_.theme.load();
+    // 6 thèmes d'usine + PERSO
+    for (int i = 0; i <= kNumThemes; ++i) {
+        const bool perso = i == kNumThemes;
+        const Theme& th = kThemes[perso ? (m_.persoBase.load() ? 1 : 0) : i];
+        const Rect r{x0 + (float)i * 32.f, panel.y + 13.f, 26.f, 26.f};
+        if (ui_.interact(makeId("sw", i), r).clicked) {
             m_.theme = i;
             m_.saveGlobalSettings();
-            thOpen_ = false;
         }
-        if (i == m_.theme.load()) ui_.border(Rect{r.x - 4.f, r.y - 4.f, r.w + 8.f, r.h + 8.f}, T.ink, 2.f);
+        if (i == cur) ui_.border(Rect{r.x - 4.f, r.y - 4.f, r.w + 8.f, r.h + 8.f}, T.ink, 2.f);
         ui_.box(r, th.sw, T.ink);
-        ui_.box(Rect{r.x + 8.f, r.y + 8.f, 10.f, 10.f}, th.acc, th.btnEdge, 0.f);
+        if (perso) {  // pastille arc-en-ciel : la couleur se choisit plus bas
+            for (int k = 0; k < 8; ++k)
+                c.fillRect(Rect{r.x + 4.f + (float)k * 2.25f, r.y + 4.f, 2.25f, 4.f}, rgbColor(hueRgb((float)k / 8.f)));
+            ui_.box(Rect{r.x + 8.f, r.y + 11.f, 10.f, 10.f}, rgbColor(m_.persoAcc.load()), th.btnEdge, 0.f);
+        } else {
+            ui_.box(Rect{r.x + 8.f, r.y + 8.f, 10.f, 10.f}, th.acc, th.btnEdge, 0.f);
+        }
     }
-    const Font f{Face::Mono, 10.f, 1.f};
-    ui_.text(T.name, 205.1f, 115.5f, f, T.muted);
+    ui_.text(cur >= kNumThemes ? "PERSO" : kThemes[std::max(0, cur)].name, x0, panel.y + 47.f, f, T.muted);
+
+    // couleur PERSO : teinte de l'accent, base claire ou sombre (la toucher passe en PERSO)
+    float y = panel.y + 66.f;
+    ui_.text("COULEUR", x0, y + 3.f, f, T.muted);
+    {
+        const Rect tr{xs, y, ws, 16.f};
+        const Ui::Interact it = ui_.interact(makeId("thHue"), tr, Cursor::ResizeEW);
+        if (it.held) {
+            const float h = std::clamp((ui_.in().mouse.x - tr.x) / tr.w, 0.f, 0.999f);
+            m_.persoAcc = hueRgb(h);
+            m_.theme = kNumThemes;
+        }
+        if (it.released) m_.saveGlobalSettings();
+        const int n = 36;
+        for (int k = 0; k < n; ++k)
+            c.fillRect(Rect{tr.x + tr.w * (float)k / n, tr.y, tr.w / n + 0.6f, tr.h}, rgbColor(hueRgb(((float)k + 0.5f) / n)));
+        ui_.border(tr, T.ink, 1.f);
+        const float hx = tr.x + tr.w * rgbHue(m_.persoAcc.load());
+        c.fillRect(Rect{hx - 2.f, tr.y - 3.f, 4.f, tr.h + 6.f}, T.ink);
+        c.fillRect(Rect{hx - 1.f, tr.y - 2.f, 2.f, tr.h + 4.f}, T.card.withAlpha(1.f));
+    }
+    y += 24.f;
+    ui_.text("BASE", x0, y + 6.f, f, T.muted);
+    for (int k = 0; k < 2; ++k) {
+        const Rect r{xs + (float)k * (ws * 0.5f + 2.f), y, ws * 0.5f - 2.f, 22.f};
+        const bool on = cur == kNumThemes && m_.persoBase.load() == k;
+        if (ui_.button(makeId("thBase", k), r, k ? "SOMBRE" : "CLAIR", ui_.miniStyle(on))) {
+            m_.persoBase = k;
+            m_.theme = kNumThemes;
+            m_.saveGlobalSettings();
+        }
+    }
+    y += 34.f;
+    c.fillRect(Rect{x0, y, panel.w - 30.f, 1.f}, T.rule);
+
+    // fond perso : image, GIF animé ou vidéo glissé ici (ou n'importe où sur l'interface)
+    y += 9.f;
+    ui_.text("FOND", x0, y, f, T.ink);
+    {
+        const char* hint = "IMAGE \xC2\xB7 GIF \xC2\xB7 VID\xC3\x89O";
+        ui_.text(hint, panel.r() - 15.f - c.textWidth(hint, f), y, f, T.muted);
+    }
+    y += 17.f;
+    const Rect zone{x0, y, panel.w - 30.f, 44.f};
+    const bool over = ui_.in().dragOver && zone.contains(ui_.in().dragPos);
+    ui_.box(zone, over ? T.acc.withAlpha(0.25f) : T.railBg, over ? T.acc : T.rule);
+    {
+        std::string l1, l2;
+        Color c1 = T.ink;
+        const std::string err = backdrop_.error();
+        if (bgPath_.empty()) {
+            l1 = "GLISSE UNE IMAGE OU UNE";
+            l2 = "VID\xC3\x89O ICI (PNG, JPG, GIF, MP4, MOV)";
+            c1 = T.muted;
+        } else {
+            l1 = files::baseName(bgPath_);
+            if (l1.size() > 30) l1 = l1.substr(0, 28) + "\xE2\x80\xA6";
+            if (backdrop_.loading()) l2 = "CHARGEMENT\xE2\x80\xA6";
+            else if (!err.empty()) { l2 = err; c1 = T.acc; }
+            else if (bgKeep_ && bgKeep_->px.size() > 1) l2 = fmt("%s \xC2\xB7 %d IMAGES EN BOUCLE", bgKeep_->video ? "VID\xC3\x89O" : "GIF", (int)bgKeep_->px.size());
+            else l2 = bgOn_ ? fmt("IMAGE \xC2\xB7 %d x %d", bgImg_.w, bgImg_.h) : std::string();
+        }
+        ui_.text(l1, zone.x + 10.f, zone.y + 9.f, f, c1);
+        ui_.text(l2, zone.x + 10.f, zone.y + 25.f, f, T.muted);
+    }
+    y += 52.f;
+    if (now_ - bgListT_ > 2000.0) {
+        bgListT_ = now_;
+        refreshBgList();
+    }
+    {
+        // flèches : fonds déjà ajoutés (dossier Documents/Raw 2/Fonds)
+        int idx = -1;
+        for (size_t k = 0; k < bgList_.size(); ++k)
+            if (bgList_[k] == bgPath_) idx = (int)k;
+        const int n = (int)bgList_.size();
+        if (ui_.button(makeId("bgPrev"), Rect{x0, y, 28.f, 22.f}, "<", ui_.miniStyle(false)) && n > 0)
+            setBackground(bgList_[(size_t)((idx < 0 ? 0 : idx - 1 + n) % n)]);
+        if (ui_.button(makeId("bgNext"), Rect{x0 + 32.f, y, 28.f, 22.f}, ">", ui_.miniStyle(false)) && n > 0)
+            setBackground(bgList_[(size_t)((idx + 1) % n)]);
+        if (ui_.button(makeId("bgDir"), Rect{x0 + 64.f, y, 76.f, 22.f}, "DOSSIER", ui_.miniStyle(false))) {
+            files::makeDirs(files::backgroundsDir());
+            files::openFolder(files::backgroundsDir());
+        }
+        if (ui_.button(makeId("bgOff"), Rect{x0 + 144.f, y, panel.w - 30.f - 144.f, 22.f}, "RETIRER", ui_.miniStyle(false)))
+            setBackground("");
+    }
+    y += 32.f;
+    // voile (couleur du thème posée sur l'image) et opacité des cartes
+    auto slider = [&](const char* label, const char* id, std::atomic<float>& v, float lo, float hi) {
+        ui_.text(label, x0, y + 1.f, f, T.muted);
+        float u = (v.load() - lo) / (hi - lo);
+        bool ended = false;
+        if (ui_.hslider(makeId(id), Rect{xs, y, ws, 12.f}, u, nullptr, &ended)) v = lo + std::clamp(u, 0.f, 1.f) * (hi - lo);
+        if (ended) m_.saveGlobalSettings();
+        y += 20.f;
+    };
+    slider("VOILE", "bgDim", m_.bgDim, 0.f, 0.9f);
+    slider("CARTES", "bgPan", m_.bgPanels, 0.5f, 1.f);
+    y += 2.f;
+    c.fillRect(Rect{x0, y, panel.w - 30.f, 1.f}, T.rule);
+    y += 10.f;
+
     // zoom de la fenêtre (homothétique, §2)
-    ui_.text("ZOOM", 205.1f, 146.f, f, T.muted);
+    ui_.text("ZOOM", x0, y + 6.f, f, T.muted);
     for (int k = 0; k < 5; ++k) {
         const int z = Model::kZooms[k];
-        const Rect r{249.1f + (float)k * 37.f, 140.f, 33.f, 24.f};
+        const Rect r{x0 + 44.f + (float)k * 37.f, y, 33.f, 24.f};
         ButtonStyle s = ui_.miniStyle(m_.zoomPct.load() == z);
         s.font = Font{Face::Mono, 10.f, 0.4f};
         if (ui_.button(makeId("zoom", k), r, std::to_string(z), s)) {
@@ -608,7 +815,8 @@ void Editor::drawThemePanel() {
             m_.saveGlobalSettings();
         }
     }
-    if (ui_.button(makeId("thAbout"), Rect{205.1f, 176.f, 222.f, 26.f}, "\xC3\x80 PROPOS \xC2\xB7 RAW 2 v" RAW2_VERSION_STRING, ui_.miniStyle(false))) {
+    y += 34.f;
+    if (ui_.button(makeId("thAbout"), Rect{x0, y, panel.w - 30.f, 26.f}, "\xC3\x80 PROPOS \xC2\xB7 RAW 2 v" RAW2_VERSION_STRING, ui_.miniStyle(false))) {
         thOpen_ = false;
         aboutOpen_ = true;
     }
@@ -1428,6 +1636,11 @@ void Editor::handleDrops() {
     dropWt_ = in.dragOver && tab_ == 6 && dz.contains(in.dragPos);
     if (in.dropped.empty()) return;
     const std::string& path = in.dropped.front();
+    // image ou vidéo : fond de l'interface (sauf sur la banque de presets)
+    if (!pbOpen_ && media::isMediaFile(path)) {
+        setBackground(path);
+        return;
+    }
     if (pbOpen_) {  // pack (.raw2pack, dossier) ou preset (.raw) déposé sur la banque : copié dans Documents/Raw 2
         int n = 0;
         for (const std::string& p : in.dropped) {

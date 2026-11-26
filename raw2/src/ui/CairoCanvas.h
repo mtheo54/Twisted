@@ -24,6 +24,7 @@ public:
     void rotate(float radians) override;
     void scale(float s) override;
     void clip(const Rect& r) override;
+    void image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) override;
     void fillRect(const Rect& r, Color c) override;
     void fillRoundRect(const Rect& r, float radius, Color c) override;
     void line(Pt a, Pt b, Color c, float width) override;

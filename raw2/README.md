@@ -143,7 +143,11 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
   ARPÈGE (montant, descendant, aller-retour, au hasard, dans l'ordre joué ; 1/4 à 1/32 en
   triolets ; jusqu'à 4 octaves ; gate, swing, LATCH ; calé sur la lecture de l'hôte) et ACCORDS
   (10 accords en un doigt, avec strum).
-- **EFX** : le rack de 12 effets (voir « Moteur audio »). Glisser une ligne par sa poignée ou
+- **v10, finitions** : effet **MULTICOMP** (compression 3 bandes vers le haut et vers le bas, DOSE,
+  TEMPS, BAS/HAUT), fondu entre images de wavetable sans « trou » de son quand un LFO balaie la
+  position, page SON avec un clavier de 3 octaves (MIX IA reste dans son onglet), thème **PERSO**
+  (couleur d'accent au choix, base claire ou sombre) et **fond perso** (image, GIF animé ou vidéo).
+- **EFX** : le rack de 13 effets (voir « Moteur audio »). Glisser une ligne par sa poignée ou
   utiliser ▲ ▼ pour changer l'ordre, interrupteur et MIX par ligne, BYPASS global ; à droite
   l'effet choisi avec sa courbe animée, ses 4 boutons, MODE et OVERSAMPLE pour la distorsion, la
   **modulation rapide** (VIE, LFO 1, LFO 2, ENV, CLAVIER, ALÉA → premier réglage) ; en bas DRY / WET
@@ -195,7 +199,14 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
 - Fenêtre de choix des presets (recherche sans accents, filtres, un clic charge et garde la
   fenêtre ouverte, Échap ferme), menus SEED et CIBLE, terminal PROPOSITION (machine à écrire
   20 ms/caractère), appui long de 600 ms sur le logo pour le mode X-Y avec son effet plein écran.
-- 6 thèmes (`themes.json`) changés à la volée, panneau qui se déroule en 5 paliers. Le clavier suit
+- 6 thèmes (`themes.json`) changés à la volée, panneau qui se déroule en 5 paliers, plus le thème
+  **PERSO** : teinte d'accent choisie sur une barre arc-en-ciel, base CLAIR (ALU) ou SOMBRE
+  (NOTHING). **Fond perso** : une image (PNG, JPG, GIF animé, BMP, TIFF, WebP, HEIC) ou une vidéo
+  (MP4, MOV, M4V ; AVI et WMV sous Windows) glissée n'importe où sur l'interface devient le fond,
+  copiée dans `Documents/Raw 2/Fonds` ; flèches pour passer d'un fond à l'autre, VOILE (couleur du
+  thème posée dessus) et CARTES (opacité des panneaux). Décodage par le système (ImageIO et
+  AVFoundation sur Mac, WIC et Media Foundation sous Windows) dans un fil à part ; une vidéo est
+  gardée en boucle à 12 images/s, 480 × 360, 10 s au plus, partagée entre les instances. Le clavier suit
   la palette des thèmes clairs (ULTRAVIOLET, ONIRIQUE : rail, touches et dièses du thème) ; ALU
   garde son clavier grège et crème.
 - Polices **JetBrains Mono** et **Silkscreen embarquées dans la DLL** (licence OFL, voir
@@ -261,12 +272,14 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
   genou doux, relâche selon le programme, réduction affichée), EQ 3 cloches SVF à fréquences
   réglables, FILTER (SVF passe-bas résonant avec saturation d'entrée), **VINTAGE** (v7 : pleurage et
   scintillement de bande, saturation, passe-bas, souffle et craquements qui suivent le signal,
-  réduction de fréquence et de résolution) et **PUMP** (v7 : sidechain calé sur le tempo de
-  l'hôte, 1/2 à 1/16, profondeur et courbe). Mesures et détails :
+  réduction de fréquence et de résolution), **PUMP** (v7 : sidechain calé sur le tempo de
+  l'hôte, 1/2 à 1/16, profondeur et courbe) et **MULTICOMP** (v10 : 3 bandes séparées à 120 Hz et
+  2,5 kHz par filtres Linkwitz-Riley 4e ordre, chaque bande comprimée vers le bas au-dessus du seuil
+  et remontée en dessous ; DOSE, TEMPS d'attaque / relâche, BAS/HAUT pour doser l'un ou l'autre). Mesures et détails :
   `docs/DSP-FEUILLE-DE-ROUTE.md`, § 5.1.
   Tous les réglages sont lissés (20 ms), marche / arrêt et changement d'ordre en fondu : aucun clic.
   Les effets d'espace et de modulation se dosent comme un envoi (le sec reste plein jusqu'à MIX
-  50 %), les autres en fondu sec / traité. Les 70 réglages d'effets sont des paramètres du DAW
+  50 %), les autres en fondu sec / traité. Les 75 réglages d'effets sont des paramètres du DAW
   (automatisables), ajoutés à la suite des anciens : les projets existants restent compatibles.
 - **La Vie** : **un seul monde** torique de 64 × 58 (page VIE), B3/S23 ou B36/S23, sur son propre
   thread ; l'audio ne lit que des atomiques. La page SON en montre la **zone écoutée** (36 × 16 au

@@ -12,16 +12,22 @@ set(RAW2_UI_SOURCES
     src/ui/EditorSynth.cpp
   src/ui/EditorWt.cpp
   src/ui/EmbeddedFonts.cpp
+  src/ui/Backdrop.cpp
+  src/platform/MediaCommon.cpp
   ${RAW2_FONTS_CPP})
 
 if(WIN32)
-  add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/D2DCanvas.cpp src/platform/Win32View.cpp)
-  target_link_libraries(raw2_ui PUBLIC raw2_core d2d1 dwrite user32 gdi32 ole32 shell32 uuid)
+  add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/D2DCanvas.cpp src/platform/Win32View.cpp src/platform/MediaWin.cpp)
+  # fonds perso : WIC (images, GIF) et Media Foundation (vidéos)
+  target_link_libraries(raw2_ui PUBLIC raw2_core d2d1 dwrite user32 gdi32 ole32 shell32 uuid windowscodecs mfplat mfreadwrite mfuuid)
   set(RAW2_HAVE_UI ON)
 elseif(APPLE)
   # CoreGraphics + CoreText ; la vue Cocoa (MacView.mm) est compilée dans chaque plugin
-  add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/CGCanvas.cpp)
-  target_link_libraries(raw2_ui PUBLIC raw2_core "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText")
+  add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/CGCanvas.cpp src/platform/MediaMac.mm)
+  set_source_files_properties(src/platform/MediaMac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  # fonds perso : ImageIO (images, GIF) et AVFoundation (vidéos)
+  target_link_libraries(raw2_ui PUBLIC raw2_core "-framework CoreFoundation" "-framework CoreGraphics" "-framework CoreText"
+    "-framework Foundation" "-framework ImageIO" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
   set(RAW2_HAVE_UI ON)
   # captures d'écran hors écran (contrôle visuel en intégration continue)
   add_executable(raw2_snap tools/snap.cpp)
@@ -32,7 +38,7 @@ else()
     pkg_check_modules(CAIRO QUIET IMPORTED_TARGET cairo cairo-ft freetype2)
   endif()
   if(CAIRO_FOUND)
-    add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/CairoCanvas.cpp)
+    add_library(raw2_ui STATIC ${RAW2_UI_SOURCES} src/ui/CairoCanvas.cpp src/platform/MediaLinux.cpp)
     target_link_libraries(raw2_ui PUBLIC raw2_core PkgConfig::CAIRO)
     set(RAW2_HAVE_UI ON)
     # outil de capture d'écran (développement)

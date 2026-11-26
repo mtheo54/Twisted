@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <CoreGraphics/CoreGraphics.h>
 #include <CoreText/CoreText.h>
@@ -29,6 +30,7 @@ public:
     void rotate(float radians) override;
     void scale(float s) override;
     void clip(const Rect& r) override;
+    void image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) override;
     void fillRect(const Rect& r, Color c) override;
     void fillRoundRect(const Rect& r, float radius, Color c) override;
     void line(Pt a, Pt b, Color c, float width) override;
@@ -61,6 +63,9 @@ private:
     std::unordered_map<uint64_t, CTFontRef> fonts_;      // (face, taille)
     std::unordered_map<std::string, CTLineRef> lines_;   // texte mis en forme (couleur prise du contexte)
     std::unordered_map<uint64_t, CGImageRef> tiles_;     // motifs répétés (points du châssis, lentilles de VIE)
+    CGImageRef img_ = nullptr;                          // image du fond (dernier id dessiné) et sa copie des pixels
+    unsigned long long imgId_ = 0;
+    std::vector<unsigned char> imgPx_;
 };
 
 } // namespace raw2::ui

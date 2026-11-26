@@ -28,6 +28,7 @@ std::string raw2Dir();           // Documents/Raw 2 : packs de presets
 std::string myPresetsDir();      // Documents/Raw 2/Mes presets
 std::string wavetableDir();      // Documents/Raw 2/Wavetables
 std::string exportsDir();        // Documents/Raw 2/Exports (sons glissés vers la DAW)
+std::string backgroundsDir();   // Documents/Raw 2/Fonds (images et vidéos de fond de l'interface)
 std::string legacyPresetDir();   // Documents/RAW2 banque presets (versions 1 et 2)
 // Contenu d'usine posé par l'installateur, commun à tous les utilisateurs (instruments, packs) :
 // macOS /Library/Application Support/ABRASION/RAW 2, Windows %ProgramData%\ABRASION\RAW 2.

@@ -196,6 +196,7 @@ std::string raw2Dir() { return join(documentsDir(), "Raw 2"); }
 std::string myPresetsDir() { return join(raw2Dir(), "Mes presets"); }
 std::string wavetableDir() { return join(raw2Dir(), "Wavetables"); }
 std::string exportsDir() { return join(raw2Dir(), "Exports"); }
+std::string backgroundsDir() { return join(raw2Dir(), "Fonds"); }
 std::string legacyPresetDir() { return join(documentsDir(), "RAW2 banque presets"); }
 
 std::string factoryDir() {

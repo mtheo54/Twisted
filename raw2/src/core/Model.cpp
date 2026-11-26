@@ -704,7 +704,15 @@ void Model::loadGlobalSettings() {
     std::string text;
     json::Value v;
     if (!files::readText(files::settingsPath(), text) || !json::Value::parse(text, v)) return;
-    theme = std::clamp((int)v["theme"].num(0), 0, kNumThemes - 1);
+    theme = std::clamp((int)v["theme"].num(0), 0, kNumThemes);  // kNumThemes : PERSO
+    persoBase = std::clamp((int)v["persoBase"].num(0), 0, 1);
+    persoAcc = (uint32_t)std::clamp(v["persoAcc"].num((double)0xFF4D00), 0.0, (double)0xFFFFFF);
+    bgDim = std::clamp((float)v["bgDim"].num(0.45), 0.f, 0.9f);
+    bgPanels = std::clamp((float)v["bgPanels"].num(0.85), 0.5f, 1.f);
+    {
+        std::lock_guard<std::mutex> lk(bgMutex);
+        bgPath = v["bgPath"].str();
+    }
     zoomPct = zoomFrom(v);
     favorites.clear();
     if (v["favorites"].isArray())
@@ -715,6 +723,14 @@ void Model::loadGlobalSettings() {
 void Model::saveGlobalSettings() {
     json::Value v = json::Value::object();
     v.set("theme", theme.load());
+    v.set("persoBase", persoBase.load());
+    v.set("persoAcc", (double)persoAcc.load());
+    v.set("bgDim", (double)bgDim.load());
+    v.set("bgPanels", (double)bgPanels.load());
+    {
+        std::lock_guard<std::mutex> lk(bgMutex);
+        v.set("bgPath", bgPath);
+    }
     v.set("zoom", zoomPct.load());
     v.set("zoomV", 1);
     json::Value fav = json::Value::array();
@@ -816,7 +832,7 @@ bool Model::loadState(const std::string& s, ParamSink* sink) {
     mix.limitCeilDb = std::clamp((float)mx["limitCeil"].num(-1.0), -3.f, 0.f);
     const json::Value& ui = v["ui"];
     if (ui.isObject()) {
-        theme = std::clamp((int)ui["theme"].num(0), 0, kNumThemes - 1);
+        theme = std::clamp((int)ui["theme"].num(0), 0, kNumThemes);  // kNumThemes : PERSO
         zoomPct = zoomFrom(ui);
         // « tab2 » : 6 pages (EFX ajoutée en 3) ; les anciens états n'ont que « tab » sur 5 pages
         if (ui["tab5"].isNumber()) setTab(std::clamp((int)ui["tab5"].num(0), 0, 8));

@@ -63,6 +63,11 @@ int main(int argc, char** argv) {
         m.params.set(kAPlay, 1.f);
     }
     m.theme = theme;
+    if (const char* p = std::getenv("RAW2_SNAP_BG")) {  // fond perso (image)
+        std::lock_guard<std::mutex> lk(m.bgMutex);
+        m.bgPath = p;
+    }
+    if (const char* p = std::getenv("RAW2_SNAP_ACC")) m.persoAcc = (uint32_t)std::strtoul(p, nullptr, 16);  // accent PERSO
     m.setTab(tab);
     Engine eng(m);
     eng.prepare(48000.0, 256);

@@ -105,6 +105,9 @@ D2DCanvas::~D2DCanvas() {
 
 void D2DCanvas::releaseDeviceResources() {
     safeRelease(brush_);
+    safeRelease(img_);
+    imgId_ = 0;
+    imgW_ = imgH_ = 0;
     for (auto& d : dots_) safeRelease(d.second);
     dots_.clear();
     for (auto& g : linear_) safeRelease(g.second);
@@ -496,6 +499,25 @@ float D2DCanvas::textWidth(const std::string& s, const Font& f) {
     if (s.empty()) return 0.f;
     Layout* L = layoutFor(s, f);
     return L ? L->width : 0.f;
+}
+
+void D2DCanvas::image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) {
+    if (!rt_ || !img.bgra || img.w <= 0 || img.h <= 0 || src.w <= 0.f || src.h <= 0.f) return;
+    if (!img_ || imgId_ != img.id) {
+        if (img_ && imgW_ == img.w && imgH_ == img.h) {
+            img_->CopyFromMemory(nullptr, img.bgra, (UINT32)img.stride);  // vidéo : même taille, nouvelle image
+        } else {
+            safeRelease(img_);
+            const D2D1_BITMAP_PROPERTIES bp = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+            if (FAILED(rt_->CreateBitmap(D2D1::SizeU((UINT32)img.w, (UINT32)img.h), img.bgra, (UINT32)img.stride, bp, &img_))) img_ = nullptr;
+            imgW_ = img.w;
+            imgH_ = img.h;
+        }
+        imgId_ = img.id;
+    }
+    if (!img_) return;
+    rt_->DrawBitmap(img_, D2D1::RectF(dst.x, dst.y, dst.r(), dst.b()), std::clamp(alpha, 0.f, 1.f), D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    D2D1::RectF(src.x, src.y, src.r(), src.b()));
 }
 
 } // namespace raw2::ui

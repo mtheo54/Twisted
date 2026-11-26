@@ -57,9 +57,20 @@ struct GradStop {
     Color c;
 };
 
+// Image en mémoire : pixels BGRA 8 bits, alpha prémultiplié (ordre des octets B, G, R, A), lignes
+// de stride octets. id : identifiant unique de ce contenu (le moteur de dessin garde sa version
+// native tant que l'id ne change pas).
+struct ImageView {
+    const unsigned char* bgra = nullptr;
+    int w = 0, h = 0, stride = 0;
+    unsigned long long id = 0;
+};
+
 class Canvas {
 public:
     virtual ~Canvas() = default;
+    // dessine la partie src de l'image dans dst (étirée), avec une opacité
+    virtual void image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) = 0;
 
     virtual void save() = 0;
     virtual void restore() = 0;

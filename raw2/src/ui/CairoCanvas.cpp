@@ -279,4 +279,21 @@ float CairoCanvas::textWidth(const std::string& s, const Font& f) {
     return w;
 }
 
+void CairoCanvas::image(const ImageView& img, const Rect& dst, const Rect& src, float alpha) {
+    if (!img.bgra || img.w <= 0 || img.h <= 0 || src.w <= 0.f || src.h <= 0.f || dst.w <= 0.f || dst.h <= 0.f) return;
+    // ARGB32 de Cairo = octets B, G, R, A en mémoire (petit-boutiste), alpha prémultiplié : même format
+    cairo_surface_t* s = cairo_image_surface_create_for_data(const_cast<unsigned char*>(img.bgra), CAIRO_FORMAT_ARGB32, img.w, img.h, img.stride);
+    cairo_save(cr_);
+    cairo_rectangle(cr_, dst.x, dst.y, dst.w, dst.h);
+    cairo_clip(cr_);
+    cairo_translate(cr_, dst.x, dst.y);
+    cairo_scale(cr_, dst.w / src.w, dst.h / src.h);
+    cairo_translate(cr_, -src.x, -src.y);
+    cairo_set_source_surface(cr_, s, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr_), CAIRO_FILTER_GOOD);
+    cairo_paint_with_alpha(cr_, alpha);
+    cairo_restore(cr_);
+    cairo_surface_destroy(s);
+}
+
 } // namespace raw2::ui
