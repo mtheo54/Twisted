@@ -303,7 +303,7 @@ void Editor::drawMix() {
     const int prof = std::clamp(st_.mixProf, 0, 4);
     if (st_.acts.empty() && st_.aiPhase != 1) genActs(st_.aiPhase == 2);
     if (mixMenu_ != 0 && ui_.in().pressed) {  // un clic hors du menu et de son bouton le referme
-        const Pt p = ui_.in().mouse;
+        const Pt p{ui_.mouseAbs().x - blkOff_[kBMixAssistant].x, ui_.mouseAbs().y - blkOff_[kBMixAssistant].y};
         const Rect menu = mixMenu_ == 1 ? Rect{889.f, 164.f, 150.f, 182.f} : Rect{1065.8f, 164.f, 150.f, 152.f};
         if (!menu.contains(p) && !Rect{889.f, 136.f, 326.8f, 25.f}.contains(p)) mixMenu_ = 0;
     }
@@ -336,6 +336,7 @@ void Editor::drawMix() {
     const float prog = st_.aiPhase == 1 ? (float)std::min(1.0, el / kScanMs) : 0.f;
 
     // --- ANALYSEUR GLOBAL ---
+    blk(kBMixAnalyseur);
     const Rect card{24.f, 73.f, 830.f, 863.f};
     ui_.card(card);
     ui_.cardHeader(card, "ANALYSEUR GLOBAL", false, 14.f, 12.f);
@@ -618,6 +619,7 @@ void Editor::drawMix() {
     }
 
     // --- ASSISTANT ---
+    blk(kBMixAssistant);
     const Rect ac{866.f, 73.f, 390.f, 623.f};
     ui_.cardTerm(ac);
     ui_.cardHeader(ac, "ASSISTANT", true, 22.f, 20.f);
@@ -741,6 +743,7 @@ void Editor::drawMix() {
     ui_.text(" rien ne change sans ton accord", 895.f, 660.f, Font{Face::Mono, 10.f, 0.f}, T.scrMuted);
 
     // --- HISTORIQUE ---
+    blk(kBMixHistorique);
     const Rect hc{866.f, 708.f, 390.f, 228.f};
     ui_.card(hc);
     ui_.cardHeader(hc, "HISTORIQUE", false, 14.f, 12.f);
@@ -795,7 +798,8 @@ void Editor::drawMix() {
         ui_.text(ui_.fit(actSum, f, 360.f), 881.f, 900.f, f, T.muted);
     }
 
-    // menus RÔLE / PROFIL (au-dessus de tout)
+    // menus RÔLE / PROFIL (au-dessus de tout) : ils appartiennent à l'ASSISTANT
+    blk(kBMixAssistant);
     if (mixMenu_ != 0) {
         ui_.setLayer(3);
         const int kind = mixMenu_;

@@ -274,10 +274,15 @@ void Editor::drawEnv() {
             envLast_[k] = P(kEnvIds[0][k]);
         }
     }
+    blk(kBEnvEnv1);
     envCard(st_.envAlt[0] ? 2 : 0, Rect{24.f, 73.f, 610.f, 425.5f});
+    blk(kBEnvLfo1);
     lfoCard(0, Rect{646.f, 73.f, 610.f, 425.5f}, false);
+    blk(kBEnvEnv2);
     envCard(st_.envAlt[1] ? 3 : 1, Rect{24.f, 510.5f, 610.f, 425.5f});
+    blk(kBEnvLfo2);
     lfoCard(1, Rect{646.f, 510.5f, 610.f, 425.5f}, false);
+    blkEnd();
 }
 
 } // namespace raw2::ui

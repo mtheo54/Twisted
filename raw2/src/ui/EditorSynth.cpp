@@ -107,6 +107,7 @@ void Editor::drawSynth() {
     };
 
     // ================= FILTRE =================
+    blk(kBSynthFiltre);
     {
         const Rect card{24.f, kR1, 610.f, kR1H};
         const float x0 = card.x + kPadS, w = card.w - 2.f * kPadS;
@@ -147,6 +148,7 @@ void Editor::drawSynth() {
     }
 
     // ================= OSCILLATEURS · WARP =================
+    blk(kBSynthOsc);
     {
         const Rect card{646.f, kR1, 610.f, kR1H};
         ui_.card(card);
@@ -204,6 +206,7 @@ void Editor::drawSynth() {
     }
 
     // ================= BRUIT =================
+    blk(kBSynthBruit);
     {
         const Rect card{24.f, kR2, 397.f, kR2H};
         const float x0 = card.x + kPadS, w = card.w - 2.f * kPadS;
@@ -249,6 +252,7 @@ void Editor::drawSynth() {
     }
 
     // ================= UNISON =================
+    blk(kBSynthUnison);
     {
         const Rect card{433.f, kR2, 397.f, kR2H};
         const float x0 = card.x + kPadS, w = card.w - 2.f * kPadS;
@@ -287,6 +291,7 @@ void Editor::drawSynth() {
     }
 
     // ================= EXPRESSION · MPE =================
+    blk(kBSynthMpe);
     {
         const Rect card{842.f, kR2, 414.f, kR2H};
         const float x0 = card.x + kPadS, w = card.w - 2.f * kPadS;

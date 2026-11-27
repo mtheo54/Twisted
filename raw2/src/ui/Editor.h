@@ -3,8 +3,10 @@
 // choix des presets, enregistrement, thèmes, mode X-Y. Dessine une plaque logique de 1280 x 960.
 #include "ai/Assistant.h"
 #include "core/Model.h"
+#include "core/Skin.h"
 #include "ui/Analyzer.h"
 #include "ui/Backdrop.h"
+#include "ui/Blocks.h"
 #include "ui/Ui.h"
 
 #include <array>
@@ -234,7 +236,21 @@ private:
     bool bgOn_ = false;                   // une image de fond est prête pour cette image
     ImageView bgImg_;
     std::shared_ptr<const media::Frames> bgKeep_;
+    // blocs placés par le skin : décalage de chaque carte par rapport à sa place d'origine
+    Pt blkOff_[kNumBlocks] = {};
+    int blkCur_ = -1;
+    void blk(int b);   // la suite est dessinée dans le bloc b (décalé)
+    void blkEnd();
     void pickTheme();
+    // skin choisi
+    Skin skin_;
+    std::string skinLoaded_, skinErr_, skinMsg_;
+    bool skinOk_ = false, gridOn_ = true, bgFromSkin_ = false;
+    std::string bgShown_;  // fond réellement affiché (perso ou du skin)
+    std::vector<std::string> skinList_;
+    double skinListT_ = -1e9;
+    void applySkin(const std::string& dir);
+    void installAndApplySkin(const std::string& path);
     void setBackground(const std::string& path);
     void refreshBgList();
     double now_ = 0.0;

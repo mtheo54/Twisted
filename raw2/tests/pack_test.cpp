@@ -5,6 +5,8 @@
 #include "core/Files.h"
 #include "core/Instruments.h"
 #include "core/Model.h"
+#include "core/Skin.h"
+#include "core/Zip.h"
 
 #include <cmath>
 #include <cstdio>
@@ -177,6 +179,82 @@ int main() {
         CHECK(piano);           // instrument d'usine trouvé
         CHECK(perso && !usine); // même dossier chez l'utilisateur : sa version gagne
         unsetenv("RAW2_FACTORY_DIR");
+    }
+
+    // --- skins (.raw2skin) ---------------------------------------------------------------------
+    {
+        Color c;
+        CHECK(parseColor("#00C8FF", c) && std::fabs(c.g - 200.f / 255.f) < 1e-4f && c.a == 1.f);
+        CHECK(parseColor("#14141880", c) && std::fabs(c.a - 128.f / 255.f) < 1e-4f);
+        CHECK(parseColor("rgba(13,13,13,.10)", c) && std::fabs(c.a - 0.1f) < 1e-4f);
+        CHECK(!parseColor("bleu", c));
+        CHECK(colorHex(Color{1.f, 77.f / 255.f, 0.f, 1.f}) == "#FF4D00");
+        Theme t = kThemes[0];
+        CHECK(setThemeToken(t, "acc", Color{0.f, 1.f, 0.f, 1.f}) && t.accRGB.g == 255);
+        CHECK(!setThemeToken(t, "inconnu", c));
+        CHECK(themeByKey("nothing") == &kThemes[1] && themeByKey("x") == nullptr);
+
+        // aller-retour skin.json
+        Skin s;
+        s.name = "N\xC3\xA9on / test";  // « / » interdit dans un nom de dossier
+        s.base = "nothing";
+        s.colors = {{"acc", Color{0.f, 0.78f, 1.f, 1.f}}, {"card", Color{0.08f, 0.08f, 0.09f, 0.5f}}};
+        s.background = "fond.png";
+        s.glass = true;
+        s.blur = 0.7f;
+        s.layout = {{"son.oscA", {894.f, 73.f}}};
+        Skin r;
+        std::string err;
+        CHECK(parseSkin(skinToJson(s), r, err));
+        CHECK(r.name == s.name && r.base == "nothing" && r.glass && std::fabs(r.blur - 0.7f) < 1e-5f);
+        CHECK(r.colors.size() == 2 && r.layout.size() == 1 && r.layout[0].second.first == 894.f);
+        CHECK(!parseSkin("{\"format\":\"autre\"}", r, err));
+        CHECK(!parseSkin("pas du json", r, err));
+
+        // archive stockée : installée dans Documents/Raw 2/Skins/<nom>, chemins ignorés
+        const std::string js = skinToJson(s);
+        std::vector<zip::Entry> en(3);
+        en[0].name = "skin.json";
+        en[0].data.assign(js.begin(), js.end());
+        en[1].name = "dossier/fond.png";
+        en[1].data = {1, 2, 3, 4};
+        en[2].name = "../../evil.mp4";
+        en[2].data = {9};
+        const std::vector<unsigned char> arc = zip::write(en);
+        std::vector<zip::Entry> back;
+        CHECK(zip::read(arc, back, err) && back.size() == 3 && back[1].data.size() == 4);
+        const std::string file = files::join(home, "Test.raw2skin");
+        CHECK(files::write(file, arc));
+        CHECK(isSkinFile(file));
+        std::string dir;
+        CHECK(installSkin(file, dir, err));
+        CHECK(dir == files::join(files::join(root, "Skins"), "N\xC3\xA9on  test"));
+        CHECK(files::exists(files::join(dir, "skin.json")) && files::exists(files::join(dir, "fond.png")));
+        CHECK(files::exists(files::join(dir, "evil.mp4")) && !files::exists(files::join(home, "evil.mp4")));
+        Skin l;
+        CHECK(loadSkin(dir, l, err) && l.background == "fond.png" && l.dir == dir);
+        const std::vector<std::string> list = listSkins();
+        CHECK(list.size() == 1 && list[0] == dir);
+        // archive abîmée, archive compressée
+        std::vector<unsigned char> bad = arc;
+        bad[40] ^= 0xFF;  // donnée de skin.json
+        CHECK(!zip::read(bad, back, err));
+        std::vector<unsigned char> defl = arc;
+        int marked = 0;
+        for (size_t i = 0; i + 12 < defl.size(); ++i)  // méthode deflate dans le répertoire central
+            if (defl[i] == 0x50 && defl[i + 1] == 0x4b && defl[i + 2] == 1 && defl[i + 3] == 2) { defl[i + 10] = 8; ++marked; }
+        CHECK(marked == 3 && !zip::read(defl, back, err) && err.find("recompress") != std::string::npos);
+        // dossier de skin déposé tel quel
+        const std::string src = files::join(home, "MonSkin");
+        files::makeDirs(src);
+        Skin d;
+        d.name = "Dossier";
+        files::writeText(files::join(src, "skin.json"), skinToJson(d));
+        files::write(files::join(src, "notes.txt"), {1});
+        CHECK(isSkinFile(src) && installSkin(src, dir, err));
+        CHECK(files::exists(files::join(dir, "skin.json")) && !files::exists(files::join(dir, "notes.txt")));
+        CHECK(listSkins().size() == 2);
+        std::printf("skins : format, archive et installation v\xC3\xA9rifi\xC3\xA9s\n");
     }
 
     std::printf(failures ? "%d échec(s)\n" : "packs éditables : tout passe\n", failures);

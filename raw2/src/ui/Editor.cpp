@@ -2,6 +2,7 @@
 // EditorMix.cpp et EditorWt.cpp.
 #include "ui/Editor.h"
 #include "core/Files.h"
+#include "core/Skin.h"
 #include "core/Wav.h"
 #include "dsp/WavetableOps.h"
 #include "platform/Media.h"
@@ -23,7 +24,7 @@ const char* kTabs[9] = {"SON", "VIE", "MODULES", "ENV / LFO", "EFX", "MIX IA", "
 // compatibilité des états)
 const int kTabOrder[9] = {0, 7, 8, 1, 2, 3, 4, 5, 6};
 const char* kCats[7] = {"tous", "basse", "lead", "pad", "pluck", "arp", "fx"};
-const Rect kThPanel{190.1f, 68.5f, 252.f, 340.f};    // fenêtre THÈME (couleurs, fond, zoom)
+const Rect kThPanel{190.1f, 68.5f, 252.f, 478.f};    // fenêtre THÈME (couleurs, fond, zoom)
 
 // teinte pure (saturation et luminosité pleines), h dans 0..1 -> 0xRRGGBB
 uint32_t hueRgb(float h) {
@@ -53,22 +54,71 @@ Color rgbColor(uint32_t c) { return Color::rgb8((int)(c >> 16 & 255), (int)(c >>
 } // namespace
 
 // Thème de l'image : thème d'usine tel quel, ou copie modifiée (PERSO : couleur d'accent choisie sur
-// une base claire ou sombre ; fond perso : cartes un peu transparentes pour laisser voir l'image).
+// une base claire ou sombre ; SKIN : couleurs, fond, verre et place des blocs lus dans le skin ; fond
+// perso : cartes un peu transparentes pour laisser voir l'image).
 void Editor::pickTheme() {
-    const int th = std::clamp(m_.theme.load(), 0, kNumThemes);
+    const int th = std::clamp(m_.theme.load(), 0, Model::kThemeSkin);
+    std::string skinDir;
     {
         std::lock_guard<std::mutex> lk(m_.bgMutex);
         if (bgPath_ != m_.bgPath) bgPath_ = m_.bgPath;
+        skinDir = m_.skinDir;
     }
-    backdrop_.request(bgPath_);
+    const bool wantSkin = th == Model::kThemeSkin && !skinDir.empty();
+    if (wantSkin && skinDir != skinLoaded_) {
+        skinLoaded_ = skinDir;
+        skinErr_.clear();
+        skinOk_ = loadSkin(skinDir, skin_, skinErr_);
+    }
+    const bool sk = wantSkin && skinOk_;
+    // fond : celui choisi par l'utilisateur, sinon celui du skin
+    const std::string bg = sk && bgPath_.empty() && !skin_.background.empty() ? files::join(skin_.dir, skin_.background) : bgPath_;
+    bgFromSkin_ = sk && bgPath_.empty() && !skin_.background.empty();
+    bgShown_ = bg;
+    const bool glass = m_.glassOn.load();
+    backdrop_.request(bg, glass ? (sk ? std::max(0.1f, skin_.blur) : 0.6f) : 0.f);
     bgKeep_.reset();
-    bgOn_ = !bgPath_.empty() && backdrop_.frame(now_, bgImg_, bgKeep_);
-    if (th < kNumThemes && !bgOn_) {
+    ImageView blur;
+    bgOn_ = !bg.empty() && backdrop_.frame(now_, bgImg_, bgKeep_, &blur);
+    gridOn_ = sk ? skin_.grid : true;
+
+    // place des blocs (bornée à la fenêtre)
+    for (Pt& o : blkOff_) o = Pt{0.f, 0.f};
+    if (sk)
+        for (const auto& kv : skin_.layout) {
+            const int b = blockByKey(kv.first.c_str());
+            if (b < 0) continue;
+            const Rect& d = kBlocks[b].r;
+            const float x = std::clamp(kv.second.first, kBlockLeft, std::max(kBlockLeft, kBlockRight - d.w));
+            const float y = std::clamp(kv.second.second, kBlockTop, std::max(kBlockTop, kBlockBottom - d.h));
+            blkOff_[b] = Pt{std::round(x - d.x), std::round(y - d.y)};
+        }
+
+    // verre : le fond flouté, recadré comme le fond net (voir le dessin de la plaque)
+    Ui::Glass g;
+    g.on = glass;
+    if (glass && bgOn_ && blur.bgra) {
+        g.img = blur;
+        g.plate = Rect{-20.f, -20.f, (float)kWidth + 40.f, (float)kHeight + 40.f};
+        const float iw = (float)blur.w, ih = (float)blur.h, k = g.plate.w / g.plate.h;
+        g.src = Rect{0, 0, iw, ih};
+        if (iw / ih > k) { g.src.w = ih * k; g.src.x = (iw - g.src.w) * 0.5f; }
+        else { g.src.h = iw / k; g.src.y = (ih - g.src.h) * 0.5f; }
+    }
+    if (sk) { g.tint = skin_.tint; g.edge = skin_.edge; }
+    ui_.setGlass(g);
+
+    if (!sk && th < kNumThemes && !bgOn_ && !glass) {
         T_ = &kThemes[th];
         return;
     }
-    custom_ = kThemes[th < kNumThemes ? th : (m_.persoBase.load() ? 1 : 0)];
-    if (th == kNumThemes) {
+    const Theme* base = sk ? themeByKey(skin_.base) : nullptr;
+    custom_ = base ? *base : kThemes[th < kNumThemes ? th : (m_.persoBase.load() ? 1 : 0)];
+    if (sk) {
+        for (const auto& kv : skin_.colors) setThemeToken(custom_, kv.first, kv.second);
+        custom_.key = "skin";
+        custom_.name = skin_.name.c_str();  // skin_ vit aussi longtemps que l'éditeur
+    } else if (th == kNumThemes) {
         const uint32_t a = m_.persoAcc.load();
         const Color ac = rgbColor(a);
         custom_.key = "perso";
@@ -80,8 +130,42 @@ void Editor::pickTheme() {
         const float lum = 0.2126f * ac.r + 0.7152f * ac.g + 0.0722f * ac.b;
         custom_.onAcc = lum > 0.55f ? Color::rgb8(13, 13, 13) : Color::rgb8(255, 255, 255);
     }
-    if (bgOn_) custom_.card = custom_.card.withAlpha(m_.bgPanels.load());
+    if (bgOn_ && !glass) custom_.card = custom_.card.withAlpha(custom_.card.a * m_.bgPanels.load());
     T_ = &custom_;
+}
+
+// Skin choisi (installé ou d'usine) : ses réglages de fond et de verre deviennent ceux du panneau.
+void Editor::applySkin(const std::string& dir) {
+    Skin s;
+    std::string err;
+    if (!loadSkin(dir, s, err)) {
+        skinMsg_ = err;
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lk(m_.bgMutex);
+        m_.skinDir = dir;
+        m_.bgPath.clear();  // le fond du skin s'affiche (une image glissée ensuite le remplace)
+    }
+    m_.theme = Model::kThemeSkin;
+    m_.bgDim = s.voile;
+    m_.bgPanels = s.cards;
+    m_.glassOn = s.glass;
+    m_.saveGlobalSettings();
+    skinLoaded_.clear();  // relu à la prochaine image
+    skinListT_ = -1e9;
+    skinMsg_ = "skin \xC2\xAB " + s.name + " \xC2\xBB appliqu\xC3\xA9";
+}
+
+void Editor::installAndApplySkin(const std::string& path) {
+    std::string dir, err;
+    if (!installSkin(path, dir, err)) {
+        skinMsg_ = err;
+        thOpen_ = true;  // le message s'affiche dans le panneau
+        thT_ = now_;
+        return;
+    }
+    applySkin(dir);
 }
 
 // Fond choisi (glissé sur l'interface ou pris dans la liste) : copié dans Documents/Raw 2/Fonds pour
@@ -99,6 +183,19 @@ void Editor::setBackground(const std::string& path) {
     }
     m_.saveGlobalSettings();
     bgListT_ = -1e9;
+}
+
+void Editor::blk(int b) {
+    blkEnd();
+    if (b < 0 || b >= kNumBlocks) return;
+    ui_.pushOffset(blkOff_[b].x, blkOff_[b].y);
+    blkCur_ = b;
+}
+
+void Editor::blkEnd() {
+    if (blkCur_ < 0) return;
+    ui_.popOffset();
+    blkCur_ = -1;
 }
 
 void Editor::refreshBgList() {
@@ -145,7 +242,7 @@ void Editor::knobParam(uint32_t id, Pt p, float size, float mod) {
     // glisser-déposer d'un LFO : ce potard est-il visé ?
     if (dd_.on && isModulatable(id) && ui_.hit(kr)) {
         dd_.hov = id;
-        dd_.hovRect = kr;
+        dd_.hovRect = ui_.toAbs(kr);  // dessiné par dragOverlay, hors du bloc
     }
     // anneau d'une route libre : appuyer dessus puis glisser verticalement règle le dosage
     bool ring = rd_.route >= 0 && rd_.id == id;
@@ -156,7 +253,7 @@ void Editor::knobParam(uint32_t id, Pt p, float size, float mod) {
             const int n = m_.routes.count();
             for (int i = 0; i < n; ++i)
                 if ((uint32_t)m_.routes.r[(size_t)i].id.load() == id) {
-                    rd_ = RingDrag{i, id, in.mouse.y, m_.routes.r[(size_t)i].amt.load()};
+                    rd_ = RingDrag{i, id, ui_.mouseAbs().y, m_.routes.r[(size_t)i].amt.load()};
                     ring = true;
                     break;
                 }
@@ -312,9 +409,12 @@ void Editor::frame(Canvas& c, const Input& in) {
         ui_.addBlocker(kThPanel, 6);
     }
     if (roleOpen_ && tab_ == 0) ui_.addBlocker(Rect{1061.f, 707.2f, 174.f, 190.f}, 3);
-    if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(Rect{889.f, 164.f, 153.f, 185.f}, 3);
-    if (mixMenu_ == 2 && tab_ == 5) ui_.addBlocker(Rect{1065.8f, 164.f, 153.f, 155.f}, 3);
-    if (seedOpen_ && tab_ == 0) ui_.addBlocker(Rect{877.2f, 313.2f, 134.f, 128.f}, 3);
+    {
+        const Pt ma = blkOff_[kBMixAssistant], sv = blkOff_[kBSonVie];
+        if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(Rect{889.f, 164.f, 153.f, 185.f}.moved(ma.x, ma.y), 3);
+        if (mixMenu_ == 2 && tab_ == 5) ui_.addBlocker(Rect{1065.8f, 164.f, 153.f, 155.f}.moved(ma.x, ma.y), 3);
+        if (seedOpen_ && tab_ == 0) ui_.addBlocker(Rect{877.2f, 313.2f, 134.f, 128.f}.moved(sv.x, sv.y), 3);
+    }
     if (fxMenu_ != 0 && tab_ == 4) ui_.addBlocker(Rect{fxMenuRect_.x, fxMenuRect_.y, fxMenuRect_.w + 3.f, fxMenuRect_.h + 3.f}, 3);
 
     if (st_.openAbout) { aboutOpen_ = true; st_.openAbout = false; }
@@ -378,7 +478,7 @@ void Editor::frame(Canvas& c, const Input& in) {
     } else {
         c.fillRect(plate, T_->chassis);
     }
-    c.dotGrid(plate, 0.f, 0.f, 16.f, 1.1f, T_->chDot);
+    if (gridOn_) c.dotGrid(plate, 0.f, 0.f, 16.f, 1.1f, T_->chDot);
     drawFooter();
     drawHeader();
     ui_.setLayer(0);
@@ -393,6 +493,7 @@ void Editor::frame(Canvas& c, const Input& in) {
         case 8: drawSynth(); break;
         default: drawWt(); break;
     }
+    blkEnd();
     dragOverlay();
     if (thOpen_) drawThemePanel();
     if (pbOpen_) drawPresetBrowser();
@@ -699,7 +800,7 @@ void Editor::drawThemePanel() {
             ui_.box(Rect{r.x + 8.f, r.y + 8.f, 10.f, 10.f}, th.acc, th.btnEdge, 0.f);
         }
     }
-    ui_.text(cur >= kNumThemes ? "PERSO" : kThemes[std::max(0, cur)].name, x0, panel.y + 47.f, f, T.muted);
+    ui_.text(cur == Model::kThemeSkin ? "SKIN" : cur >= kNumThemes ? "PERSO" : kThemes[std::max(0, cur)].name, x0, panel.y + 47.f, f, T.muted);
 
     // couleur PERSO : teinte de l'accent, base claire ou sombre (la toucher passe en PERSO)
     float y = panel.y + 66.f;
@@ -735,6 +836,55 @@ void Editor::drawThemePanel() {
     y += 34.f;
     c.fillRect(Rect{x0, y, panel.w - 30.f, 1.f}, T.rule);
 
+    // skins (.raw2skin) : ABRASION SKIN STUDIO, ou glissés sur l'interface
+    y += 9.f;
+    ui_.text("SKIN", x0, y, f, T.ink);
+    {
+        const char* hint = "GLISSE UN .RAW2SKIN";
+        ui_.text(hint, panel.r() - 15.f - c.textWidth(hint, f), y, f, T.muted);
+    }
+    y += 17.f;
+    if (now_ - skinListT_ > 2000.0) {
+        skinListT_ = now_;
+        skinList_ = listSkins();
+    }
+    {
+        std::string curDir;
+        {
+            std::lock_guard<std::mutex> lk(m_.bgMutex);
+            curDir = m_.skinDir;
+        }
+        const bool on = cur == Model::kThemeSkin;
+        int idx = -1;
+        for (size_t k = 0; k < skinList_.size(); ++k)
+            if (skinList_[k] == curDir) idx = (int)k;
+        const int n = (int)skinList_.size();
+        if (ui_.button(makeId("skPrev"), Rect{x0, y, 28.f, 22.f}, "<", ui_.miniStyle(false)) && n > 0)
+            applySkin(skinList_[(size_t)(idx < 0 ? n - 1 : (idx - 1 + n) % n)]);
+        const Rect nm{x0 + 32.f, y, panel.w - 30.f - 64.f, 22.f};
+        const std::string label = on && skinOk_ ? upper(skin_.name) : (n == 0 ? std::string("AUCUN SKIN INSTALL\xC3\x89") : fmt("%d SKIN%s \xC2\xB7 CHOISIR", n, n > 1 ? "S" : ""));
+        ButtonStyle ns = ui_.miniStyle(on);
+        if (ui_.button(makeId("skName"), nm, ui_.fit(label, ns.font, nm.w - 12.f), ns) && n > 0)
+            applySkin(skinList_[(size_t)(idx < 0 ? 0 : idx)]);
+        if (ui_.button(makeId("skNext"), Rect{nm.r() + 4.f, y, 28.f, 22.f}, ">", ui_.miniStyle(false)) && n > 0)
+            applySkin(skinList_[(size_t)((idx + 1) % n)]);
+        y += 26.f;
+        if (ui_.button(makeId("skDir"), Rect{x0, y, 108.f, 22.f}, "DOSSIER", ui_.miniStyle(false))) {
+            const std::string d = files::join(files::raw2Dir(), "Skins");
+            files::makeDirs(d);
+            files::openFolder(d);
+        }
+        if (ui_.button(makeId("skOff"), Rect{x0 + 112.f, y, panel.w - 30.f - 112.f, 22.f}, "SANS SKIN", ui_.miniStyle(false)) && on) {
+            m_.theme = m_.persoBase.load() ? 1 : 0;
+            m_.saveGlobalSettings();
+        }
+        y += 26.f;
+        const std::string msg = on && !skinOk_ && !skinErr_.empty() ? skinErr_ : skinMsg_;
+        if (!msg.empty()) ui_.text(ui_.fit(msg, f, panel.w - 30.f), x0, y, f, on && !skinOk_ ? T.acc : T.muted);
+        y += 14.f;
+    }
+    c.fillRect(Rect{x0, y, panel.w - 30.f, 1.f}, T.rule);
+
     // fond perso : image, GIF animé ou vidéo glissé ici (ou n'importe où sur l'interface)
     y += 9.f;
     ui_.text("FOND", x0, y, f, T.ink);
@@ -750,12 +900,13 @@ void Editor::drawThemePanel() {
         std::string l1, l2;
         Color c1 = T.ink;
         const std::string err = backdrop_.error();
-        if (bgPath_.empty()) {
-            l1 = "GLISSE UNE IMAGE OU UNE";
-            l2 = "VID\xC3\x89O ICI (PNG, JPG, GIF, MP4, MOV)";
+        if (bgShown_.empty()) {
+            l1 = "GLISSE UNE IMAGE OU";
+            l2 = "UNE VID\xC3\x89O ICI (MP4, MOV\xE2\x80\xA6)";
             c1 = T.muted;
         } else {
-            l1 = files::baseName(bgPath_);
+            l1 = files::baseName(bgShown_);
+            if (bgFromSkin_) l1 = "SKIN \xC2\xB7 " + l1;
             if (l1.size() > 30) l1 = l1.substr(0, 28) + "\xE2\x80\xA6";
             if (backdrop_.loading()) l2 = "CHARGEMENT\xE2\x80\xA6";
             else if (!err.empty()) { l2 = err; c1 = T.acc; }
@@ -799,6 +950,16 @@ void Editor::drawThemePanel() {
     };
     slider("VOILE", "bgDim", m_.bgDim, 0.f, 0.9f);
     slider("CARTES", "bgPan", m_.bgPanels, 0.5f, 1.f);
+    // verre : les cartes laissent voir le fond flouté (style verre dépoli)
+    ui_.text("VERRE", x0, y + 6.f, f, T.muted);
+    for (int k = 0; k < 2; ++k) {
+        const Rect r{xs + (float)k * (ws * 0.5f + 2.f), y, ws * 0.5f - 2.f, 22.f};
+        if (ui_.button(makeId("glass", k), r, k ? "OUI" : "NON", ui_.miniStyle(m_.glassOn.load() == (k == 1)))) {
+            m_.glassOn = k == 1;
+            m_.saveGlobalSettings();
+        }
+    }
+    y += 28.f;
     y += 2.f;
     c.fillRect(Rect{x0, y, panel.w - 30.f, 1.f}, T.rule);
     y += 10.f;
@@ -1629,13 +1790,20 @@ void Editor::drawFx() {
 // --- glisser-déposer de fichiers WAV ------------------------------------------------------------------------
 void Editor::handleDrops() {
     const Input& in = ui_.in();
-    const Rect scrA{39.f, 126.f, 331.8f, 306.2f}, scrB{909.2f, 126.f, 331.8f, 306.2f};
-    const Rect dz{381.f, 782.2f, 556.f, 99.8f};
+    // zones de dépôt, à la place de leur bloc
+    const Pt oa = blkOff_[kBSonOscA], ob = blkOff_[kBSonOscB], oi = blkOff_[kBWtImport];
+    const Rect scrA = Rect{39.f, 126.f, 331.8f, 306.2f}.moved(oa.x, oa.y), scrB = Rect{909.2f, 126.f, 331.8f, 306.2f}.moved(ob.x, ob.y);
+    const Rect dz = Rect{381.f, 782.2f, 556.f, 99.8f}.moved(oi.x, oi.y);
     dropA_ = in.dragOver && tab_ == 0 && scrA.contains(in.dragPos);
     dropB_ = in.dragOver && tab_ == 0 && scrB.contains(in.dragPos);
     dropWt_ = in.dragOver && tab_ == 6 && dz.contains(in.dragPos);
     if (in.dropped.empty()) return;
     const std::string& path = in.dropped.front();
+    // skin (.raw2skin, dossier de skin) : installé et appliqué
+    if (!pbOpen_ && isSkinFile(path)) {
+        installAndApplySkin(path);
+        return;
+    }
     // image ou vidéo : fond de l'interface (sauf sur la banque de presets)
     if (!pbOpen_ && media::isMediaFile(path)) {
         setBackground(path);

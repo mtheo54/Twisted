@@ -13,6 +13,7 @@ set(RAW2_UI_SOURCES
   src/ui/EditorWt.cpp
   src/ui/EmbeddedFonts.cpp
   src/ui/Backdrop.cpp
+  src/ui/Blocks.cpp
   src/platform/MediaCommon.cpp
   ${RAW2_FONTS_CPP})
 

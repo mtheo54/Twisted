@@ -63,8 +63,13 @@ private:
     std::unordered_map<uint64_t, CTFontRef> fonts_;      // (face, taille)
     std::unordered_map<std::string, CTLineRef> lines_;   // texte mis en forme (couleur prise du contexte)
     std::unordered_map<uint64_t, CGImageRef> tiles_;     // motifs répétés (points du châssis, lentilles de VIE)
-    CGImageRef img_ = nullptr;                          // image du fond (dernier id dessiné)
-    unsigned long long imgId_ = 0;
+    // images du fond (net et flouté pour le verre) : petit cache par identifiant
+    struct ImgSlot {
+        CGImageRef img = nullptr;
+        unsigned long long id = 0, used = 0;
+    };
+    ImgSlot img_[3];
+    unsigned long long imgTick_ = 0;
 };
 
 } // namespace raw2::ui

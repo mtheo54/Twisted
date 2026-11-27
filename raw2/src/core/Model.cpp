@@ -704,7 +704,8 @@ void Model::loadGlobalSettings() {
     std::string text;
     json::Value v;
     if (!files::readText(files::settingsPath(), text) || !json::Value::parse(text, v)) return;
-    theme = std::clamp((int)v["theme"].num(0), 0, kNumThemes);  // kNumThemes : PERSO
+    theme = std::clamp((int)v["theme"].num(0), 0, kThemeSkin);  // kNumThemes : PERSO, kThemeSkin : skin
+    glassOn = v["glass"].boolean(false);
     persoBase = std::clamp((int)v["persoBase"].num(0), 0, 1);
     persoAcc = (uint32_t)std::clamp(v["persoAcc"].num((double)0xFF4D00), 0.0, (double)0xFFFFFF);
     bgDim = std::clamp((float)v["bgDim"].num(0.45), 0.f, 0.9f);
@@ -712,6 +713,7 @@ void Model::loadGlobalSettings() {
     {
         std::lock_guard<std::mutex> lk(bgMutex);
         bgPath = v["bgPath"].str();
+        skinDir = v["skin"].str();
     }
     zoomPct = zoomFrom(v);
     favorites.clear();
@@ -730,7 +732,9 @@ void Model::saveGlobalSettings() {
     {
         std::lock_guard<std::mutex> lk(bgMutex);
         v.set("bgPath", bgPath);
+        v.set("skin", skinDir);
     }
+    v.set("glass", glassOn.load());
     v.set("zoom", zoomPct.load());
     v.set("zoomV", 1);
     json::Value fav = json::Value::array();
@@ -832,7 +836,7 @@ bool Model::loadState(const std::string& s, ParamSink* sink) {
     mix.limitCeilDb = std::clamp((float)mx["limitCeil"].num(-1.0), -3.f, 0.f);
     const json::Value& ui = v["ui"];
     if (ui.isObject()) {
-        theme = std::clamp((int)ui["theme"].num(0), 0, kNumThemes);  // kNumThemes : PERSO
+        theme = std::clamp((int)ui["theme"].num(0), 0, kThemeSkin);
         zoomPct = zoomFrom(ui);
         // « tab2 » : 6 pages (EFX ajoutée en 3) ; les anciens états n'ont que « tab » sur 5 pages
         if (ui["tab5"].isNumber()) setTab(std::clamp((int)ui["tab5"].num(0), 0, 8));

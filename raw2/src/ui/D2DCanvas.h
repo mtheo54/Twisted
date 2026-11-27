@@ -85,9 +85,14 @@ private:
     void strokePath(const Pt* p, int n, Color c, float width, bool closed, ID2D1StrokeStyle* style);
 
     ID2D1RenderTarget* rt_ = nullptr;
-    ID2D1Bitmap* img_ = nullptr;  // image du fond (dernier id dessiné)
-    unsigned long long imgId_ = 0;
-    int imgW_ = 0, imgH_ = 0;
+    // images du fond (net et flouté pour le verre) : petit cache par identifiant
+    struct ImgSlot {
+        ID2D1Bitmap* bmp = nullptr;
+        unsigned long long id = 0, used = 0;
+        int w = 0, h = 0;
+    };
+    ImgSlot img_[3];
+    unsigned long long imgTick_ = 0;
     ID2D1SolidColorBrush* brush_ = nullptr;
     ID2D1StrokeStyle* roundJoin_ = nullptr;
     std::map<std::pair<int, int>, ID2D1StrokeStyle*> dashes_;

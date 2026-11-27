@@ -1010,10 +1010,13 @@ void Editor::drawSon() {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
     soundAdvisorFrame();
+    blk(kBSonOscA);
     oscCard(0, Rect{24.f, 73.f, 361.8f, 499.2f});
+    blk(kBSonOscB);
     oscCard(1, Rect{894.2f, 73.f, 361.8f, 499.2f});
 
     // --- VIE ---
+    blk(kBSonVie);
     const Rect vc{395.8f, 73.f, 488.4f, 499.2f};
     ui_.card(vc);
     ui_.cardHeader(vc, "VIE", false, 14.f, 12.f);
@@ -1066,9 +1069,15 @@ void Editor::drawSon() {
     }
 
     // --- modules ---
+    blk(kBSonModules);
     {
         const Rect strip{24.f, 582.2f, 1232.f, 56.f};
-        ui_.box(strip, T.card, T.rule);
+        if (ui_.glass().on) {
+            ui_.glassPane(strip, T.card, false);
+            ui_.box(strip, Color{0, 0, 0, 0}, T.rule.withAlpha(0.55f));
+        } else {
+            ui_.box(strip, T.card, T.rule);
+        }
         const float cw = 1230.f / 3.f;
         for (int i = 0; i < 3; ++i) {
             const Rect cell{25.f + (float)i * cw, 583.2f, cw, 54.f};
@@ -1078,10 +1087,12 @@ void Editor::drawSon() {
     }
 
     // --- SORTIE : clavier sur toute la largeur (la PROPOSITION du MIX IA reste dans l'onglet MIX IA) ---
+    blk(kBSonSortie);
     keyboardCard(Rect{24.f, 648.2f, 1232.f, 287.8f});
 
     // --- menus déroulants (calque 3) ---
     ui_.setLayer(3);
+    blk(kBSonVie);
     if (seedOpen_) {
         const Rect menu{877.2f - 0.f, 313.2f, 132.f, 126.f};
         c.fillRect(menu.moved(2.f, 2.f), T.btnEdge);
@@ -1100,6 +1111,7 @@ void Editor::drawSon() {
             ui_.text(items[k], r.x + 15.f, r.y + 8.f, s.font, T.ink);
         }
     }
+    blkEnd();
     if (roleOpen_) {
         const Rect menu{1061.f, 707.2f, 172.f, 188.f};
         c.fillRect(menu.moved(2.f, 2.f), T.scrMuted);
@@ -1130,6 +1142,7 @@ void Editor::drawSon() {
 void Editor::drawVie() {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
+    blk(kBVieAutomate);
     const Rect card{24.f, 73.f, 880.f, 863.f};
     ui_.card(card);
     ui_.cardHeader(card, "AUTOMATE", false, 14.f, 12.f);
@@ -1159,6 +1172,7 @@ void Editor::drawVie() {
     }
 
     // --- CONTRÔLES ---
+    blk(kBVieControles);
     const Rect pc{916.f, 73.f, 340.f, 863.f};
     ui_.card(pc);
     ui_.cardHeader(pc, "CONTR\xC3\x94LES", false, 14.f, 12.f);
@@ -1298,13 +1312,19 @@ void Editor::drawMod() {
         (void)nk;
         (void)T;
     }
-    if (st_.modSide == 1) drawRack();
-    else drawModMatrix();
+    if (st_.modSide == 1) {
+        blk(kBModRack);
+        drawRack();
+    } else {
+        drawModMatrix();
+    }
+    blkEnd();
 }
 
 void Editor::drawModMatrix() {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
+    blk(kBModMatrice);
     const Rect card{24.f, 115.f, 880.f, 821.f};
     ui_.card(card);
     ui_.cardHeader(card, "MATRICE DE ROUTAGE", false, 14.f, 12.f);
@@ -1465,6 +1485,7 @@ void Editor::drawModMatrix() {
     }
 
     // --- LIAISON ---
+    blk(kBModLiaison);
     const Rect lc{916.f, 115.f, 340.f, 191.f};
     ui_.card(lc);
     ui_.cardHeader(lc, "LIAISON", false, 14.f, 12.f);
@@ -1577,6 +1598,7 @@ void Editor::drawModMatrix() {
     const int nItems = (int)keys.size() + nRoutes;
     const int visible = std::max(3, std::min(6, nItems));
     const float listH = std::max(98.f, (float)visible * 34.f - 4.f);
+    blk(kBModPatchs);
     const Rect pc{916.f, 318.f, 340.f, 74.f + listH};
     ui_.card(pc);
     ui_.cardHeader(pc, "PATCHS ACTIFS", false, 14.f, 12.f);

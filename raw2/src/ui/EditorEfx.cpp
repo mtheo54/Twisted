@@ -255,6 +255,7 @@ void Editor::drawEfx() {
     }
 
     // --- RACK ---
+    blk(kBEfxRack);
     const Rect rack{24.f, 73.f, 369.6f, 693.f};
     ui_.card(rack);
     ui_.cardHeader(rack, "RACK", false, 10.f, 10.f);
@@ -355,6 +356,7 @@ void Editor::drawEfx() {
     // --- éditeur de l'effet choisi ---
     const int fx = std::clamp(st_.fxSel, 0, kNumFx - 1);
     const bool on = P(fxParam(fx, kFxOn)) > 0.5f;
+    blk(kBEfxEditeur);
     const Rect ed{403.6f, 73.f, 852.4f, 693.f};
     ui_.card(ed);
     int pos = 0;
@@ -476,6 +478,7 @@ void Editor::drawEfx() {
     }
 
     // --- SORTIE FX : sec / traité et DRY / WET ---
+    blk(kBEfxSortie);
     const Rect so{24.f, 776.f, 1232.f, 160.f};
     ui_.card(so);
     ui_.text("SORTIE FX", 39.f, 795.5f, Font{Face::Pixel, 16.f, 1.28f}, T.ink, 16.f);
@@ -529,12 +532,13 @@ void Editor::drawEfx() {
     }
     fxBars(Rect{883.f, 839.f, 358.f, 86.f});
 
-    // --- menus (calque 3) ---
+    // --- menus (calque 3) : ils appartiennent à la carte de l'effet ---
     ui_.setLayer(3);
+    blk(kBEfxEditeur);
     auto menu = [&](float x, float y, float w, int n, const char* const* items, int cur, bool up, auto onPick) {
         const float ih = 27.f;
         const Rect mr{x, up ? y - 4.f - ih * (float)n - 2.f : y, w, ih * (float)n + 2.f};
-        fxMenuRect_ = mr;
+        fxMenuRect_ = ui_.toAbs(mr);
         c.fillRect(mr.moved(3.f, 3.f), T.btnEdge);
         ui_.box(mr, T.card, T.ink, 0.f);
         for (int k = 0; k < n; ++k) {
@@ -556,6 +560,7 @@ void Editor::drawEfx() {
     } else {
         fxMenu_ = 0;
     }
+    blkEnd();
     ui_.setLayer(0);
 }
 

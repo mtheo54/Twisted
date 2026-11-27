@@ -5,6 +5,7 @@
 //   option : theme | presets | save | xy | menus | drag
 #include "core/Files.h"
 #include "core/Model.h"
+#include "core/Skin.h"
 #include "dsp/Engine.h"
 #include "ui/Editor.h"
 #if defined(__APPLE__)
@@ -68,6 +69,20 @@ int main(int argc, char** argv) {
         m.bgPath = p;
     }
     if (const char* p = std::getenv("RAW2_SNAP_ACC")) m.persoAcc = (uint32_t)std::strtoul(p, nullptr, 16);  // accent PERSO
+    if (const char* p = std::getenv("RAW2_SNAP_SKIN")) {  // skin : .raw2skin ou dossier, installé puis appliqué
+        std::string dir, err;
+        Skin sk;
+        if (installSkin(p, dir, err) && loadSkin(dir, sk, err)) {
+            std::lock_guard<std::mutex> lk(m.bgMutex);
+            m.skinDir = dir;
+            m.theme = Model::kThemeSkin;
+            m.bgDim = sk.voile;
+            m.bgPanels = sk.cards;
+            m.glassOn = sk.glass;
+        } else {
+            std::fprintf(stderr, "skin : %s\n", err.c_str());
+        }
+    }
     m.setTab(tab);
     Engine eng(m);
     eng.prepare(48000.0, 256);
@@ -221,6 +236,37 @@ int main(int argc, char** argv) {
     cairo_surface_write_to_png(surf, argv[1]);
     run = false;
     audio.join();
+    // vignettes pour ABRASION SKIN STUDIO : la même image (son arrêté, même instant) redessinée avec
+    // chaque skin de RAW2_SNAP_SPRITES (« dossier;dossier;... »), enregistrée en <sortie>.<n>.png
+    if (const char* sp = std::getenv("RAW2_SNAP_SPRITES")) {
+        std::string list = sp;
+        int k = 0;
+        for (size_t a = 0; a <= list.size();) {
+            size_t b = list.find(';', a);
+            if (b == std::string::npos) b = list.size();
+            const std::string dir = list.substr(a, b - a);
+            a = b + 1;
+            if (dir.empty()) continue;
+            Skin sk;
+            std::string err;
+            if (!loadSkin(dir, sk, err)) { std::fprintf(stderr, "skin %s : %s\n", dir.c_str(), err.c_str()); continue; }
+            {
+                std::lock_guard<std::mutex> lk(m.bgMutex);
+                m.skinDir = dir;
+                m.bgPath.clear();
+            }
+            m.theme = Model::kThemeSkin;
+            m.bgDim = sk.voile;
+            m.bgPanels = sk.cards;
+            m.glassOn = sk.glass;
+            ui::Input fin = in;
+            fin.pressed = fin.released = fin.down = false;
+            fin.mouse = {-100.f, -100.f};
+            ed.frame(canvas, fin);
+            const std::string out = std::string(argv[1]) + "." + std::to_string(k++) + ".png";
+            cairo_surface_write_to_png(surf, out.c_str());
+        }
+    }
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
     return 0;

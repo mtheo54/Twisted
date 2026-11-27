@@ -327,6 +327,7 @@ void Editor::drawWt() {
     const float livePos = std::clamp(liveAudio ? (tg == 0 ? m_.readouts.posA.load() : m_.readouts.posB.load()) : P(tg == 0 ? kAPos : kBPos), 0.f, 1.f);
 
     // ============ TABLE ============
+    blk(kBWtTable);
     const Rect tc{24.f, 73.f, 330.f, 863.f};
     ui_.card(tc);
     ui_.cardHeader(tc, "TABLE", false, 14.f, 12.f);
@@ -431,6 +432,7 @@ void Editor::drawWt() {
     }
 
     // ============ ÉDITEUR DE FRAME ============
+    blk(kBWtEditeur);
     const Rect ec{366.f, 73.f, 586.f, 515.7f};
     ui_.card(ec);
     ui_.cardHeader(ec, "\xC3\x89" "DITEUR DE FRAME", false, 14.f, 12.f);
@@ -539,6 +541,7 @@ void Editor::drawWt() {
     }
 
     // ============ IMPORT / EXPORT ============
+    blk(kBWtImport);
     const Rect ic{366.f, 600.7f, 586.f, 335.3f};
     ui_.card(ic);
     ui_.cardHeader(ic, "IMPORT / EXPORT", false, 14.f, 12.f);
@@ -635,6 +638,7 @@ void Editor::drawWt() {
     ui_.text(fmt("export : %d frames \xC3\x97 2048 pts \xC2\xB7 16 bits \xC2\xB7 compatible import Serum", nf), 381.f, 910.f, Font{Face::Mono, 10.f, 0.6f}, T.muted);
 
     // ============ TRAITEMENT ============
+    blk(kBWtTraitement);
     const Rect pc{964.f, 73.f, 292.f, 299.f};
     ui_.card(pc);
     ui_.cardHeader(pc, "TRAITEMENT", false, 14.f, 12.f);
@@ -671,6 +675,7 @@ void Editor::drawWt() {
     }
 
     // ============ PRÉRÉGLAGES / OUTILS ============
+    blk(kBWtPrereglages);
     const Rect fc{964.f, 384.f, 292.f, 552.f};
     ui_.card(fc);
     ui_.cardHeader(fc, "PR\xC3\x89R\xC3\x89GLAGES", false, 14.f, 12.f);

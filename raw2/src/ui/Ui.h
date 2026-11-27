@@ -54,9 +54,30 @@ public:
     // calques : un bloqueur empêche les widgets des calques inférieurs de réagir
     void setLayer(int l) { layer_ = l; }
     int layer() const { return layer_; }
-    void addBlocker(const Rect& r, int layer) { blockers_.push_back({r, layer}); }
+    void addBlocker(const Rect& r, int layer) { blockers_.push_back({r.moved(off_.x, off_.y), layer}); }  // stocké en absolu
     void clearBlockers() { blockers_.clear(); }
     bool hit(const Rect& r) const;
+
+    // Blocs déplacés par un skin : tout ce qui est dessiné entre pushOffset et popOffset est décalé, la
+    // souris (in()) est rendue en coordonnées locales ; les bloqueurs restent en coordonnées absolues.
+    void pushOffset(float dx, float dy);
+    void popOffset();
+    Pt offset() const { return off_; }
+    Rect toAbs(const Rect& r) const { return r.moved(off_.x, off_.y); }
+    Pt mouseAbs() const { return Pt{in_.mouse.x + off_.x, in_.mouse.y + off_.y}; }
+
+    // Effet verre d'un skin : les cartes montrent le fond flouté qui est derrière elles.
+    struct Glass {
+        bool on = false;
+        ImageView img;      // fond flouté
+        Rect src;           // partie de img qui couvre plate
+        Rect plate;         // zone (absolue) couverte par le fond
+        float tint = 0.35f; // couleur de carte posée sur le flou
+        float edge = 0.6f;  // liseré lumineux
+    };
+    void setGlass(const Glass& g) { glass_ = g; }
+    const Glass& glass() const { return glass_; }
+    void glassPane(const Rect& r, Color tint, bool dark);  // fond de carte en verre (r local)
 
     struct Interact {
         bool hovered = false, pressed = false, held = false, clicked = false, released = false;
@@ -123,6 +144,9 @@ private:
     Canvas* c_ = nullptr;
     const Theme* t_ = nullptr;
     Input in_;
+    Pt off_{0.f, 0.f};
+    std::vector<Pt> offStack_;
+    Glass glass_;
     int layer_ = 0;
     std::vector<Blocker> blockers_;
     Id active_ = 0;

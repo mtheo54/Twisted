@@ -13,6 +13,9 @@ struct Frames {
     std::vector<std::vector<unsigned char>> px;  // une entrée par image, w * h * 4 octets
     std::vector<float> dur;                      // durée de chaque image (s)
     bool video = false;
+    // version floutée de chaque image (effet verre), petite : remplie par ui::Backdrop
+    int bw = 0, bh = 0;
+    std::vector<std::vector<unsigned char>> blur;
 };
 
 // Vrai si l'extension est une image ou une vidéo que RAW 2 sait lire en fond.

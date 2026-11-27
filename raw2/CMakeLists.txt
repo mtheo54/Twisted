@@ -70,6 +70,8 @@ add_library(raw2_core STATIC
   src/core/Modulation.cpp
   src/core/Samples.cpp
   src/core/Instruments.cpp
+  src/core/Zip.cpp
+  src/core/Skin.cpp
   src/dsp/Fft.cpp
   src/dsp/Wavetable.cpp
   src/dsp/WavetableOps.cpp

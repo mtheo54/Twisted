@@ -91,6 +91,8 @@ void Ui::beginFrame(Canvas& c, const Theme& t, const Input& in) {
     c_ = &c;
     t_ = &t;
     in_ = in;
+    off_ = Pt{0.f, 0.f};
+    offStack_.clear();
     layer_ = 0;
     cursor_ = Cursor::Arrow;
     activeSeen_ = false;
@@ -103,9 +105,57 @@ void Ui::endFrame() {
 
 bool Ui::hit(const Rect& r) const {
     if (!r.contains(in_.mouse)) return false;
+    const Pt a = mouseAbs();
     for (const Blocker& b : blockers_)
-        if (b.layer > layer_ && b.r.contains(in_.mouse)) return false;
+        if (b.layer > layer_ && b.r.contains(a)) return false;
     return true;
+}
+
+void Ui::pushOffset(float dx, float dy) {
+    offStack_.push_back(Pt{dx, dy});
+    off_.x += dx;
+    off_.y += dy;
+    in_.mouse.x -= dx; in_.mouse.y -= dy;
+    in_.dragPos.x -= dx; in_.dragPos.y -= dy;
+    in_.dropPos.x -= dx; in_.dropPos.y -= dy;
+    c_->save();
+    c_->translate(dx, dy);
+}
+
+void Ui::popOffset() {
+    if (offStack_.empty()) return;
+    const Pt d = offStack_.back();
+    offStack_.pop_back();
+    off_.x -= d.x;
+    off_.y -= d.y;
+    in_.mouse.x += d.x; in_.mouse.y += d.y;
+    in_.dragPos.x += d.x; in_.dragPos.y += d.y;
+    in_.dropPos.x += d.x; in_.dropPos.y += d.y;
+    c_->restore();
+}
+
+void Ui::glassPane(const Rect& r, Color tint, bool dark) {
+    const Glass& g = glass_;
+    if (g.img.bgra && g.plate.w > 0.f && g.plate.h > 0.f) {
+        // la partie du fond flouté exactement derrière la carte (position absolue)
+        const Rect a = toAbs(r);
+        const float kx = g.src.w / g.plate.w, ky = g.src.h / g.plate.h;
+        Rect s{g.src.x + (a.x - g.plate.x) * kx, g.src.y + (a.y - g.plate.y) * ky, a.w * kx, a.h * ky};
+        // bords : rester dans l'image
+        s.x = std::clamp(s.x, 0.f, (float)g.img.w - 1.f);
+        s.y = std::clamp(s.y, 0.f, (float)g.img.h - 1.f);
+        s.w = std::min(s.w, (float)g.img.w - s.x);
+        s.h = std::min(s.h, (float)g.img.h - s.y);
+        c_->image(g.img, r, s, 1.f);
+    }
+    c_->fillRect(r, tint.withAlpha(tint.a * g.tint));
+    // reflets : bande claire en haut, liseré lumineux en haut et à gauche, ombre en bas et à droite
+    const float e = g.edge;
+    c_->fillRect(Rect{r.x, r.y, r.w, std::min(r.h * 0.38f, 120.f)}, Color{1.f, 1.f, 1.f, (dark ? 0.035f : 0.07f) * e});
+    c_->fillRect(Rect{r.x + 1.f, r.y + 1.f, r.w - 2.f, 1.f}, Color{1.f, 1.f, 1.f, 0.55f * e});
+    c_->fillRect(Rect{r.x + 1.f, r.y + 2.f, 1.f, r.h - 3.f}, Color{1.f, 1.f, 1.f, 0.30f * e});
+    c_->fillRect(Rect{r.x + 1.f, r.b() - 2.f, r.w - 2.f, 1.f}, Color{0.f, 0.f, 0.f, 0.22f * e});
+    c_->fillRect(Rect{r.r() - 2.f, r.y + 2.f, 1.f, r.h - 3.f}, Color{0.f, 0.f, 0.f, 0.16f * e});
 }
 
 Ui::Interact Ui::interact(Id id, const Rect& r, Cursor cur) {
@@ -207,12 +257,22 @@ void Ui::crosses(const Rect& r, Color col) {
 }
 
 void Ui::card(const Rect& r) {
-    box(r, t_->card, t_->line);
+    if (glass_.on) {
+        glassPane(r, t_->card, false);
+        box(r, Color{0, 0, 0, 0}, t_->line.withAlpha(0.55f));
+    } else {
+        box(r, t_->card, t_->line);
+    }
     screws(r, false);
 }
 
 void Ui::cardTerm(const Rect& r) {
-    box(r, t_->scr, t_->scrLine);
+    if (glass_.on && t_->scr.a < 0.999f) {
+        glassPane(r, t_->scr, true);
+        box(r, Color{0, 0, 0, 0}, t_->scrLine);
+    } else {
+        box(r, t_->scr, t_->scrLine);
+    }
     screws(r, true);
 }
 

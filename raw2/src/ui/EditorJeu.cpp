@@ -67,6 +67,7 @@ void Editor::drawJeu() {
     auto stripLabel = [&](const char* s, float x, float cardY) { ui_.text(s, x, cardY + kStripLbl, lf, T.muted); };
 
     // ================= VOIX =================
+    blk(kBJeuVoix);
     {
         const float X = kColX[0], x0 = X + kPad, w = kColW - 2.f * kPad;
         const Rect card{X, kRow1, kColW, kRow1H};
@@ -104,6 +105,7 @@ void Editor::drawJeu() {
     }
 
     // ================= 808 · SUB =================
+    blk(kBJeu808);
     {
         const float X = kColX[1], x0 = X + kPad, w = kColW - 2.f * kPad;
         const Rect card{X, kRow1, kColW, kRow1H};
@@ -148,6 +150,7 @@ void Editor::drawJeu() {
     }
 
     // ================= FILTRE · VÉLOCITÉ =================
+    blk(kBJeuFiltre);
     {
         const float X = kColX[2], x0 = X + kPad, w = kColW - 2.f * kPad;
         const Rect card{X, kRow1, kColW, kRow1H};
@@ -184,6 +187,7 @@ void Editor::drawJeu() {
     }
 
     // ================= MACROS =================
+    blk(kBJeuMacros);
     {
         const Rect card{24.f, kRow2, 1232.f, kRow2H};
         ui_.card(card);
@@ -227,6 +231,7 @@ void Editor::drawJeu() {
     }
 
     // ================= ARPÈGE =================
+    blk(kBJeuArpege);
     {
         const Rect card{24.f, kRow3, kColX[1] + kColW - 24.f, kRow3H};
         const float x0 = card.x + kPad;
@@ -280,6 +285,7 @@ void Editor::drawJeu() {
     }
 
     // ================= ACCORDS =================
+    blk(kBJeuAccords);
     {
         const float X = kColX[2], x0 = X + kPad, w = kColW - 2.f * kPad;
         const Rect card{X, kRow3, kColW, kRow3H};

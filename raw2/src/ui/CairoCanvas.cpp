@@ -291,6 +291,7 @@ void CairoCanvas::image(const ImageView& img, const Rect& dst, const Rect& src, 
     cairo_translate(cr_, -src.x, -src.y);
     cairo_set_source_surface(cr_, s, 0, 0);
     cairo_pattern_set_filter(cairo_get_source(cr_), CAIRO_FILTER_GOOD);
+    cairo_pattern_set_extend(cairo_get_source(cr_), CAIRO_EXTEND_PAD);  // bords nets quand on agrandit
     cairo_paint_with_alpha(cr_, alpha);
     cairo_restore(cr_);
     cairo_surface_destroy(s);
