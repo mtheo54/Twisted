@@ -41,6 +41,17 @@ Les instruments installés sont dans /Library/Application Support/ABRASION/RAW 2
 Tes propres instruments SFZ se placent dans ~/Documents/Raw 2/Instruments.
 Les packs de presets sont communs à Mac et Windows.
 
+Skins (habillage)
+-----------------
+Bouton à côté du logo > panneau THÈME :
+- SKIN : choisir un skin (< >). 4 skins d'usine : VERRE NOIR, VIE NÉON, ONIRIQUE, ALU GIVRÉ.
+- Un fichier .raw2skin glissé sur RAW 2 s'installe et s'applique (~/Documents/Raw 2/Skins).
+- FOND : glisser une image, un GIF animé ou une vidéo (MP4, MOV) sur RAW 2 ; VERRE : cartes en
+  verre dépoli. Le thème PERSO choisit la couleur d'accent.
+Pour créer ses skins : « ABRASION Skin Studio.html » (dans l'image disque), à ouvrir dans un
+navigateur. Gratuit, hors ligne : couleurs, fond (image, vidéo ou fond animé généré), verre et
+place de chaque bloc, puis EXPORTER .raw2skin.
+
 En cas de souci
 ---------------
 Contacter le support ONIRIQUE (https://onirique.store) en joignant le fichier

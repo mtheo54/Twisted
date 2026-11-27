@@ -1,0 +1,36 @@
+{
+  "format": "raw2skin",
+  "version": 1,
+  "name": "VIE NÉON",
+  "author": "ABRASION",
+  "base": "nothing",
+  "colors": {
+    "acc": "#00E5A0",
+    "hl": "#00E5A0",
+    "ledTab": "#00E5A0",
+    "ptr": "#00E5A0",
+    "waveB": "#00E5A0",
+    "barPk": "#00E5A0",
+    "tagAcc": "#00E5A0",
+    "onAcc": "#0D0D0D",
+    "card": "#0C1412",
+    "scr": "#020806B0",
+    "waveA": "#E8FFF6",
+    "lifeBg": "#03080699"
+  },
+  "background": {
+    "file": "fond.mp4",
+    "voile": 0.35,
+    "grille": false
+  },
+  "glass": {
+    "on": true,
+    "flou": 0.6,
+    "teinte": 0.5,
+    "reflet": 0.55
+  },
+  "cards": {
+    "opacite": 0.85
+  },
+  "layout": {}
+}

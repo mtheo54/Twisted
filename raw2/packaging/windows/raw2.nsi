@@ -51,9 +51,16 @@ Section "RAW 2 (plugin VST3 + appli sans DAW)" SecCore
   SetOutPath "$INSTDIR"
   File "stage\app\RAW2Preview.exe"
   File "stage\LISEZ-MOI.txt"
+  File "stage\ABRASION Skin Studio.html"
+  ; skins d'usine (dossier d'usine commun : %ProgramData%\ABRASION\RAW 2\Skins), remplacés en entier
+  RMDir /r "$APPDATA\ABRASION\RAW 2\Skins"
+  SetOutPath "$APPDATA\ABRASION\RAW 2"
+  File /r "stage\factory\Skins"
+  SetOutPath "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\RAW 2"
   CreateShortcut "$SMPROGRAMS\RAW 2\RAW 2 (sans DAW).lnk" "$INSTDIR\RAW2Preview.exe"
   CreateShortcut "$SMPROGRAMS\RAW 2\Mode d'emploi RAW 2.lnk" "$INSTDIR\LISEZ-MOI.txt"
+  CreateShortcut "$SMPROGRAMS\RAW 2\ABRASION Skin Studio.lnk" "$INSTDIR\ABRASION Skin Studio.html"
   CreateShortcut "$SMPROGRAMS\RAW 2\Désinstaller RAW 2.lnk" "$INSTDIR\Desinstaller.exe"
   WriteUninstaller "$INSTDIR\Desinstaller.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\RAW2" "DisplayName" "RAW 2 (ABRASION)"
@@ -84,7 +91,7 @@ Section "Grand Piano (90 Mo)" SecPiano
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "Le plugin VST3 (pour la DAW) et RAW 2 sans DAW. Obligatoire."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "Le plugin VST3 (pour la DAW), RAW 2 sans DAW, les skins d'usine et ABRASION Skin Studio. Obligatoire."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecInst} "Wurlitzer, CP80, cuivres, cordes, sax, basses G-funk, orgues… dans Documents\Raw 2\Instruments, et les 34 presets qui s'en servent."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecPiano} "Le piano à queue (Documents\Raw 2\Instruments\Grand Piano)."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
@@ -95,6 +102,8 @@ Section "Uninstall"
   RMDir /r "$COMMONFILES64\VST3\RAW2.vst3"
   Delete "$INSTDIR\RAW2Preview.exe"
   Delete "$INSTDIR\LISEZ-MOI.txt"
+  Delete "$INSTDIR\ABRASION Skin Studio.html"
+  RMDir /r "$APPDATA\ABRASION\RAW 2\Skins"
   Delete "$INSTDIR\Desinstaller.exe"
   RMDir "$INSTDIR"
   RMDir "$PROGRAMFILES64\ABRASION"

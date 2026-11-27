@@ -38,6 +38,16 @@ PARTAGER UN PACK DE SONS
 TAILLE DE LA FENÊTRE
   Le petit bouton à droite du logo : thème et ZOOM (75, 85, 100, 125, 150 %).
 
+SKINS (HABILLAGE)
+  Même panneau (bouton à droite du logo) :
+  - SKIN : choisir un skin (< >). 4 skins d'usine : VERRE NOIR, VIE NÉON, ONIRIQUE, ALU GIVRÉ.
+  - Un fichier .raw2skin glissé sur RAW 2 s'installe et s'applique (Documents\Raw 2\Skins).
+  - FOND : glisse une image, un GIF animé ou une vidéo (MP4, MOV, AVI, WMV) sur RAW 2 ;
+    VERRE : cartes en verre dépoli. Le thème PERSO choisit la couleur d'accent.
+  Pour créer tes skins : menu Démarrer > RAW 2 > ABRASION Skin Studio (s'ouvre dans le
+  navigateur, gratuit, hors ligne) : couleurs, fond (image, vidéo ou fond animé généré), verre,
+  place de chaque bloc, puis EXPORTER .raw2skin.
+
 EN CAS DE SOUCI
   Contacte le support ONIRIQUE (https://onirique.store) et joins le fichier
   Documents\Raw 2\RAW2-journal.txt (versions, presets chargés, erreurs).

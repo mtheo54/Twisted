@@ -1,0 +1,32 @@
+{
+  "format": "raw2skin",
+  "version": 1,
+  "name": "ALU GIVRÉ",
+  "author": "ABRASION",
+  "base": "alu",
+  "colors": {
+    "acc": "#FF4D00",
+    "hl": "#FF4D00",
+    "ledTab": "#FF4D00",
+    "ptr": "#FF4D00",
+    "waveB": "#FF4D00",
+    "barPk": "#FF4D00",
+    "tagAcc": "#FF4D00",
+    "onAcc": "#0D0D0D"
+  },
+  "background": {
+    "file": "fond.jpg",
+    "voile": 0.1,
+    "grille": true
+  },
+  "glass": {
+    "on": true,
+    "flou": 0.8,
+    "teinte": 0.6,
+    "reflet": 0.85
+  },
+  "cards": {
+    "opacite": 0.85
+  },
+  "layout": {}
+}

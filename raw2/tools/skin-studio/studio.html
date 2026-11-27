@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABRASION Skin Studio</title>
+<meta name="description" content="Créer des skins pour RAW 2 : fonds image, vidéo ou générés, couleurs, verre dépoli et placement des blocs. Gratuit, hors ligne.">
+<style>
+@font-face{font-family:"JBM";src:url(__FONT_MONO__) format("woff2");font-weight:400}
+@font-face{font-family:"JBM";src:url(__FONT_MONOB__) format("woff2");font-weight:700}
+@font-face{font-family:"Pix";src:url(__FONT_PIXEL__) format("woff2")}
+:root{
+  --bg:#0E0E10;--dot:#232327;--panel:#17171A;--panel2:#1F1F23;--line:#2E2E34;--rule:#3A3A41;
+  --ink:#F0F0F0;--muted:#86868D;--acc:#FF4D00;--onacc:#0D0D0D;--scr:#070708;--ok:#3CDC8C;--warn:#FFB000;
+}
+:root[data-theme="light"]{
+  --bg:#DCDCD6;--dot:#C4C4BE;--panel:#F4F4F0;--panel2:#ECECE7;--line:#1A1A1A;--rule:#0D0D0D;
+  --ink:#0D0D0D;--muted:#6F6F6A;--scr:#0D0D0D;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#DCDCD6;--dot:#C4C4BE;--panel:#F4F4F0;--panel2:#ECECE7;--line:#1A1A1A;--rule:#0D0D0D;
+  --ink:#0D0D0D;--muted:#6F6F6A;--scr:#0D0D0D;}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:12px/1.45 "JBM",ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;
+  background-image:radial-gradient(var(--dot) 1.1px,transparent 1.2px);background-size:16px 16px;min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.top{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
+.logo{width:38px;height:38px;background:var(--ink);display:grid;place-items:center;flex:none}
+.logo i{width:14px;height:14px;background:var(--acc);display:block}
+.brand{display:flex;flex-direction:column;line-height:1}
+.brand small{font-size:9px;letter-spacing:.35em;color:var(--muted)}
+.brand b{font:22px "Pix",monospace;letter-spacing:.08em;margin-top:4px}
+.brand b em{font-style:normal;color:var(--acc)}
+.tag{border:1px solid var(--line);padding:3px 8px;font-size:10px;letter-spacing:.18em;color:var(--muted);white-space:nowrap}
+.spacer{flex:1}
+.btn{background:var(--panel);border:1px solid var(--rule);padding:8px 12px;cursor:pointer;letter-spacing:.12em;text-transform:uppercase;font-size:11px;
+  box-shadow:2px 2px 0 var(--rule);transition:transform .05s;white-space:nowrap;border-radius:2px}
+.btn:hover{border-color:var(--ink)}
+.btn:active{transform:translate(2px,2px);box-shadow:none}
+.btn.acc{background:var(--acc);color:#0D0D0D;border-color:#0D0D0D;box-shadow:2px 2px 0 #0D0D0D;font-weight:700}
+.btn.on{background:var(--ink);color:var(--panel)}
+.btn.sm{padding:5px 8px;font-size:10px;box-shadow:1px 1px 0 var(--rule)}
+.btn:disabled{opacity:.4;cursor:default}
+.app{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);position:relative;border-radius:2px}
+.card::before,.card::after{content:"+";position:absolute;color:var(--muted);font-size:12px;line-height:1}
+.card::before{top:5px;left:7px}.card::after{bottom:5px;right:7px}
+.card>summary,.card>.hd{list-style:none;cursor:pointer;padding:14px 16px 12px 24px;display:flex;align-items:baseline;gap:10px;border-bottom:1px solid transparent}
+.card[open]>summary{border-bottom-color:var(--line)}
+.card>summary::-webkit-details-marker{display:none}
+.hd .n,summary .n{color:var(--acc);font-size:10px;letter-spacing:.2em}
+.hd h2,summary h2{font:15px "Pix",monospace;letter-spacing:.1em;margin:0;text-transform:uppercase}
+summary .chev{margin-left:auto;color:var(--muted);transition:transform .15s}
+.card[open] summary .chev{transform:rotate(90deg)}
+.body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;align-items:center;gap:8px;min-width:0}
+.row>label,.lbl{width:92px;flex:none;color:var(--muted);font-size:10px;letter-spacing:.16em;text-transform:uppercase}
+.row input[type=text]{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);padding:7px 9px;border-radius:2px}
+.row input[type=range]{flex:1;min-width:0;accent-color:var(--acc)}
+.row output{width:44px;text-align:right;font-size:11px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sw{border:1px solid var(--line);padding:6px;cursor:pointer;display:flex;gap:8px;align-items:center;background:var(--panel2);font-size:10px;letter-spacing:.12em;border-radius:2px}
+.sw i{width:18px;height:18px;border:1px solid #0D0D0D;display:grid;place-items:center;flex:none}
+.sw i b{width:7px;height:7px;display:block}
+.sw.on{outline:2px solid var(--ink);outline-offset:1px}
+.color{display:flex;align-items:center;gap:8px;min-width:0}
+.color input[type=color]{width:34px;height:26px;border:1px solid var(--line);padding:0;background:none;cursor:pointer;flex:none}
+.color .hex{flex:1;min-width:0;font-size:11px;color:var(--muted)}
+.hue{height:16px;flex:1;border:1px solid var(--rule);cursor:ew-resize;position:relative;border-radius:2px;
+  background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+.hue b{position:absolute;top:-4px;bottom:-4px;width:4px;margin-left:-2px;background:var(--ink);border:1px solid var(--panel)}
+.drop{border:1px dashed var(--muted);padding:16px;text-align:center;color:var(--muted);cursor:pointer;font-size:11px;letter-spacing:.08em;border-radius:2px}
+.drop.over{border-color:var(--acc);color:var(--ink);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.info{font-size:10.5px;color:var(--muted);letter-spacing:.04em}
+.info.warn{color:var(--warn)}
+.info.err{color:#FF5A4F}
+.adv{max-height:320px;overflow:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+.adv .color label{width:96px;flex:none;font-size:10px;color:var(--muted)}
+.adv input[type=range]{width:60px}
+.stage{min-width:0;display:flex;flex-direction:column;gap:10px;position:sticky;top:84px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs .btn{padding:7px 10px}
+.view{position:relative;background:var(--scr);border:1px solid var(--line);padding:10px;border-radius:2px}
+canvas#pv{width:100%;height:auto;display:block;aspect-ratio:4/3;touch-action:none;cursor:default}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:10.5px}
+.blist{display:flex;flex-direction:column;gap:6px}
+.bl{display:grid;grid-template-columns:1fr 58px 58px 26px;gap:6px;align-items:center;padding:5px 6px;border:1px solid var(--line);background:var(--panel2);border-radius:2px;cursor:pointer}
+.bl.sel{border-color:var(--acc)}
+.bl.bad{border-color:#FF5A4F}
+.bl span{font-size:10.5px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bl input{width:100%;background:var(--panel);border:1px solid var(--line);padding:3px 5px;font-size:11px;border-radius:2px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:10px 16px;font-size:12px;letter-spacing:.06em;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;border-radius:2px}
+.toast.show{opacity:1}
+.prog{height:4px;background:var(--panel2);border:1px solid var(--line)}
+.prog b{display:block;height:100%;background:var(--acc);width:0}
+footer{padding:18px;color:var(--muted);font-size:10.5px;letter-spacing:.12em;text-align:center}
+footer b{color:var(--ink)}
+.howto{font-size:11px;color:var(--muted);line-height:1.6}
+.howto b{color:var(--ink);font-weight:400}
+@media (max-width:980px){
+  .app{grid-template-columns:1fr}
+  .stage{position:static;order:-1}
+  .top{flex-wrap:wrap}
+  .tag{display:none}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo" aria-hidden="true"><i></i></div>
+  <div class="brand"><small>ABRASION</small><b>SKIN <em>STUDIO</em></b></div>
+  <span class="tag">POUR RAW 2 · GRATUIT · HORS LIGNE</span>
+  <span class="spacer"></span>
+  <button class="btn" id="bNew" title="Repartir de zéro">Nouveau</button>
+  <button class="btn" id="bOpen" title="Ouvrir un .raw2skin pour le modifier">Ouvrir</button>
+  <button class="btn acc" id="bExport">Exporter .raw2skin</button>
+  <input type="file" id="fOpen" accept=".raw2skin" hidden>
+</header>
+
+<main class="app">
+  <aside class="side" id="side"></aside>
+  <section class="stage">
+    <div class="tabs" id="tabs"></div>
+    <div class="view"><canvas id="pv" width="1280" height="960" aria-label="Aperçu de RAW 2 avec le skin"></canvas></div>
+    <div class="bar">
+      <button class="btn sm on" id="tOutline">Contours</button>
+      <button class="btn sm on" id="tSnap">Aimant 8 px</button>
+      <button class="btn sm" id="tResetPage">Réinitialiser la page</button>
+      <span class="hint">glisse un bloc pour le déplacer · flèches : 1 px · maj + flèches : 8 px</span>
+    </div>
+  </section>
+</main>
+<footer>ABRASION SKIN STUDIO · v<span id="ver"></span> · glisse le <b>.raw2skin</b> sur RAW 2 pour l'installer · gratuit, rien n'est envoyé sur internet</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const DATA = /*__DATA__*/null;
+const W = 1280, H = 960, SPR = 0.75;
+const TABS = [[0,"SON"],[7,"JEU"],[8,"SYNTH"],[1,"VIE"],[2,"MODULES"],[3,"ENV / LFO"],[4,"EFX"],[5,"MIX IA"],[6,"WAVETABLE"]];
+const ACC_GROUP = ["acc","hl","ledTab","ptr","waveB","barPk","tagAcc"];
+const TOKEN_LABELS = {chassis:"châssis",chDot:"points du châssis",card:"cartes",line:"bord des cartes",rule:"filets",ink:"texte",muted:"texte discret",
+  scr:"écrans",scrLine:"bord des écrans",scrGrid:"grille des écrans",scrMid:"axe des écrans",scrText:"texte des écrans",scrMuted:"texte discret écrans",
+  scrRule:"filets des écrans",acc:"accent",onAcc:"texte sur accent",hl:"surlignage",ledTab:"led des onglets",ptr:"repère des potards",tabBg:"onglet actif",
+  tabFg:"texte onglet actif",logoBg:"fond du logo",btnBg:"boutons",btnEdge:"bord des boutons",waveA:"onde A",waveB:"onde B",barHi:"barres hautes",
+  barLo:"barres basses",barPk:"crêtes",tickOff:"graduations",knobFace:"face des potards",knobLine:"trait des potards",lifeBg:"fond de la vie",
+  lifeLine:"bord de la vie",dead:"cellules mortes",railBg:"rail",keyNat:"touches blanches",keyNatLine:"bord des touches",keySharp:"touches noires",
+  crs:"repères d'angle",sw:"pastille du thème",inputBg:"champs",div:"séparateurs",old:"cellules âgées"};
+const BASES = ["alu","nothing","titane","crt","ultraviolet","onirique"];
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+// ---------------------------------------------------------------------------------- couleurs
+function parseCss(s){
+  if (Array.isArray(s)) return {r:s[0],g:s[1],b:s[2],a:1};
+  s = String(s||"").replace(/\s+/g,"");
+  let m;
+  if ((m = /^#([0-9a-f]{3})$/i.exec(s))) return {r:parseInt(m[1][0]+m[1][0],16),g:parseInt(m[1][1]+m[1][1],16),b:parseInt(m[1][2]+m[1][2],16),a:1};
+  if ((m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s))) return {r:parseInt(m[1].slice(0,2),16),g:parseInt(m[1].slice(2,4),16),b:parseInt(m[1].slice(4,6),16),a:m[2]?parseInt(m[2],16)/255:1};
+  if ((m = /^rgba?\(([\d.]+),([\d.]+),([\d.]+)(?:,([\d.]+))?\)$/i.exec(s))) return {r:+m[1],g:+m[2],b:+m[3],a:m[4]!==undefined?+m[4]:1};
+  return null;
+}
+const hx2 = v => Math.round(clamp(v,0,255)).toString(16).padStart(2,"0").toUpperCase();
+function toHex(c){ return "#"+hx2(c.r)+hx2(c.g)+hx2(c.b)+(c.a<0.999?hx2(c.a*255):""); }
+const rgba = c => `rgba(${c.r|0},${c.g|0},${c.b|0},${c.a})`;
+function hsvHex(h){ const f=(n)=>{const k=(n+h*6)%6;return 255*(1-Math.max(0,Math.min(k,4-k,1)));}; return "#"+hx2(f(5))+hx2(f(3))+hx2(f(1)); }
+function hueOf(c){ const r=c.r/255,g=c.g/255,b=c.b/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; if(d<1e-6)return 0;
+  let h = mx===r?(g-b)/d:mx===g?2+(b-r)/d:4+(r-g)/d; h/=6; return h<0?h+1:h; }
+const lum = c => (0.2126*c.r+0.7152*c.g+0.0722*c.b)/255;
+
+// ---------------------------------------------------------------------------------- état
+const DEF = () => ({
+  name:"Mon skin", author:"", base:"nothing", colors:{},
+  bg:{kind:"gen", voile:0.30, grille:false,
+      gen:{style:"liquide", c1:"#FF4D00", c2:"#3A0F6B", c3:"#0A0A10", scale:0.5, speed:0.5, seed:7, anim:true, dur:6}},
+  glass:{on:true, flou:0.65, teinte:0.40, reflet:0.65}, cards:0.85, layout:{}
+});
+function fresh(){ const s = DEF(); const keep = S; S = s; setAccent("#FF4D00"); S.colors.scr = "#050508A0"; const r = S; S = keep; return r; }
+let S = DEF();
+let file = null;           // fond importé : {name, type, bytes, url, el (img|video), w, h}
+let tab = 0, modSide = 0, sel = null, outline = true, snap = true;
+const theme = () => {
+  const t = {};
+  const src = DATA.themes[S.base] || DATA.themes.nothing;
+  for (const k in src) { const c = parseCss(src[k]); if (c) t[k] = c; }
+  for (const k in S.colors) { const c = parseCss(S.colors[k]); if (c) t[k] = c; }
+  if (!t.card) t.card = {r:30,g:30,b:30,a:1};
+  return t;
+};
+const baseAccent = () => parseCss((DATA.themes[S.base]||{}).acc) || {r:255,g:77,b:0,a:1};
+function accent(){ return parseCss(S.colors.acc || DATA.themes[S.base].acc); }
+function setAccent(hex){
+  const c = parseCss(hex); if (!c) return;
+  for (const k of ACC_GROUP) S.colors[k] = toHex({...c,a:1});
+  S.colors.onAcc = lum(c) > 0.55 ? "#0D0D0D" : "#FFFFFF";
+}
+const blocksOf = t => DATA.blocks.filter(b => b.tab === t && (t !== 2 || (modSide === 1) === (b.key === "mod.rack")));
+const posOf = b => S.layout[b.key] ? {x:S.layout[b.key][0], y:S.layout[b.key][1]} : {x:b.r[0], y:b.r[1]};
+function setPos(b, x, y){
+  x = clamp(Math.round(x), 8, 1272 - b.r[2]); y = clamp(Math.round(y), 64, 940 - b.r[3]);
+  if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5) delete S.layout[b.key];
+  else S.layout[b.key] = [x, y];
+}
+function overlaps(b){
+  const p = posOf(b);
+  return blocksOf(b.tab).some(o => o !== b && (() => { const q = posOf(o);
+    return p.x < q.x + o.r[2] - 1 && q.x < p.x + b.r[2] - 1 && p.y < q.y + o.r[3] - 1 && q.y < p.y + b.r[3] - 1; })());
+}
+
+// ---------------------------------------------------------------------------------- vignettes
+const sprImg = {};
+function img(key){
+  if (!sprImg[key]) { const i = new Image(); i.src = DATA.sprites[key]; i.onload = () => { recolorCache.clear(); dirty = true; }; sprImg[key] = i; }
+  return sprImg[key];
+}
+const recolorCache = new Map();
+function sprite(t){
+  const base = lightBase() ? "alu" : "nothing";
+  const a = accent(), key = base + "-" + t + "-" + toHex(a);
+  if (recolorCache.has(key)) return recolorCache.get(key);
+  const im = img(base + "-" + t), mk = img(base + "-" + t + "-acc");
+  if (!im.complete || !mk.complete || !im.naturalWidth) return null;
+  const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext("2d", {willReadFrequently:true}); x.drawImage(im, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height);
+  const m = document.createElement("canvas"); m.width = c.width; m.height = c.height;
+  const mx = m.getContext("2d", {willReadFrequently:true}); mx.drawImage(mk, 0, 0);
+  const md = mx.getImageData(0, 0, c.width, c.height).data;
+  const o = parseCss(DATA.themes[base].acc), dr = a.r - o.r, dg = a.g - o.g, db = a.b - o.b;
+  if (dr || dg || db) for (let i = 0; i < d.data.length; i += 4) {
+    const k = md[i] / 255; if (k < 0.02) continue;
+    d.data[i] = clamp(d.data[i] + dr*k, 0, 255); d.data[i+1] = clamp(d.data[i+1] + dg*k, 0, 255); d.data[i+2] = clamp(d.data[i+2] + db*k, 0, 255);
+  }
+  x.putImageData(d, 0, 0);
+  recolorCache.set(key, c);
+  if (recolorCache.size > 24) recolorCache.delete(recolorCache.keys().next().value);
+  return c;
+}
+// les thèmes clairs utilisent les vignettes ALU, les sombres celles de NOTHING
+function lightBase(){ const c = parseCss(DATA.themes[S.base].card); return c && lum(c) > 0.5; }
+
+// ---------------------------------------------------------------------------------- générateurs de fond
+const gen = document.createElement("canvas"); gen.width = 640; gen.height = 480;
+let lifeState = null;
+function rng(seed){ let s = (seed*2654435761)>>>0 || 1; return () => (s = (s ^ (s << 13)) >>> 0, s = (s ^ (s >>> 17)) >>> 0, s = (s ^ (s << 5)) >>> 0, (s >>> 0) / 4294967296); }
+function drawGen(cv, t, g){
+  const x = cv.getContext("2d"), w = cv.width, h = cv.height, k = w / 640;
+  const c1 = parseCss(g.c1), c2 = parseCss(g.c2), c3 = parseCss(g.c3);
+  const T = g.dur || 6, ph = 2*Math.PI*((t % T) / T), sp = 0.4 + g.speed*1.6, R = rng(g.seed);
+  x.globalCompositeOperation = "source-over"; x.filter = "none"; x.globalAlpha = 1;
+  switch (g.style) {
+  case "liquide": {
+    x.fillStyle = rgba(c3); x.fillRect(0,0,w,h);
+    x.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 6; i++) {
+      const a = R()*6.28, b = R()*6.28, fx = 1 + (i%3), fy = 1 + ((i+1)%2);
+      const cx = w*(0.5 + 0.38*Math.sin(fx*ph*Math.round(sp) + a)), cy = h*(0.5 + 0.38*Math.cos(fy*ph*Math.round(sp) + b));
+      const r = w*(0.25 + 0.35*g.scale)*(0.7 + 0.5*R());
+      const c = i % 2 ? c2 : c1, gr = x.createRadialGradient(cx,cy,0,cx,cy,r);
+      gr.addColorStop(0, rgba({...c,a:0.85})); gr.addColorStop(1, rgba({...c,a:0}));
+      x.fillStyle = gr; x.fillRect(0,0,w,h);
+    }
+    break; }
+  case "aurore": {
+    const gr = x.createLinearGradient(0,0,0,h); gr.addColorStop(0, rgba(c3)); gr.addColorStop(1, rgba(mix(c3, c2, 0.35)));
+    x.fillStyle = gr; x.fillRect(0,0,w,h); x.globalCompositeOperation = "lighter";
+    for (let l = 0; l < 4; l++) {
+      const off = R()*6.28, c = l % 2 ? c2 : c1, amp = h*(0.08 + 0.12*g.scale);
+      for (let xi = 0; xi < w; xi += 3*k) {
+        const yy = h*(0.35 + 0.1*l) + amp*Math.sin(xi/w*6.28*(1+l*0.5) + ph*Math.max(1,Math.round(sp)) + off);
+        const gg = x.createLinearGradient(0, yy - h*0.3, 0, yy + h*0.05);
+        gg.addColorStop(0, rgba({...c,a:0})); gg.addColorStop(0.85, rgba({...c,a:0.22})); gg.addColorStop(1, rgba({...c,a:0}));
+        x.fillStyle = gg; x.fillRect(xi, yy - h*0.3, 3*k + 1, h*0.35);
+      }
+    }
+    break; }
+  case "vie": {
+    const cs = Math.round(8 + 14*g.scale)*k, nx = Math.ceil(w/cs), ny = Math.ceil(h/cs);
+    const step = Math.floor(t * (3 + 9*g.speed));
+    if (!lifeState || lifeState.nx !== nx || lifeState.ny !== ny || lifeState.seed !== g.seed || step < lifeState.step) {
+      const r = rng(g.seed), a = new Uint8Array(nx*ny); for (let i = 0; i < a.length; i++) a[i] = r() < 0.28 ? 1 : 0;
+      lifeState = {nx, ny, seed:g.seed, step:0, a, age:new Uint16Array(nx*ny)};
+    }
+    while (lifeState.step < step) {
+      const {nx, ny, a, age} = lifeState, b = new Uint8Array(a.length);
+      for (let y = 0; y < ny; y++) for (let xx = 0; xx < nx; xx++) {
+        let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx||dy) n += a[((y+dy+ny)%ny)*nx + (xx+dx+nx)%nx];
+        const i = y*nx + xx; b[i] = (n === 3 || (n === 2 && a[i])) ? 1 : 0; age[i] = b[i] ? Math.min(age[i]+1, 60) : 0;
+      }
+      let alive = 0; for (const v of b) alive += v; if (alive < a.length*0.04) { const r = rng(g.seed + step); for (let i = 0; i < b.length; i++) if (r() < 0.2) b[i] = 1; }
+      lifeState.a = b; lifeState.step++;
+    }
+    x.fillStyle = rgba(c3); x.fillRect(0,0,w,h);
+    const {a, age} = lifeState;
+    for (let y = 0; y < ny; y++) for (let xx = 0; xx < nx; xx++) {
+      const i = y*nx + xx;
+      x.fillStyle = a[i] ? rgba(mix(c1, c2, Math.min(1, age[i]/20))) : rgba({...mix(c3, c2, 0.25),a:1});
+      x.beginPath(); x.arc(xx*cs + cs/2, y*cs + cs/2, a[i] ? cs*0.38 : cs*0.1, 0, 6.283); x.fill();
+    }
+    break; }
+  case "ondes": {
+    x.fillStyle = rgba(c3); x.fillRect(0,0,w,h); x.lineWidth = 2*k;
+    const n = Math.round(10 + 30*g.scale);
+    for (let l = 0; l < n; l++) {
+      const u = l/(n-1), c = mix(c1, c2, u); x.strokeStyle = rgba({...c, a:0.25 + 0.6*(1-Math.abs(u-0.5)*2)});
+      x.beginPath();
+      for (let xi = 0; xi <= w; xi += 4*k) {
+        const yy = h*(0.15 + 0.7*u) + h*0.06*Math.sin(xi/w*6.28*2 + ph*Math.max(1,Math.round(sp)) + u*4) * Math.sin(xi/w*3.14);
+        xi ? x.lineTo(xi, yy) : x.moveTo(xi, yy);
+      }
+      x.stroke();
+    }
+    break; }
+  case "plasma": {
+    const pw = 160, phh = 120, d = x.createImageData(pw, phh), f = 2 + 6*g.scale, q = Math.max(1, Math.round(sp));
+    for (let y = 0; y < phh; y++) for (let xx = 0; xx < pw; xx++) {
+      const u = xx/pw, v = y/phh;
+      let s = Math.sin(u*f + ph*q) + Math.sin((v*f + ph*q)*0.8) + Math.sin((u+v)*f*0.7 - ph*q) + Math.sin(Math.hypot(u-0.5, v-0.5)*f*2 + ph*q);
+      s = (s + 4) / 8; const c = s < 0.5 ? mix(c3, c2, s*2) : mix(c2, c1, (s-0.5)*2), i = (y*pw + xx)*4;
+      d.data[i] = c.r; d.data[i+1] = c.g; d.data[i+2] = c.b; d.data[i+3] = 255;
+    }
+    const tmp = document.createElement("canvas"); tmp.width = pw; tmp.height = phh; tmp.getContext("2d").putImageData(d, 0, 0);
+    x.imageSmoothingQuality = "high"; x.drawImage(tmp, 0, 0, w, h);
+    break; }
+  case "grain": {
+    const gr = x.createLinearGradient(0, 0, w, h); gr.addColorStop(0, rgba(c1)); gr.addColorStop(0.55, rgba(c2)); gr.addColorStop(1, rgba(c3));
+    x.fillStyle = gr; x.fillRect(0,0,w,h);
+    const nw = Math.round(160 + 240*(1-g.scale)), nh = Math.round(nw*0.75), d = x.createImageData(nw, nh), r = rng(g.seed + Math.floor(t*12*g.speed + 1));
+    for (let i = 0; i < d.data.length; i += 4) { const v = r()*255; d.data[i] = d.data[i+1] = d.data[i+2] = v; d.data[i+3] = 40; }
+    const tmp = document.createElement("canvas"); tmp.width = nw; tmp.height = nh; tmp.getContext("2d").putImageData(d, 0, 0);
+    x.globalCompositeOperation = "overlay"; x.drawImage(tmp, 0, 0, w, h);
+    break; }
+  case "glitch": {
+    x.fillStyle = rgba(c3); x.fillRect(0,0,w,h);
+    const n = Math.round(12 + 40*g.scale), fr = Math.floor(t * (2 + 10*g.speed)), r = rng(g.seed*31 + fr);
+    for (let i = 0; i < n; i++) {
+      const c = r() < 0.5 ? c1 : c2, bh = h*(0.005 + 0.06*r()*r());
+      x.fillStyle = rgba({...c, a:0.25 + 0.7*r()}); x.fillRect(r()*w*0.6 - w*0.1, r()*h, w*(0.2 + 0.8*r()), bh);
+    }
+    x.fillStyle = "rgba(0,0,0,.22)"; for (let y = 0; y < h; y += 3*k) x.fillRect(0, y, w, k);
+    break; }
+  }
+  x.globalCompositeOperation = "source-over";
+}
+function mix(a, b, t){ return {r:a.r+(b.r-a.r)*t, g:a.g+(b.g-a.g)*t, b:a.b+(b.b-a.b)*t, a:1}; }
+
+// ---------------------------------------------------------------------------------- aperçu
+const pv = $("#pv"), ctx = pv.getContext("2d");
+const blurC = document.createElement("canvas"), blurX = blurC.getContext("2d");
+const tiny = document.createElement("canvas"), tinyX = tiny.getContext("2d");
+let dirty = true, t0 = performance.now();
+const canFilter = (() => { try { const c = document.createElement("canvas").getContext("2d"); c.filter = "blur(2px)"; return c.filter === "blur(2px)"; } catch (e) { return false; } })();
+function bgSource(){
+  if (S.bg.kind === "gen") return {el:gen, w:gen.width, h:gen.height};
+  if (S.bg.kind === "file" && file && file.el) {
+    const el = file.el, w = el.videoWidth || el.naturalWidth || 0, h = el.videoHeight || el.naturalHeight || 0;
+    if (w && h) return {el, w, h};
+  }
+  return null;
+}
+// recadrage « cover » de la plaque (-20, -20, 1320 x 1000), comme dans RAW 2
+function cover(w, h){ const pw = W + 40, ph = H + 40, k = pw / ph; let sx = 0, sy = 0, sw = w, sh = h;
+  if (w/h > k) { sw = h*k; sx = (w - sw)/2; } else { sh = w/k; sy = (h - sh)/2; } return {sx, sy, sw, sh}; }
+function render(){
+  const T = theme(), src = bgSource(), now = (performance.now() - t0)/1000;
+  if (S.bg.kind === "gen") drawGen(gen, S.bg.gen.anim ? now : 0, S.bg.gen);
+  ctx.setTransform(1,0,0,1,0,0); ctx.globalAlpha = 1; ctx.filter = "none";
+  ctx.fillStyle = rgba({...T.chassis, a:1}); ctx.fillRect(0, 0, W, H);
+  const glassImg = S.glass.on && src;
+  if (src) {
+    const c = cover(src.w, src.h);
+    ctx.drawImage(src.el, c.sx, c.sy, c.sw, c.sh, -20, -20, W + 40, H + 40);
+    ctx.fillStyle = rgba({...T.chassis, a:S.bg.voile}); ctx.fillRect(0, 0, W, H);
+    if (glassImg) {   // flou équivalent à celui du plugin (réduction + flou de boîte)
+      const b = Math.max(0.1, S.glass.flou), tw = 360 - 220*b, sig = (1 + 3*b) * 1.1, px = sig * (W + 40) / tw;
+      blurC.width = 330; blurC.height = 250;
+      if (canFilter) { blurX.filter = `blur(${(px*330/(W+40)).toFixed(2)}px)`; blurX.drawImage(src.el, c.sx, c.sy, c.sw, c.sh, 0, 0, 330, 250); blurX.filter = "none"; }
+      else { tiny.width = Math.max(8, Math.round(tw/ (1+2*b))); tiny.height = Math.round(tiny.width*0.757);
+        tinyX.drawImage(src.el, c.sx, c.sy, c.sw, c.sh, 0, 0, tiny.width, tiny.height); blurX.imageSmoothingQuality = "high"; blurX.drawImage(tiny, 0, 0, 330, 250); }
+    }
+  }
+  if (S.bg.grille && T.chDot) { ctx.fillStyle = rgba(T.chDot); for (let y = 0; y < H; y += 16) for (let x = 0; x < W; x += 16) ctx.fillRect(x - 0.6, y - 0.6, 1.2, 1.2); }
+  const sp = sprite(tab);
+  // en-tête et pied de page : fixes
+  if (src) { ctx.fillStyle = rgba({...T.chassis, a:0.8}); ctx.fillRect(0, 938, W, 22); }
+  if (sp) { ctx.drawImage(sp, 0, 0, sp.width, 64*SPR, 0, 0, W, 64); ctx.drawImage(sp, 0, 938*SPR, sp.width, 22*SPR, 0, 938, W, 22); }
+  for (const b of blocksOf(tab)) {
+    const p = posOf(b), [ox, oy, bw, bh] = b.r;
+    pane(T, p.x, p.y, bw, bh, src, !!glassImg);
+    if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, bw, bh);
+    else { ctx.fillStyle = rgba(T.ink || {r:240,g:240,b:240,a:1}); ctx.font = "16px Pix"; ctx.fillText(b.name, p.x + 16, p.y + 32); }
+  }
+  if (outline) for (const b of blocksOf(tab)) {
+    const p = posOf(b), bad = overlaps(b), on = sel === b.key;
+    ctx.save(); ctx.lineWidth = on ? 3 : 1.5; ctx.setLineDash(on ? [] : [6, 5]);
+    ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(255,255,255,.55)";
+    ctx.strokeRect(p.x + 1, p.y + 1, b.r[2] - 2, b.r[3] - 2);
+    const label = b.name + (S.layout[b.key] ? "  ·  " + p.x + ", " + p.y : "");
+    ctx.font = "bold 13px JBM"; const lw = ctx.measureText(label).width + 16, ly = p.y + b.r[3] - 28;
+    ctx.fillStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(10,10,12,.78)"; ctx.fillRect(p.x + 4, ly, lw, 22);
+    ctx.fillStyle = on || bad ? "#0D0D0D" : "#F0F0F0"; ctx.fillText(label, p.x + 12, ly + 16); ctx.restore();
+  }
+}
+function pane(T, x, y, w, h, src, glass){
+  const card = T.card;
+  if (glass) {
+    const sx = (x + 20) * 330 / (W + 40), sy = (y + 20) * 250 / (H + 40);
+    ctx.drawImage(blurC, sx, sy, w*330/(W+40), h*250/(H+40), x, y, w, h);
+    ctx.fillStyle = rgba({...card, a:card.a*S.glass.teinte}); ctx.fillRect(x, y, w, h);
+    const e = S.glass.reflet, dark = lum(card) < 0.5;
+    ctx.fillStyle = `rgba(255,255,255,${(dark ? 0.035 : 0.07)*e})`; ctx.fillRect(x, y, w, Math.min(h*0.38, 120));
+    ctx.fillStyle = `rgba(255,255,255,${0.55*e})`; ctx.fillRect(x + 1, y + 1, w - 2, 1);
+    ctx.fillStyle = `rgba(255,255,255,${0.30*e})`; ctx.fillRect(x + 1, y + 2, 1, h - 3);
+    ctx.fillStyle = `rgba(0,0,0,${0.22*e})`; ctx.fillRect(x + 1, y + h - 2, w - 2, 1);
+    ctx.fillStyle = `rgba(0,0,0,${0.16*e})`; ctx.fillRect(x + w - 2, y + 2, 1, h - 3);
+  } else {
+    ctx.fillStyle = rgba({...card, a:card.a*(src ? S.cards : 1)}); ctx.fillRect(x, y, w, h);
+  }
+}
+function loop(){
+  const anim = (S.bg.kind === "gen" && S.bg.gen.anim) || (S.bg.kind === "file" && file && file.video);
+  if (dirty || anim) { render(); dirty = false; }
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------------------------- déplacement des blocs
+let drag = null;
+function canvasPt(e){ const r = pv.getBoundingClientRect(); return {x:(e.clientX - r.left)*W/r.width, y:(e.clientY - r.top)*H/r.height}; }
+function blockAt(p){ const bs = blocksOf(tab); for (let i = bs.length - 1; i >= 0; i--) { const b = bs[i], q = posOf(b); if (p.x >= q.x && p.x < q.x + b.r[2] && p.y >= q.y && p.y < q.y + b.r[3]) return b; } return null; }
+pv.addEventListener("pointerdown", e => {
+  const p = canvasPt(e), b = blockAt(p);
+  sel = b ? b.key : null; buildBlocks(); dirty = true;
+  if (!b) return;
+  const q = posOf(b); drag = {b, dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y}; pv.setPointerCapture(e.pointerId); pv.style.cursor = "grabbing";
+});
+pv.addEventListener("pointermove", e => {
+  const p = canvasPt(e);
+  if (!drag) { pv.style.cursor = blockAt(p) ? "grab" : "default"; return; }
+  let x = p.x - drag.dx, y = p.y - drag.dy;
+  if (snap) { x = Math.round(x/8)*8; y = Math.round(y/8)*8;
+    for (const o of blocksOf(tab)) if (o !== drag.b) { const q = posOf(o);   // aimant sur les bords des autres blocs
+      for (const [a, c] of [[x, q.x], [x, q.x + o.r[2] + 12], [x + drag.b.r[2] + 12, q.x], [x + drag.b.r[2], q.x + o.r[2]]]) if (Math.abs(a - c) < 7) x += c - a;
+      for (const [a, c] of [[y, q.y], [y, q.y + o.r[3] + 12], [y + drag.b.r[3] + 12, q.y], [y + drag.b.r[3], q.y + o.r[3]]]) if (Math.abs(a - c) < 7) y += c - a; }
+    const d = drag.b.r; if (Math.abs(x - d[0]) < 7) x = d[0]; if (Math.abs(y - d[1]) < 7) y = d[1]; }
+  setPos(drag.b, x, y); dirty = true; syncBlockInputs();
+});
+pv.addEventListener("pointerup", () => {
+  if (!drag) return;
+  // lâché en grande partie sur un autre bloc : les deux échangent leur place
+  const b = drag.b, p = posOf(b);
+  let best = null, area = 0;
+  for (const o of blocksOf(tab)) if (o !== b) { const q = posOf(o);
+    const ix = Math.min(p.x + b.r[2], q.x + o.r[2]) - Math.max(p.x, q.x), iy = Math.min(p.y + b.r[3], q.y + o.r[3]) - Math.max(p.y, q.y);
+    const a = ix > 0 && iy > 0 ? ix*iy / Math.min(b.r[2]*b.r[3], o.r[2]*o.r[3]) : 0; if (a > area) { area = a; best = o; } }
+  const same = best && Math.abs(best.r[2] - b.r[2]) < 0.15*b.r[2] && Math.abs(best.r[3] - b.r[3]) < 0.15*b.r[3];
+  if (best && same && area > 0.45) { const q = posOf(best); setPos(best, drag.x0, drag.y0); setPos(b, q.x, q.y); toast(b.name + " ⇄ " + best.name); }
+  drag = null; pv.style.cursor = "grab"; dirty = true; buildBlocks(); save();
+});
+document.addEventListener("keydown", e => {
+  if (!sel || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const d = {ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1]}[e.key]; if (!d) return;
+  e.preventDefault(); const b = DATA.blocks.find(b => b.key === sel), p = posOf(b), s = e.shiftKey ? 8 : 1;
+  setPos(b, p.x + d[0]*s, p.y + d[1]*s); dirty = true; syncBlockInputs(); save();
+});
+
+// ---------------------------------------------------------------------------------- interface
+function h(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) { const v = attrs[k]; if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else if (v !== false && v != null) e.setAttribute(k, v === true ? "" : v); }
+  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+}
+function section(n, title, open, ...kids){ return h("details", {class:"card", open}, h("summary", {}, h("span", {class:"n"}, n), h("h2", {}, title), h("span", {class:"chev"}, "▸")), h("div", {class:"body"}, ...kids)); }
+function slider(label, get, set, min, max, step, fmt){
+  const out = h("output", {}, fmt(get()));
+  const inp = h("input", {type:"range", min, max, step, value:get(), oninput:e => { set(+e.target.value); out.textContent = fmt(+e.target.value); dirty = true; }, onchange:save});
+  return h("div", {class:"row"}, h("label", {}, label), inp, out);
+}
+const pct = v => Math.round(v*100) + " %";
+function toggle(label, get, set){
+  const r = h("div", {class:"row"}, h("label", {}, label));
+  const seg = h("div", {class:"seg"});
+  for (const [v, t] of [[false, "NON"], [true, "OUI"]]) seg.append(h("button", {class:"btn sm" + (get() === v ? " on" : ""), onclick:() => { set(v); dirty = true; save(); buildSide(); }}, t));
+  r.append(seg); return r;
+}
+function colorRow(label, key, alpha){
+  const T = theme(), c = T[key] || {r:0,g:0,b:0,a:1};
+  const hex = h("span", {class:"hex"}, toHex(c));
+  const pick = h("input", {type:"color", value:"#" + hx2(c.r) + hx2(c.g) + hx2(c.b), oninput:e => {
+    const n = parseCss(e.target.value); const a = (theme()[key] || {a:1}).a;
+    if (key === "acc") setAccent(e.target.value); else S.colors[key] = toHex({...n, a});
+    hex.textContent = toHex(theme()[key]); recolorCache.clear(); dirty = true; }, onchange:() => { save(); buildSide(); }});
+  const row = h("div", {class:"color"}, h("label", {class:"lbl"}, label), pick, hex);
+  if (alpha) row.append(h("input", {type:"range", min:0, max:1, step:0.01, value:c.a, title:"opacité", oninput:e => {
+    const cur = theme()[key]; S.colors[key] = toHex({...cur, a:+e.target.value}); hex.textContent = S.colors[key]; dirty = true; }, onchange:save}));
+  return row;
+}
+
+function buildSide(){
+  const side = $("#side"); const open = [...side.querySelectorAll(":scope > details")].map(d => d.open); side.innerHTML = "";
+  const T = theme();
+  // 01 SKIN
+  side.append(section("01", "Skin", open[0] ?? true,
+    h("div", {class:"row"}, h("label", {}, "Nom"), h("input", {type:"text", value:S.name, maxlength:48, oninput:e => { S.name = e.target.value; save(); }})),
+    h("div", {class:"row"}, h("label", {}, "Auteur"), h("input", {type:"text", value:S.author, maxlength:48, oninput:e => { S.author = e.target.value; save(); }})),
+    h("div", {class:"lbl"}, "Partir d'un modèle"),
+    h("div", {class:"grid2"}, ...Object.keys(MODELES).map(k => h("button", {class:"btn sm", onclick:() => { applyModel(k); }}, k))),
+    h("div", {class:"howto"}, "1 · règle les couleurs, le fond et le verre", h("br"), "2 · place les blocs page par page dans l'aperçu", h("br"),
+      "3 · ", h("b", {}, "EXPORTER .raw2skin"), " puis glisse le fichier sur RAW 2 (ou panneau THÈME › SKIN)")));
+  // 02 COULEURS
+  const sw = h("div", {class:"swatches"});
+  for (const k of BASES) { const th = DATA.themes[k]; if (!th) continue;
+    sw.append(h("div", {class:"sw" + (S.base === k ? " on" : ""), onclick:() => { S.base = k; S.colors = {}; recolorCache.clear(); dirty = true; save(); buildSide(); }},
+      h("i", {style:`background:${th.sw || th.chassis}`}, h("b", {style:`background:${th.acc}`})), th.name)); }
+  const hueBar = h("div", {class:"hue", title:"teinte de l'accent"}); const knob = h("b", {style:`left:${hueOf(accent())*100}%`}); hueBar.append(knob);
+  const hueSet = e => { const r = hueBar.getBoundingClientRect(), u = clamp((e.clientX - r.left)/r.width, 0, 0.999); setAccent(hsvHex(u)); knob.style.left = u*100 + "%"; recolorCache.clear(); dirty = true; };
+  hueBar.addEventListener("pointerdown", e => { hueBar.setPointerCapture(e.pointerId); hueSet(e); hueBar.onpointermove = hueSet; });
+  hueBar.addEventListener("pointerup", () => { hueBar.onpointermove = null; save(); buildSide(); });
+  const adv = h("div", {class:"adv"});
+  for (const k of Object.keys(TOKEN_LABELS)) if (T[k]) adv.append(colorRow(TOKEN_LABELS[k], k, true));
+  side.append(section("02", "Couleurs", open[1] ?? true,
+    h("div", {class:"lbl"}, "Base"), sw,
+    h("div", {class:"row"}, h("label", {}, "Teinte"), hueBar),
+    colorRow("Accent", "acc"), colorRow("Châssis", "chassis"), colorRow("Cartes", "card", true), colorRow("Écrans", "scr", true),
+    colorRow("Texte", "ink"), colorRow("Bords", "line"),
+    h("details", {}, h("summary", {class:"lbl", style:"cursor:pointer;width:auto"}, "▸ tous les jetons (avancé)"),
+      h("div", {class:"info"}, "L'aperçu montre l'accent, le châssis, les cartes et le fond ; les autres jetons s'appliquent dans RAW 2."), adv),
+    h("button", {class:"btn sm", onclick:() => { S.colors = {}; recolorCache.clear(); dirty = true; save(); buildSide(); }}, "Couleurs de la base")));
+  // 03 FOND
+  const kinds = h("div", {class:"seg"}, ...[["none", "Aucun"], ["file", "Image / vidéo"], ["gen", "Générer"]].map(([k, t]) =>
+    h("button", {class:"btn sm" + (S.bg.kind === k ? " on" : ""), onclick:() => { S.bg.kind = k; dirty = true; save(); buildSide(); }}, t)));
+  const fondKids = [kinds];
+  if (S.bg.kind === "file") {
+    const inp = h("input", {type:"file", accept:"image/*,video/*,.mov,.m4v", hidden:true, onchange:e => e.target.files[0] && loadMedia(e.target.files[0])});
+    const dz = h("div", {class:"drop", onclick:() => inp.click()}, file ? `${file.name} · ${file.w}×${file.h}${file.video ? " · vidéo " + file.dur.toFixed(1) + " s" : ""} · ${(file.bytes.byteLength/1e6).toFixed(1)} Mo` : "Glisse une image ou une vidéo ici, ou clique",
+      h("br"), h("span", {class:"info"}, "PNG · JPG · GIF animé · WEBP · MP4 · MOV"));
+    ["dragover", "dragenter"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+    ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove("over")));
+    dz.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadMedia(f); });
+    fondKids.push(dz, inp);
+    if (file && file.warn) fondKids.push(h("div", {class:"info warn"}, file.warn));
+  }
+  if (S.bg.kind === "gen") {
+    const g = S.bg.gen;
+    fondKids.push(h("div", {class:"grid3"}, ...Object.entries(GEN_NAMES).map(([k, t]) => h("button", {class:"btn sm" + (g.style === k ? " on" : ""), onclick:() => { g.style = k; lifeState = null; dirty = true; save(); buildSide(); }}, t))));
+    for (const [k, l] of [["c1", "Couleur 1"], ["c2", "Couleur 2"], ["c3", "Fond"]]) {
+      fondKids.push(h("div", {class:"color"}, h("label", {class:"lbl"}, l), h("input", {type:"color", value:g[k], oninput:e => { g[k] = e.target.value; dirty = true; }, onchange:save}), h("span", {class:"hex"}, g[k])));
+    }
+    fondKids.push(slider("Échelle", () => g.scale, v => { g.scale = v; lifeState = null; }, 0, 1, 0.01, pct), slider("Vitesse", () => g.speed, v => g.speed = v, 0, 1, 0.01, pct),
+      h("div", {class:"row"}, h("label", {}, "Hasard"), h("button", {class:"btn sm", onclick:() => { g.seed = (Math.random()*1e6)|0; lifeState = null; dirty = true; save(); }}, "Nouveau tirage")),
+      toggle("Animé", () => g.anim, v => g.anim = v));
+    if (g.anim) fondKids.push(slider("Durée", () => g.dur, v => g.dur = v, 3, 10, 1, v => v + " s"),
+      h("div", {class:"info"}, "Animé : exporté en GIF en boucle (lu par RAW 2 sur Mac et PC). Fixe : PNG 1600 × 1200."));
+  }
+  fondKids.push(slider("Voile", () => S.bg.voile, v => S.bg.voile = v, 0, 0.9, 0.01, pct), toggle("Grille", () => S.bg.grille, v => S.bg.grille = v));
+  side.append(section("03", "Fond", open[2] ?? true, ...fondKids));
+  // 04 VERRE
+  side.append(section("04", "Verre", open[3] ?? true,
+    toggle("Verre", () => S.glass.on, v => S.glass.on = v),
+    slider("Flou", () => S.glass.flou, v => S.glass.flou = v, 0.1, 1, 0.01, pct),
+    slider("Teinte", () => S.glass.teinte, v => S.glass.teinte = v, 0, 1, 0.01, pct),
+    slider("Reflets", () => S.glass.reflet, v => S.glass.reflet = v, 0, 1, 0.01, pct),
+    slider("Cartes", () => S.cards, v => S.cards = v, 0.5, 1, 0.01, pct),
+    h("div", {class:"info"}, "Verre : les cartes montrent le fond flouté derrière elles. Sans verre, CARTES règle leur opacité sur le fond. Mets les écrans en partie transparents (02 · Écrans) pour un effet complet.")));
+  // 05 BLOCS
+  side.append(section("05", "Blocs de la page", open[4] ?? true, h("div", {class:"blist", id:"blist"}),
+    h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
+    h("div", {class:"info"}, "Les blocs gardent leur taille. Un bloc rouge en chevauche un autre : RAW 2 l'accepte, mais l'un cachera l'autre.")));
+  buildBlocks();
+}
+function buildBlocks(){
+  const list = $("#blist"); if (!list) return; list.innerHTML = "";
+  for (const b of blocksOf(tab)) {
+    const p = posOf(b);
+    const num = (v, i) => h("input", {type:"number", value:v, step:1, onchange:e => { const q = posOf(b); setPos(b, i ? q.x : +e.target.value, i ? +e.target.value : q.y); dirty = true; save(); buildBlocks(); }});
+    list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (e.target.tagName !== "INPUT") { sel = b.key; dirty = true; buildBlocks(); } }},
+      h("span", {}, b.name), num(p.x, 0), num(p.y, 1),
+      h("button", {class:"btn sm", title:"place d'origine", onclick:e => { e.stopPropagation(); delete S.layout[b.key]; dirty = true; save(); buildBlocks(); }}, "↺")));
+  }
+}
+function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; el.classList.toggle("bad", overlaps(b)); } }
+function buildTabs(){
+  const t = $("#tabs"); t.innerHTML = "";
+  for (const [id, name] of TABS) t.append(h("button", {class:"btn sm" + (tab === id ? " on" : ""), onclick:() => { tab = id; sel = null; buildTabs(); buildBlocks(); dirty = true; }}, name));
+  if (tab === 2) for (const [v, n] of [[0, "SIDE A"], [1, "SIDE B"]]) t.append(h("button", {class:"btn sm" + (modSide === v ? " on" : ""), style:v ? "" : "margin-left:12px", onclick:() => { modSide = v; buildTabs(); buildBlocks(); dirty = true; }}, n));
+}
+const GEN_NAMES = {liquide:"Liquide", aurore:"Aurore", vie:"Vie", ondes:"Ondes", plasma:"Plasma", grain:"Grain", glitch:"Glitch"};
+const MODELES = {
+  "VERRE NOIR": {base:"nothing", acc:"#FF4D00", colors:{scr:"#050508A0", card:"#141418"}, bg:{kind:"gen", voile:0.30, grille:false, gen:{style:"liquide", c1:"#FF4D00", c2:"#4B1E8C", c3:"#07070A", scale:0.55, speed:0.4, seed:11, anim:true, dur:8}}, glass:{on:true, flou:0.7, teinte:0.45, reflet:0.7}},
+  "ALU GIVRÉ": {base:"alu", acc:"#FF4D00", colors:{}, bg:{kind:"gen", voile:0.12, grille:true, gen:{style:"aurore", c1:"#FFB38A", c2:"#9DB8E0", c3:"#E9E6DF", scale:0.6, speed:0.3, seed:5, anim:true, dur:8}}, glass:{on:true, flou:0.8, teinte:0.6, reflet:0.85}},
+  "ONIRIQUE": {base:"nothing", acc:"#C86BFF", colors:{scr:"#08040C99", card:"#1A1020"}, bg:{kind:"gen", voile:0.25, grille:false, gen:{style:"plasma", c1:"#FF5FA2", c2:"#7A2BD9", c3:"#12061F", scale:0.45, speed:0.35, seed:3, anim:true, dur:8}}, glass:{on:true, flou:0.65, teinte:0.4, reflet:0.6}},
+  "VIE NÉON": {base:"nothing", acc:"#00E5A0", colors:{scr:"#020806B0", card:"#0C1412"}, bg:{kind:"gen", voile:0.35, grille:false, gen:{style:"vie", c1:"#00E5A0", c2:"#1B5CFF", c3:"#030807", scale:0.35, speed:0.5, seed:21, anim:true, dur:8}}, glass:{on:true, flou:0.6, teinte:0.5, reflet:0.55}},
+};
+function applyModel(k){
+  const m = MODELES[k]; const keepName = S.name, keepAuthor = S.author, keepLayout = S.layout;
+  S = DEF(); S.name = keepName === "Mon skin" ? k.charAt(0) + k.slice(1).toLowerCase() : keepName; S.author = keepAuthor; S.layout = keepLayout;
+  S.base = m.base; S.colors = {...m.colors}; setAccent(m.acc); S.bg = JSON.parse(JSON.stringify(m.bg)); S.glass = {...m.glass};
+  lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("modèle « " + k + " » appliqué");
+}
+
+// ---------------------------------------------------------------------------------- fond importé
+async function loadMedia(f){
+  const bytes = await f.arrayBuffer(), url = URL.createObjectURL(f), ext = (f.name.split(".").pop() || "").toLowerCase();
+  const video = f.type.startsWith("video/") || ["mp4", "mov", "m4v", "webm", "mkv", "avi", "wmv"].includes(ext);
+  if (file && file.url) URL.revokeObjectURL(file.url);
+  file = {name:f.name, type:f.type, bytes, url, video, w:0, h:0, dur:0, warn:""};
+  if (video) {
+    const v = document.createElement("video"); v.src = url; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+    await new Promise(r => { v.onloadedmetadata = r; v.onerror = r; }); v.play().catch(() => {});
+    file.el = v; file.w = v.videoWidth; file.h = v.videoHeight; file.dur = v.duration || 0;
+    if (!["mp4", "mov", "m4v"].includes(ext)) file.warn = "RAW 2 lit les vidéos MP4, MOV et M4V (AVI et WMV aussi sous Windows). Convertis ce fichier en MP4 (H.264).";
+    else if (file.dur > 10.5) file.warn = "RAW 2 joue les 10 premières secondes en boucle (480 × 360, 12 images/s).";
+    if (bytes.byteLength > 40e6) file.warn += (file.warn ? " " : "") + "Fichier lourd (" + (bytes.byteLength/1e6).toFixed(0) + " Mo) : le skin le sera aussi.";
+  } else {
+    const i = new Image(); i.src = url; await new Promise(r => { i.onload = r; i.onerror = r; });
+    file.el = i; file.w = i.naturalWidth; file.h = i.naturalHeight;
+    if (!file.w) { toast("image illisible"); file = null; buildSide(); return; }
+    if (ext === "heic") file.warn = "HEIC : lu par RAW 2 sur Mac seulement. Préfère JPG ou PNG pour Windows.";
+  }
+  S.bg.kind = "file"; dirty = true; save(); buildSide();
+}
+
+// ---------------------------------------------------------------------------------- export : GIF, PNG, ZIP
+function crcTable(){ const t = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[i] = c >>> 0; } return t; }
+const CRC = crcTable();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipStore(entries){   // [{name, data:Uint8Array}] -> Blob (sans compression : ce que lit RAW 2)
+  const enc = new TextEncoder(), parts = [], cd = []; let off = 0;
+  const u16 = v => [v & 255, (v >> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  for (const e of entries) {
+    const n = enc.encode(e.name), c = crc32(e.data), sz = e.data.length;
+    const lh = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(c), ...u32(sz), ...u32(sz), ...u16(n.length), ...u16(0)]);
+    parts.push(lh, n, e.data);
+    cd.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(c), ...u32(sz), ...u32(sz), ...u16(n.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), n);
+    off += lh.length + n.length + sz;
+  }
+  const cdSize = cd.reduce((s, p) => s + p.length, 0);
+  const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(entries.length), ...u16(entries.length), ...u32(cdSize), ...u32(off), ...u16(0)]);
+  return new Blob([...parts, ...cd, end], {type:"application/zip"});
+}
+function unzipStore(buf){
+  const a = new Uint8Array(buf), dv = new DataView(buf), out = {};
+  let e = -1; for (let i = a.length - 22; i >= Math.max(0, a.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error("ce n'est pas un .raw2skin");
+  let p = dv.getUint32(e + 16, true); const n = dv.getUint16(e + 10, true), dec = new TextDecoder();
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("archive abîmée");
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), loc = dv.getUint32(p + 42, true);
+    const name = dec.decode(a.subarray(p + 46, p + 46 + nl)); p += 46 + nl + xl + cl;
+    if (name.endsWith("/")) continue;
+    if (method !== 0) throw new Error("archive recompressée : ouvre l'original exporté par le studio");
+    const d = loc + 30 + dv.getUint16(loc + 26, true) + dv.getUint16(loc + 28, true);
+    out[name.split("/").pop()] = a.slice(d, d + size);
+  }
+  return out;
+}
+// GIF animé : palette adaptative (coupe médiane), tramage ordonné, LZW
+function medianCut(samples, n){
+  let boxes = [samples];
+  while (boxes.length < n) {
+    let bi = -1, best = -1, ch = 0;
+    boxes.forEach((b, i) => { if (b.length < 2) return; for (let c = 0; c < 3; c++) { let mn = 255, mx = 0; for (const s of b) { if (s[c] < mn) mn = s[c]; if (s[c] > mx) mx = s[c]; } if (mx - mn > best) { best = mx - mn; bi = i; ch = c; } } });
+    if (bi < 0 || best <= 0) break;
+    const b = boxes[bi].sort((x, y) => x[ch] - y[ch]), m = b.length >> 1;
+    boxes.splice(bi, 1, b.slice(0, m), b.slice(m));
+  }
+  return boxes.map(b => { const s = [0, 0, 0]; for (const p of b) { s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; } return s.map(v => Math.round(v / b.length)); });
+}
+function lzw(idx, minCode){
+  const out = [], clear = 1 << minCode, eoi = clear + 1; let size = minCode + 1, next = eoi + 1, dict = new Map(), cur = 0, bits = 0;
+  const emit = c => { cur |= c << bits; bits += size; while (bits >= 8) { out.push(cur & 255); cur >>>= 8; bits -= 8; } };
+  emit(clear); let w = idx[0];
+  for (let i = 1; i < idx.length; i++) {
+    const k = idx[i], key = w * 4096 + k, v = dict.get(key);
+    if (v !== undefined) { w = v; continue; }
+    emit(w);
+    if (next < 4096) { dict.set(key, next++); if (next > (1 << size) && size < 12) size++; }
+    else { emit(clear); dict = new Map(); size = minCode + 1; next = eoi + 1; }
+    w = k;
+  }
+  emit(w); emit(eoi); if (bits > 0) out.push(cur & 255);
+  return out;
+}
+async function encodeGif(w, h, frames, fps, progress){
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const x = cv.getContext("2d", {willReadFrequently:true});
+  const samples = []; const step = Math.max(1, Math.floor(frames / 8));
+  for (let f = 0; f < frames; f += step) { drawGen(cv, f / fps, S.bg.gen); const d = x.getImageData(0, 0, w, h).data; for (let i = 0; i < d.length; i += 4*23) samples.push([d[i], d[i+1], d[i+2]]); }
+  const pal = medianCut(samples, 256); while (pal.length < 256) pal.push([0, 0, 0]);
+  const lut = new Int16Array(32768).fill(-1);
+  const near = (r, g, b) => { const k = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3); let v = lut[k]; if (v >= 0) return v; let bd = 1e9;
+    for (let i = 0; i < 256; i++) { const p = pal[i], d = (p[0]-r)**2 + (p[1]-g)**2 + (p[2]-b)**2; if (d < bd) { bd = d; v = i; } } lut[k] = v; return v; };
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const bytes = [];
+  const str = s => { for (const ch of s) bytes.push(ch.charCodeAt(0)); }, u16 = v => bytes.push(v & 255, (v >> 8) & 255);
+  str("GIF89a"); u16(w); u16(h); bytes.push(0xF7, 0, 0); for (const p of pal) bytes.push(p[0], p[1], p[2]);
+  bytes.push(0x21, 0xFF, 11); str("NETSCAPE2.0"); bytes.push(3, 1, 0, 0, 0);
+  const delay = Math.round(100 / fps);
+  lifeState = null;
+  for (let f = 0; f < frames; f++) {
+    drawGen(cv, f / fps, S.bg.gen); const d = x.getImageData(0, 0, w, h).data, idx = new Uint8Array(w*h);
+    for (let y = 0, i = 0; y < h; y++) for (let xx = 0; xx < w; xx++, i++) { const t = (bayer[(y & 3)*4 + (xx & 3)] - 7.5) * 1.6;
+      idx[i] = near(clamp(d[i*4] + t, 0, 255) | 0, clamp(d[i*4+1] + t, 0, 255) | 0, clamp(d[i*4+2] + t, 0, 255) | 0); }
+    bytes.push(0x21, 0xF9, 4, 0, delay & 255, delay >> 8, 0, 0);
+    bytes.push(0x2C); u16(0); u16(0); u16(w); u16(h); bytes.push(0, 8);
+    const data = lzw(idx, 8); for (let i = 0; i < data.length; i += 255) { const n = Math.min(255, data.length - i); bytes.push(n); for (let k = 0; k < n; k++) bytes.push(data[i + k]); }
+    bytes.push(0);
+    if (progress) progress((f + 1) / frames);
+    if (f % 4 === 3) await new Promise(r => setTimeout(r));
+  }
+  bytes.push(0x3B); lifeState = null;
+  return new Uint8Array(bytes);
+}
+const canvasBytes = (cv, type, q) => new Promise(r => cv.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), type, q));
+async function backgroundFile(progress){
+  if (S.bg.kind === "file" && file) {
+    const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+    // grande photo : réenregistrée en JPEG 2400 px (le skin reste léger ; RAW 2 réduit à 1600 de toute façon)
+    if (!file.video && ext !== "gif" && (file.bytes.byteLength > 3e6 || Math.max(file.w, file.h) > 2600)) {
+      const k = Math.min(1, 2400 / Math.max(file.w, file.h)), cv = document.createElement("canvas");
+      cv.width = Math.round(file.w*k); cv.height = Math.round(file.h*k); cv.getContext("2d").drawImage(file.el, 0, 0, cv.width, cv.height);
+      return {name:"fond.jpg", data:await canvasBytes(cv, "image/jpeg", 0.9)};
+    }
+    return {name:"fond." + ext, data:new Uint8Array(file.bytes)};
+  }
+  if (S.bg.kind === "gen") {
+    const g = S.bg.gen;
+    if (g.anim) return {name:"fond.gif", data:await encodeGif(480, 360, Math.min(120, Math.round(g.dur*12)), 12, progress)};
+    const cv = document.createElement("canvas"); cv.width = 1600; cv.height = 1200; drawGen(cv, 0, g); lifeState = null;
+    return {name:"fond.png", data:await canvasBytes(cv, "image/png")};
+  }
+  return null;
+}
+function skinJson(bgName){
+  const colors = {}; for (const k in S.colors) colors[k] = S.colors[k];
+  const layout = {}; for (const k in S.layout) layout[k] = S.layout[k];
+  return {format:"raw2skin", version:1, name:S.name.trim() || "Skin", author:S.author.trim(), base:S.base, colors,
+    background:{file:bgName || "", voile:+S.bg.voile.toFixed(3), grille:S.bg.grille},
+    glass:{on:S.glass.on, flou:+S.glass.flou.toFixed(3), teinte:+S.glass.teinte.toFixed(3), reflet:+S.glass.reflet.toFixed(3)},
+    cards:{opacite:+S.cards.toFixed(3)}, layout, studio:{bg:S.bg.kind === "gen" ? S.bg.gen : null}};
+}
+async function exportSkin(){
+  const btn = $("#bExport"); btn.disabled = true; const label = btn.textContent;
+  try {
+    const bg = await backgroundFile(p => btn.textContent = "GIF " + Math.round(p*100) + " %");
+    const entries = [{name:"skin.json", data:new TextEncoder().encode(JSON.stringify(skinJson(bg && bg.name), null, 2))}];
+    if (bg) entries.push(bg);
+    const fname = (S.name.trim() || "skin").replace(/[<>:"/\\|?*\x00-\x1f]/g, "") + ".raw2skin";
+    const blob = new File([zipStore(entries)], fname, {type:"application/octet-stream"}), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = fname;
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast("exporté · " + (blob.size/1e6).toFixed(1) + " Mo · glisse-le sur RAW 2");
+  } catch (e) { toast("export impossible : " + e.message); }
+  btn.disabled = false; btn.textContent = label;
+}
+async function openSkin(f){
+  try {
+    const files = unzipStore(await f.arrayBuffer()), js = files["skin.json"]; if (!js) throw new Error("skin.json absent");
+    const j = JSON.parse(new TextDecoder().decode(js)); if (j.format && j.format !== "raw2skin") throw new Error("ce n'est pas un skin RAW 2");
+    S = DEF(); S.name = j.name || "Skin"; S.author = j.author || ""; if (DATA.themes[j.base]) S.base = j.base;
+    S.colors = j.colors || {}; S.layout = j.layout || {};
+    const bg = j.background || {}; S.bg.voile = bg.voile ?? 0.35; S.bg.grille = bg.grille ?? true;
+    const gl = j.glass || {}; S.glass = {on:!!gl.on, flou:gl.flou ?? 0.6, teinte:gl.teinte ?? 0.35, reflet:gl.reflet ?? 0.6}; S.cards = (j.cards || {}).opacite ?? 0.85;
+    file = null; S.bg.kind = "none";
+    if (j.studio && j.studio.bg) { S.bg.kind = "gen"; S.bg.gen = {...S.bg.gen, ...j.studio.bg}; }
+    else if (bg.file && files[bg.file]) { const ext = bg.file.split(".").pop().toLowerCase(), video = ["mp4", "mov", "m4v", "avi", "wmv"].includes(ext);
+      await loadMedia(new File([files[bg.file]], bg.file, {type:video ? "video/mp4" : "image/" + (ext === "jpg" ? "jpeg" : ext)})); }
+    lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("« " + S.name + " » ouvert");
+  } catch (e) { toast("ouverture impossible : " + e.message); }
+}
+
+// ---------------------------------------------------------------------------------- divers
+let toastT = 0;
+function toast(m){ const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3200); }
+function save(){ try { localStorage.setItem("abrasion-skin-studio", JSON.stringify(S)); } catch (e) {} }
+function restore(){ try { const s = JSON.parse(localStorage.getItem("abrasion-skin-studio") || "null"); if (s && s.bg && s.glass) { S = {...DEF(), ...s}; if (S.bg.kind === "file") S.bg.kind = "none"; } } catch (e) {} }
+$("#bExport").onclick = exportSkin;
+$("#bOpen").onclick = () => $("#fOpen").click();
+$("#fOpen").onchange = e => e.target.files[0] && openSkin(e.target.files[0]);
+$("#bNew").onclick = () => { S = fresh(); file = null; lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("nouveau skin"); };
+$("#tOutline").onclick = e => { outline = !outline; e.target.classList.toggle("on", outline); dirty = true; };
+$("#tSnap").onclick = e => { snap = !snap; e.target.classList.toggle("on", snap); };
+$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; dirty = true; save(); buildBlocks(); };
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { if (e.defaultPrevented) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
+  if (/\.raw2skin$/i.test(f.name)) openSkin(f); else loadMedia(f); });
+$("#ver").textContent = DATA.version;
+document.fonts && document.fonts.ready.then(() => dirty = true);
+S = fresh(); restore(); buildTabs(); buildSide(); loop();
+</script>
+</body>
+</html>

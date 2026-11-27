@@ -147,6 +147,9 @@ Si CMake répond « could not find any instance of Visual Studio », vérifie le
   TEMPS, BAS/HAUT), fondu entre images de wavetable sans « trou » de son quand un LFO balaie la
   position, page SON avec un clavier de 3 octaves (MIX IA reste dans son onglet), thème **PERSO**
   (couleur d'accent au choix, base claire ou sombre) et **fond perso** (image, GIF animé ou vidéo).
+- **v11, skins** (voir [`docs/SKINS.md`](docs/SKINS.md)) : fichiers **.raw2skin** (couleurs, fond image
+  / GIF / vidéo, cartes en **verre dépoli**, **place de chaque bloc** des 9 pages), 4 skins d'usine,
+  et **ABRASION Skin Studio**, appli web gratuite et hors ligne pour les créer.
 - **EFX** : le rack de 13 effets (voir « Moteur audio »). Glisser une ligne par sa poignée ou
   utiliser ▲ ▼ pour changer l'ordre, interrupteur et MIX par ligne, BYPASS global ; à droite
   l'effet choisi avec sa courbe animée, ses 4 boutons, MODE et OVERSAMPLE pour la distorsion, la

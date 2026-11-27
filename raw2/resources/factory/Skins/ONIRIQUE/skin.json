@@ -1,0 +1,35 @@
+{
+  "format": "raw2skin",
+  "version": 1,
+  "name": "ONIRIQUE",
+  "author": "ABRASION",
+  "base": "nothing",
+  "colors": {
+    "acc": "#C86BFF",
+    "hl": "#C86BFF",
+    "ledTab": "#C86BFF",
+    "ptr": "#C86BFF",
+    "waveB": "#C86BFF",
+    "barPk": "#C86BFF",
+    "tagAcc": "#C86BFF",
+    "onAcc": "#FFFFFF",
+    "card": "#1A1020",
+    "scr": "#08040C99",
+    "lifeBg": "#0C061299"
+  },
+  "background": {
+    "file": "fond.mp4",
+    "voile": 0.2,
+    "grille": false
+  },
+  "glass": {
+    "on": true,
+    "flou": 0.65,
+    "teinte": 0.4,
+    "reflet": 0.6
+  },
+  "cards": {
+    "opacite": 0.85
+  },
+  "layout": {}
+}

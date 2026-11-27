@@ -15,6 +15,8 @@ Préparer le dossier `stage/` à côté du script, puis `makensis raw2.nsi` :
 stage/vst3/RAW2.vst3/...            build/VST3/RAW2.vst3
 stage/app/RAW2Preview.exe           build/bin/RAW2Preview.exe
 stage/LISEZ-MOI.txt                 ce dossier
+stage/ABRASION Skin Studio.html     tools/skin-studio/ABRASION-Skin-Studio.html
+stage/factory/Skins/...             resources/factory/Skins (skins d'usine → %ProgramData%\ABRASION\RAW 2)
 stage/docs/Instruments/...          banque d'instruments (sans le Grand Piano)
 stage/docs/RAW 2 · INSTRUMENTS/...  raw2_inst_pack <sortie>
 stage/docs_piano/Instruments/Grand Piano/...

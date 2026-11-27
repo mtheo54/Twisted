@@ -103,9 +103,12 @@ jobs:
           snap shots/presets.png 0 0 presets
           # thème PERSO + fond perso (décodage ImageIO, dessin CoreGraphics)
           RAW2_SNAP_BG="$PWD/raw2/docs/img/efx.png" RAW2_SNAP_ACC=00C8FF snap shots/fond.png 0 6 theme
+          # skin d'usine avec fond vidéo (AVFoundation) et verre
+          RAW2_SNAP_PRESET=5 RAW2_SNAP_SKIN="$PWD/raw2/resources/factory/Skins/VERRE NOIR" snap shots/skin.png 0 0
+          RAW2_SNAP_PRESET=5 RAW2_SNAP_SKIN="$PWD/raw2/resources/factory/Skins/ALU GIVRÉ" snap shots/skin2.png 4 0
           ls -la shots
           # aperçus réduits imprimés dans le journal (lisibles sans télécharger l'artefact)
-          for f in tab0 tab8 tab6 theme4 fond; do
+          for f in tab0 tab8 theme4 fond skin skin2; do
             [ -f shots/$f.png ] || continue
             sips -Z 960 -s format jpeg -s formatOptions 45 shots/$f.png --out /tmp/$f.jpg >/dev/null
             echo "IMG-BEGIN $f"; base64 -b 4000 -i /tmp/$f.jpg; echo "IMG-END $f"
@@ -139,6 +142,7 @@ jobs:
           cp "Installer RAW 2.pkg" dmg/
           cp -R build/VST3/RAW2.vst3 build/AU/RAW2.component "dmg/Installation manuelle/"
           cp raw2/packaging/mac/LISEZ-MOI.txt dmg/
+          cp raw2/tools/skin-studio/ABRASION-Skin-Studio.html "dmg/ABRASION Skin Studio.html"
           hdiutil create -volname "RAW 2" -srcfolder dmg -ov -format UDZO "RAW2-macOS-$VER.dmg"
           ls -la *.dmg
 
