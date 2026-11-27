@@ -170,6 +170,8 @@ bool parseSkin(const std::string& text, Skin& s, std::string& error) {
             s.layout.emplace_back(kv.first, pl);
         }
     }
+    for (const auto& h : v["hidden"].items())
+        if (h.isString()) s.hidden.push_back(h.str());
     return true;
 }
 
@@ -206,6 +208,9 @@ std::string skinToJson(const Skin& s) {
         l.set(kv.first, p);
     }
     v.set("layout", l);
+    json::Value hd = json::Value::array();
+    for (const auto& k : s.hidden) hd.push(k);
+    v.set("hidden", hd);
     return v.dump(true);
 }
 

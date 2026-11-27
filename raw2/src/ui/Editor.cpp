@@ -86,11 +86,21 @@ void Editor::pickTheme() {
     for (int b = 0; b < kNumBlocks; ++b) {
         blkOff_[b] = Pt{0.f, 0.f};
         blkSc_[b] = 1.f;
+        blkHide_[b] = false;
     }
+    if (sk)
+        for (const std::string& k : skin_.hidden) {
+            const int b = blockByKey(k.c_str());
+            if (b >= 0) {
+                // bloc retiré : dessiné loin hors de la fenêtre (ni visible, ni cliquable, ni zone de dépôt)
+                blkHide_[b] = true;
+                blkOff_[b] = Pt{-100000.f, -100000.f};
+            }
+        }
     if (sk)
         for (const auto& kv : skin_.layout) {
             const int b = blockByKey(kv.first.c_str());
-            if (b < 0) continue;
+            if (b < 0 || blkHide_[b]) continue;
             const Rect& d = kBlocks[b].r;
             // échelle : jamais plus grand que la zone utile
             const float s = std::min({kv.second.scale, (kBlockRight - kBlockLeft) / d.w, (kBlockBottom - kBlockTop) / d.h});
@@ -195,6 +205,7 @@ void Editor::blk(int b) {
     blkEnd();
     if (b < 0 || b >= kNumBlocks) return;
     ui_.pushOffset(blkOff_[b].x, blkOff_[b].y, blkSc_[b]);
+    if (blkHide_[b]) ui_.c().clip(Rect{0.f, 0.f, 0.f, 0.f});  // bloc retiré : rien n'est peint (annulé par popOffset)
     blkCur_ = b;
 }
 

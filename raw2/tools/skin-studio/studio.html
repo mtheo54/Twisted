@@ -21,6 +21,7 @@
   --bg:#DCDCD6;--dot:#C4C4BE;--panel:#F4F4F0;--panel2:#ECECE7;--line:#1A1A1A;--rule:#0D0D0D;
   --ink:#0D0D0D;--muted:#6F6F6A;--scr:#0D0D0D;}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink)}
 body{font:12px/1.45 "JBM",ui-monospace,Menlo,Consolas,monospace;letter-spacing:.02em;
   background-image:radial-gradient(var(--dot) 1.1px,transparent 1.2px);background-size:16px 16px;min-height:100vh}
@@ -90,7 +91,8 @@ canvas#pv{width:100%;height:auto;display:block;aspect-ratio:4/3;touch-action:non
 .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hint{color:var(--muted);font-size:10.5px}
 .blist{display:flex;flex-direction:column;gap:6px}
-.bl{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 50px 26px;gap:6px;align-items:center;padding:5px 6px;border:1px solid var(--line);background:var(--panel2);border-radius:2px;cursor:pointer}
+.bl.off{opacity:.55}
+.bl{display:grid;grid-template-columns:minmax(0,1fr) 50px 50px 48px 26px 26px;gap:6px;align-items:center;padding:5px 6px;border:1px solid var(--line);background:var(--panel2);border-radius:2px;cursor:pointer}
 .bl.sel{border-color:var(--acc)}
 .bl.bad{border-color:#FF5A4F}
 .bl span{font-size:10.5px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -133,7 +135,10 @@ footer b{color:var(--ink)}
       <button class="btn sm on" id="tSnap">Aimant 8 px</button>
       <button class="btn sm" id="tResetPage">Réinitialiser la page</button>
       <b id="vis" class="hint" style="font-weight:700"></b>
-      <span class="hint">glisse un bloc pour le déplacer · son coin ◢ pour le rapetisser · flèches, + et −</span>
+    </div>
+    <div class="bar" id="tray" hidden aria-label="Blocs retirés de cette page"></div>
+    <div class="bar">
+      <span class="hint">glisse un bloc pour le déplacer · son coin ◢ pour le rapetisser · ✕ pour le retirer · flèches, + et −, Suppr</span>
     </div>
   </section>
 </main>
@@ -180,7 +185,7 @@ const DEF = () => ({
   name:"Mon skin", author:"", base:"nothing", colors:{},
   bg:{kind:"gen", voile:0.30, grille:false,
       gen:{style:"liquide", c1:"#FF4D00", c2:"#3A0F6B", c3:"#0A0A10", scale:0.5, speed:0.5, seed:7, anim:true, dur:6}},
-  glass:{on:true, flou:0.65, teinte:0.40, reflet:0.65}, cards:0.85, layout:{}
+  glass:{on:true, flou:0.65, teinte:0.40, reflet:0.65}, cards:0.85, layout:{}, hidden:[]
 });
 function fresh(){ const s = DEF(); const keep = S; S = s; setAccent("#FF4D00"); S.colors.scr = "#050508A0"; const r = S; S = keep; return r; }
 let S = DEF();
@@ -208,7 +213,9 @@ const posOf = b => { const l = S.layout[b.key]; return l ? {x:l[0], y:l[1], s:l[
 const rectOf = (b, p = posOf(b)) => ({x:p.x, y:p.y, w:b.r[2]*p.s, h:b.r[3]*p.s});
 const hits = (a, c) => a.x < c.x + c.w - 1 && c.x < a.x + a.w - 1 && a.y < c.y + c.h - 1 && c.y < a.y + a.h - 1;
 const inside = r => r.x >= 8 - 0.5 && r.y >= 64 - 0.5 && r.x + r.w <= 1272.5 && r.y + r.h <= 940.5;
-function overlapsAt(b, r){ return blocksOf(b.tab).some(o => o !== b && hits(r, rectOf(o))); }
+const isHidden = b => S.hidden.includes(b.key);
+const shown = t => blocksOf(t).filter(b => !isHidden(b));   // blocs présents sur la page (les retirés ne comptent pas)
+function overlapsAt(b, r){ return shown(b.tab).some(o => o !== b && hits(r, rectOf(o))); }
 function overlaps(b){ return overlapsAt(b, rectOf(b)); }
 const maxScale = (b, x, y) => Math.min(SMAX, (1272 - x)/b.r[2], (940 - y)/b.r[3]);
 function setPos(b, x, y, sc){
@@ -228,7 +235,7 @@ function freeSpot(b, x, y, s){
   }
   return null;
 }
-const hidden = t => blocksOf(t).filter(overlaps).length;
+const hidden = t => shown(t).filter(overlaps).length;
 
 // ---------------------------------------------------------------------------------- vignettes
 const sprImg = {};
@@ -407,7 +414,7 @@ function render(){
   // en-tête et pied de page : fixes
   if (src) { ctx.fillStyle = rgba({...T.chassis, a:0.8}); ctx.fillRect(0, 938, W, 22); }
   if (sp) { ctx.drawImage(sp, 0, 0, sp.width, 64*SPR, 0, 0, W, 64); ctx.drawImage(sp, 0, 938*SPR, sp.width, 22*SPR, 0, 938, W, 22); }
-  for (const b of blocksOf(tab)) {
+  for (const b of shown(tab)) {
     const p = posOf(b), [ox, oy, bw, bh] = b.r, w = bw*p.s, hh = bh*p.s;
     pane(T, p.x, p.y, w, hh, src, !!glassImg);
     if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, w, hh);
@@ -417,7 +424,7 @@ function render(){
   if (drag && drag.guides) { ctx.save(); ctx.strokeStyle = rgba(accent()); ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
     for (const g of drag.guides) { ctx.beginPath(); if (g.x !== undefined) { ctx.moveTo(g.x, 64); ctx.lineTo(g.x, 940); } else { ctx.moveTo(0, g.y); ctx.lineTo(W, g.y); } ctx.stroke(); }
     ctx.restore(); }
-  if (outline || drag) for (const b of blocksOf(tab)) {
+  if (outline || drag) for (const b of shown(tab)) {
     const p = posOf(b), r = rectOf(b, p), bad = overlaps(b), on = sel === b.key || (drag && drag.b === b), hov = hover === b.key;
     ctx.save(); ctx.lineWidth = on ? 3 : 1.5; ctx.setLineDash(on ? [] : [6, 5]);
     ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : hov ? "#FFFFFF" : "rgba(255,255,255,.5)";
@@ -432,6 +439,10 @@ function render(){
       ctx.setLineDash([]); ctx.fillStyle = bad ? "#FF5A4F" : rgba(accent()); ctx.fillRect(hx - 22, hy - 22, 22, 22);
       ctx.strokeStyle = "#0D0D0D"; ctx.lineWidth = 2; ctx.beginPath();
       for (const k of [6, 11, 16]) { ctx.moveTo(hx - 3, hy - k - 3); ctx.lineTo(hx - k - 3, hy - 3); } ctx.stroke();
+      // bouton ✕ (coin haut droit) : retirer le bloc de la page
+      const xx = r.x + r.w - 26, xy = r.y + 4;
+      ctx.fillStyle = "#0D0D0D"; ctx.fillRect(xx, xy, 22, 22); ctx.strokeStyle = "#FF5A4F"; ctx.lineWidth = 2.2; ctx.beginPath();
+      ctx.moveTo(xx + 6, xy + 6); ctx.lineTo(xx + 16, xy + 16); ctx.moveTo(xx + 16, xy + 6); ctx.lineTo(xx + 6, xy + 16); ctx.stroke();
     }
     ctx.restore();
   }
@@ -462,14 +473,34 @@ function loop(){
 // ---------------------------------------------------------------------------------- déplacement et taille des blocs
 let drag = null, hover = null;
 function canvasPt(e){ const r = pv.getBoundingClientRect(); return {x:(e.clientX - r.left)*W/r.width, y:(e.clientY - r.top)*H/r.height}; }
-function blockAt(p){ const bs = blocksOf(tab); for (let i = bs.length - 1; i >= 0; i--) { const r = rectOf(bs[i]); if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) return bs[i]; } return null; }
+function blockAt(p){ const bs = shown(tab); for (let i = bs.length - 1; i >= 0; i--) { const r = rectOf(bs[i]); if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) return bs[i]; } return null; }
+function closeAt(p){   // bouton ✕ du bloc choisi ou survolé
+  for (const k of [sel, hover]) { const b = k && shown(tab).find(x => x.key === k); if (!b) continue; const r = rectOf(b);
+    if (p.x >= r.x + r.w - 28 && p.x <= r.x + r.w - 2 && p.y >= r.y + 2 && p.y <= r.y + 28) return b; }
+  return null;
+}
+function removeBlock(b){
+  if (!b || isHidden(b)) return;
+  S.hidden.push(b.key); if (sel === b.key) sel = null; if (hover === b.key) hover = null;
+  dirty = true; save(); buildBlocks(); toast(b.name + " retiré de la page · « + » sous l'aperçu pour le remettre");
+}
+function restoreBlock(b){
+  const p = posOf(b);
+  S.hidden = S.hidden.filter(k => k !== b.key);
+  if (overlaps(b)) { const f = freeSpot(b, p.x, p.y, p.s) || freeSpot(b, p.x, p.y, SMIN);
+    if (!f) { S.hidden.push(b.key); toast("pas de place pour " + b.name + " : rapetisse ou retire un bloc"); return; }
+    setPos(b, f.x, f.y, freeSpot(b, p.x, p.y, p.s) ? p.s : SMIN); }
+  sel = b.key; dirty = true; save(); buildBlocks(); toast(b.name + " remis sur la page");
+}
 function handleAt(p){   // poignée de taille du bloc choisi ou survolé
-  for (const k of [sel, hover]) { const b = k && blocksOf(tab).find(x => x.key === k); if (!b) continue; const r = rectOf(b);
+  for (const k of [sel, hover]) { const b = k && shown(tab).find(x => x.key === k); if (!b) continue; const r = rectOf(b);
     if (p.x >= r.x + r.w - 26 && p.x <= r.x + r.w + 4 && p.y >= r.y + r.h - 26 && p.y <= r.y + r.h + 4) return b; }
   return null;
 }
 pv.addEventListener("pointerdown", e => {
-  const p = canvasPt(e), hb = handleAt(p), b = hb || blockAt(p);
+  const p = canvasPt(e), cb = closeAt(p);
+  if (cb) { removeBlock(cb); return; }
+  const hb = handleAt(p), b = hb || blockAt(p);
   sel = b ? b.key : null; buildBlocks(); dirty = true;
   if (!b) return;
   const q = posOf(b);
@@ -478,8 +509,8 @@ pv.addEventListener("pointerdown", e => {
 });
 pv.addEventListener("pointermove", e => {
   const p = canvasPt(e);
-  if (!drag) { const hb = handleAt(p), b = blockAt(p), k = (hb || b) ? (hb || b).key : null;
-    if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = hb ? "nwse-resize" : b ? "grab" : "default"; return; }
+  if (!drag) { const cb = closeAt(p), hb = handleAt(p), b = blockAt(p), k = (hb || b) ? (hb || b).key : null;
+    if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = cb ? "pointer" : hb ? "nwse-resize" : b ? "grab" : "default"; return; }
   const b = drag.b; drag.guides = [];
   if (!drag.moved) { if (Math.hypot(p.x - drag.px, p.y - drag.py) < 4) return; drag.moved = true; }  // un simple clic ne déplace rien
   if (drag.mode === "size") {
@@ -498,7 +529,7 @@ pv.addEventListener("pointermove", e => {
   if (snap) {
     x = Math.round(x/8)*8; y = Math.round(y/8)*8;
     let gx = null, gy = null;
-    for (const o of blocksOf(tab)) if (o !== b) { const q = rectOf(o);   // aimant : bords des autres blocs, avec ou sans écart de 12 px
+    for (const o of shown(tab)) if (o !== b) { const q = rectOf(o);   // aimant : bords des autres blocs, avec ou sans écart de 12 px
       // [bord du bloc déplacé, position visée, ligne de repère]
       for (const [a, c, g] of [[x, q.x, q.x], [x + w, q.x + q.w, q.x + q.w], [x, q.x + q.w + 12, q.x + q.w + 12], [x + w + 12, q.x, q.x - 12]]) if (gx === null && Math.abs(a - c) < 8) { x += c - a; gx = g; }
       for (const [a, c, g] of [[y, q.y, q.y], [y + h, q.y + q.h, q.y + q.h], [y, q.y + q.h + 12, q.y + q.h + 12], [y + h + 12, q.y, q.y - 12]]) if (gy === null && Math.abs(a - c) < 8) { y += c - a; gy = g; } }
@@ -512,7 +543,7 @@ function endDrag(){
   if (drag.mode === "move" && overlaps(b)) {
     // lâché sur un bloc de même taille : les deux échangent leur place ; sinon place libre la plus proche
     let best = null, area = 0;
-    for (const o of blocksOf(tab)) if (o !== b) { const q = rectOf(o);
+    for (const o of shown(tab)) if (o !== b) { const q = rectOf(o);
       const ix = Math.min(r.x + r.w, q.x + q.w) - Math.max(r.x, q.x), iy = Math.min(r.y + r.h, q.y + q.h) - Math.max(r.y, q.y);
       const a = ix > 0 && iy > 0 ? ix*iy / Math.min(r.w*r.h, q.w*q.h) : 0; if (a > area) { area = a; best = o; } }
     const q = best && rectOf(best);
@@ -539,13 +570,18 @@ function nudge(b, dx, dy, ds){
 document.addEventListener("keydown", e => {
   if (!sel || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
   const b = DATA.blocks.find(b => b.key === sel); if (!b) return;
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeBlock(b); return; }
   const st = e.shiftKey ? 8 : 1, d = {ArrowLeft:[-st,0,0], ArrowRight:[st,0,0], ArrowUp:[0,-st,0], ArrowDown:[0,st,0], "+":[0,0,0.05], "=":[0,0,0.05], "-":[0,0,-0.05]}[e.key];
   if (!d) return; e.preventDefault(); nudge(b, d[0], d[1], d[2]);
 });
 function updateVis(){
-  const el = $("#vis"); if (!el) return; const n = blocksOf(tab).length, k = hidden(tab);
-  el.textContent = k ? k + " bloc" + (k > 1 ? "s" : "") + " en partie caché" + (k > 1 ? "s" : "") : n + " / " + n + " blocs visibles";
+  const el = $("#vis"); if (!el) return; const n = shown(tab).length, k = hidden(tab), rm = blocksOf(tab).length - n;
+  el.textContent = (k ? k + " bloc" + (k > 1 ? "s" : "") + " en partie caché" + (k > 1 ? "s" : "") : n + " bloc" + (n > 1 ? "s" : "") + " visible" + (n > 1 ? "s" : "")) + (rm ? " · " + rm + " retiré" + (rm > 1 ? "s" : "") : "");
   el.style.color = k ? "#FF5A4F" : "var(--ok)";
+  const tray = $("#tray"), key = blocksOf(tab).filter(isHidden).map(b => b.key).join();
+  if (tray.dataset.k !== key) { tray.dataset.k = key; tray.innerHTML = "";
+    for (const b of blocksOf(tab).filter(isHidden)) tray.append(h("button", {class:"btn sm", title:"remettre ce bloc sur la page", onclick:() => restoreBlock(b)}, "+ " + b.name));
+    tray.hidden = !tray.childElementCount; }
 }
 
 // ---------------------------------------------------------------------------------- interface
@@ -649,23 +685,29 @@ function buildSide(){
     h("div", {class:"info"}, "Verre : les cartes montrent le fond flouté derrière elles. Sans verre, CARTES règle leur opacité sur le fond. Mets les écrans en partie transparents (02 · Écrans) pour un effet complet.")));
   // 05 BLOCS
   side.append(section("05", "Blocs de la page", open[4] ?? true, h("div", {class:"blist", id:"blist"}),
-    h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
-    h("div", {class:"info"}, "Glisse un bloc pour le déplacer, son coin bas droit pour le rapetisser ou l'agrandir (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Clavier : flèches, + et −.")));
+    h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; S.hidden = []; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
+    h("div", {class:"info"}, "Glisse un bloc pour le déplacer, son coin bas droit pour le rapetisser ou l'agrandir (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Pour retirer un bloc : ✕ en haut à droite du bloc (ou touche Suppr) ; « + nom » sous l'aperçu le remet. Clavier : flèches, + et −.")));
   buildBlocks();
 }
 function buildBlocks(){
   const list = $("#blist"); if (!list) return; list.innerHTML = "";
   for (const b of blocksOf(tab)) {
     const p = posOf(b);
+    if (isHidden(b)) {   // bloc retiré : grisé, bouton pour le remettre
+      list.append(h("div", {class:"bl off", "data-k":b.key}, h("span", {}, b.name), h("span", {class:"info", style:"grid-column:2 / 5"}, "retiré de la page"),
+        h("button", {class:"btn sm", title:"remettre sur la page", onclick:() => restoreBlock(b)}, "+")));
+      continue;
+    }
     const num = (v, i) => h("input", {type:"number", value:v, step:i === 2 ? 5 : 1, title:["x", "y", "taille %"][i], onchange:e => {
       const q = posOf(b), v2 = +e.target.value; if (i === 2) nudge(b, 0, 0, v2/100 - q.s); else nudge(b, i ? 0 : v2 - q.x, i ? v2 - q.y : 0, 0); buildBlocks(); }});
     list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (!/INPUT|BUTTON/.test(e.target.tagName)) { sel = b.key; dirty = true; buildBlocks(); } }},
       h("span", {}, b.name), num(p.x, 0), num(p.y, 1), num(Math.round(p.s*100), 2),
+      h("button", {class:"btn sm", title:"retirer de la page", onclick:e => { e.stopPropagation(); removeBlock(b); }}, "✕"),
       h("button", {class:"btn sm", title:"place et taille d'origine", onclick:e => { e.stopPropagation(); const keep = S.layout[b.key]; delete S.layout[b.key];
         if (overlaps(b)) { S.layout[b.key] = keep; toast("un autre bloc occupe sa place d'origine"); } dirty = true; save(); buildBlocks(); }}, "↺")));
   }
 }
-function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
+function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl:not(.off)")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
 function buildTabs(){
   const t = $("#tabs"); t.innerHTML = "";
   for (const [id, name] of TABS) t.append(h("button", {class:"btn sm" + (tab === id ? " on" : ""), onclick:() => { tab = id; sel = null; buildTabs(); buildBlocks(); dirty = true; }}, name));
@@ -823,7 +865,7 @@ function skinJson(bgName){
   return {format:"raw2skin", version:1, name:S.name.trim() || "Skin", author:S.author.trim(), base:S.base, colors,
     background:{file:bgName || "", voile:+S.bg.voile.toFixed(3), grille:S.bg.grille},
     glass:{on:S.glass.on, flou:+S.glass.flou.toFixed(3), teinte:+S.glass.teinte.toFixed(3), reflet:+S.glass.reflet.toFixed(3)},
-    cards:{opacite:+S.cards.toFixed(3)}, layout, studio:{bg:S.bg.kind === "gen" ? S.bg.gen : null}};
+    cards:{opacite:+S.cards.toFixed(3)}, layout, hidden:[...S.hidden], studio:{bg:S.bg.kind === "gen" ? S.bg.gen : null}};
 }
 async function exportSkin(){
   const btn = $("#bExport"); btn.disabled = true; const label = btn.textContent;
@@ -853,7 +895,7 @@ async function openSkin(f){
     const files = unzipStore(await f.arrayBuffer()), js = files["skin.json"]; if (!js) throw new Error("skin.json absent");
     const j = JSON.parse(new TextDecoder().decode(js)); if (j.format && j.format !== "raw2skin") throw new Error("ce n'est pas un skin RAW 2");
     S = DEF(); S.name = j.name || "Skin"; S.author = j.author || ""; if (DATA.themes[j.base]) S.base = j.base;
-    S.colors = j.colors || {}; S.layout = j.layout || {};
+    S.colors = j.colors || {}; S.layout = j.layout || {}; S.hidden = Array.isArray(j.hidden) ? j.hidden.filter(k => typeof k === "string") : [];
     const bg = j.background || {}; S.bg.voile = bg.voile ?? 0.35; S.bg.grille = bg.grille ?? true;
     const gl = j.glass || {}; S.glass = {on:!!gl.on, flou:gl.flou ?? 0.6, teinte:gl.teinte ?? 0.35, reflet:gl.reflet ?? 0.6}; S.cards = (j.cards || {}).opacite ?? 0.85;
     file = null; S.bg.kind = "none";
@@ -868,14 +910,14 @@ async function openSkin(f){
 let toastT = 0;
 function toast(m){ const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3200); }
 function save(){ try { localStorage.setItem("abrasion-skin-studio", JSON.stringify(S)); } catch (e) {} }
-function restore(){ try { const s = JSON.parse(localStorage.getItem("abrasion-skin-studio") || "null"); if (s && s.bg && s.glass) { S = {...DEF(), ...s}; if (S.bg.kind === "file") S.bg.kind = "none"; } } catch (e) {} }
+function restore(){ try { const s = JSON.parse(localStorage.getItem("abrasion-skin-studio") || "null"); if (s && s.bg && s.glass) { S = {...DEF(), ...s}; if (!Array.isArray(S.hidden)) S.hidden = []; if (S.bg.kind === "file") S.bg.kind = "none"; } } catch (e) {} }
 $("#bExport").onclick = exportSkin;
 $("#bOpen").onclick = () => $("#fOpen").click();
 $("#fOpen").onchange = e => e.target.files[0] && openSkin(e.target.files[0]);
 $("#bNew").onclick = () => { S = fresh(); file = null; lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("nouveau skin"); };
 $("#tOutline").onclick = e => { outline = !outline; e.target.classList.toggle("on", outline); dirty = true; };
 $("#tSnap").onclick = e => { snap = !snap; e.target.classList.toggle("on", snap); };
-$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; dirty = true; save(); buildBlocks(); toast("page remise comme dans RAW 2"); };
+$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; S.hidden = S.hidden.filter(k => !blocksOf(tab).some(b => b.key === k)); dirty = true; save(); buildBlocks(); toast("page remise comme dans RAW 2"); };
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => { if (e.defaultPrevented) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
   if (/\.(raw2skin|zip)$/i.test(f.name)) openSkin(f); else loadMedia(f); });

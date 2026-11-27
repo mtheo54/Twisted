@@ -203,12 +203,14 @@ int main() {
         s.glass = true;
         s.blur = 0.7f;
         s.layout = {{"son.oscA", {894.f, 73.f, 1.f}}, {"son.vie", {400.f, 80.f, 0.75f}}};
+        s.hidden = {"son.modules"};
         Skin r;
         std::string err;
         CHECK(parseSkin(skinToJson(s), r, err));
         CHECK(r.name == s.name && r.base == "nothing" && r.glass && std::fabs(r.blur - 0.7f) < 1e-5f);
         CHECK(r.colors.size() == 2 && r.layout.size() == 2 && r.layout[0].second.x == 894.f && r.layout[0].second.scale == 1.f);
         CHECK(std::fabs(r.layout[1].second.scale - 0.75f) < 1e-5f);
+        CHECK(r.hidden.size() == 1 && r.hidden[0] == "son.modules");
         CHECK(parseSkin("{\"layout\":{\"son.vie\":[10,90,9]}}", r, err) && r.layout[0].second.scale == 1.6f);  // borné
         CHECK(!parseSkin("{\"format\":\"autre\"}", r, err));
         CHECK(!parseSkin("pas du json", r, err));

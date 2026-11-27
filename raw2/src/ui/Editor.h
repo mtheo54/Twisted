@@ -239,6 +239,7 @@ private:
     // blocs placés par le skin : décalage de chaque carte par rapport à sa place d'origine
     Pt blkOff_[kNumBlocks] = {};   // absolu = position d'origine × blkSc_ + blkOff_
     float blkSc_[kNumBlocks] = {}; // échelle de chaque bloc (1 : taille d'origine)
+    bool blkHide_[kNumBlocks] = {}; // bloc retiré par le skin
     Rect blkRect(int b, const Rect& r) const {  // rectangle d'origine -> place réelle à l'écran
         return Rect{r.x * blkSc_[b] + blkOff_[b].x, r.y * blkSc_[b] + blkOff_[b].y, r.w * blkSc_[b], r.h * blkSc_[b]};
     }

@@ -12,6 +12,7 @@
 //     "glass": { "on": true, "flou": 0.6, "teinte": 0.35, "reflet": 0.6 },
 //     "cards": { "opacite": 0.85 },
 //     "layout": { "son.oscA": [24, 73, 0.8], ... }  // coin haut gauche et échelle (1 si absente) de chaque bloc placé
+//     "hidden": [ "son.modules", ... ]               // blocs retirés
 //   }
 // Installé dans Documents/Raw 2/Skins/<nom> ; les skins d'usine sont dans le dossier d'usine.
 #include "core/Color.h"
@@ -38,6 +39,7 @@ struct Skin {
         float x = 0.f, y = 0.f, scale = 1.f;
     };
     std::vector<std::pair<std::string, Place>> layout;
+    std::vector<std::string> hidden;  // blocs retirés de leur page (ni dessinés ni cliquables)
 };
 
 bool parseColor(const std::string& s, Color& out);   // #RGB, #RRGGBB, #RRGGBBAA, rgb(), rgba()

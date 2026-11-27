@@ -32,6 +32,9 @@ RAW 2 pour l'installer.
    grandir par-dessus un autre ; lâché sur un autre, il va à la place libre la plus proche, ou
    échange sa place avec un bloc de même taille (OSC A ⇄ OSC B). Clavier : flèches (Maj : 8 px),
    `+` et `−` pour la taille ; la liste de la section 05 donne x, y et taille au chiffre près.
+   **Retirer un bloc** d'une page : ✕ en haut à droite du bloc (ou touche Suppr, ou ✕ dans la
+   liste). Les blocs retirés s'affichent sous l'aperçu (« + nom ») : un clic les remet, à leur
+   place si elle est libre, sinon à la place libre la plus proche.
 
 L'aperçu utilise les vraies vignettes de l'interface (rendues par RAW 2, `make_sprites.py`) : la
 place des blocs, l'accent, les cartes, le verre et le fond sont ceux que RAW 2 affichera. Les autres
@@ -52,7 +55,8 @@ Une archive ZIP **sans compression** (ce qu'écrit le studio) ou un dossier, ave
   "background": { "file": "fond.mp4", "voile": 0.25, "grille": false },
   "glass": { "on": true, "flou": 0.7, "teinte": 0.45, "reflet": 0.7 },
   "cards": { "opacite": 0.85 },
-  "layout": { "son.oscA": [894, 73], "son.oscB": [24, 73], "son.sortie": [300, 740, 0.68] }
+  "layout": { "son.oscA": [894, 73], "son.oscB": [24, 73], "son.sortie": [300, 740, 0.68] },
+  "hidden": [ "son.modules" ]
 }
 ```
 
@@ -65,6 +69,8 @@ Une archive ZIP **sans compression** (ce qu'écrit le studio) ou un dossier, ave
 - `layout` : coin haut gauche de chaque bloc placé (fenêtre 1280 × 960, bornée à la zone utile) et,
   en option, son échelle (0,4 à 1,6 ; 1 si absente). RAW 2 dessine le bloc à cette taille ; ses
   boutons, potards (même sensibilité), menus et zones de dépôt suivent.
+- `hidden` : blocs retirés de leur page (ni dessinés, ni cliquables). Leurs réglages restent
+  actifs et automatisables depuis la DAW.
   Clés : `src/ui/Blocks.cpp` (37 blocs, jamais renommés). Un bloc absent reste à sa place.
 - Seuls `skin.json` et les images / vidéos sont installés ; les chemins dans l'archive sont
   ignorés (rien ne peut être écrit hors du dossier du skin). Une archive recompressée (deflate)
