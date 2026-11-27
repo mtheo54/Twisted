@@ -162,8 +162,13 @@ bool parseSkin(const std::string& text, Skin& s, std::string& error) {
     s.cards = clampf(v["cards"]["opacite"].num(0.85), 0.5f, 1.f);
     for (const auto& kv : v["layout"].members()) {
         const json::Value& p = kv.second;
-        if (p.isArray() && p.size() >= 2 && p[(size_t)0].isNumber() && p[(size_t)1].isNumber())
-            s.layout.emplace_back(kv.first, std::make_pair((float)p[(size_t)0].num(), (float)p[(size_t)1].num()));
+        if (p.isArray() && p.size() >= 2 && p[(size_t)0].isNumber() && p[(size_t)1].isNumber()) {
+            Skin::Place pl;
+            pl.x = (float)p[(size_t)0].num();
+            pl.y = (float)p[(size_t)1].num();
+            pl.scale = p.size() >= 3 ? clampf(p[(size_t)2].num(1.0), 0.4f, 1.6f) : 1.f;  // rapetissé / agrandi
+            s.layout.emplace_back(kv.first, pl);
+        }
     }
     return true;
 }
@@ -195,8 +200,9 @@ std::string skinToJson(const Skin& s) {
     json::Value l = json::Value::object();
     for (const auto& kv : s.layout) {
         json::Value p = json::Value::array();
-        p.push(kv.second.first);
-        p.push(kv.second.second);
+        p.push(kv.second.x);
+        p.push(kv.second.y);
+        if (std::fabs(kv.second.scale - 1.f) > 1e-4f) p.push(kv.second.scale);
         l.set(kv.first, p);
     }
     v.set("layout", l);

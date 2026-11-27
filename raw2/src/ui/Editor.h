@@ -237,7 +237,11 @@ private:
     ImageView bgImg_;
     std::shared_ptr<const media::Frames> bgKeep_;
     // blocs placés par le skin : décalage de chaque carte par rapport à sa place d'origine
-    Pt blkOff_[kNumBlocks] = {};
+    Pt blkOff_[kNumBlocks] = {};   // absolu = position d'origine × blkSc_ + blkOff_
+    float blkSc_[kNumBlocks] = {}; // échelle de chaque bloc (1 : taille d'origine)
+    Rect blkRect(int b, const Rect& r) const {  // rectangle d'origine -> place réelle à l'écran
+        return Rect{r.x * blkSc_[b] + blkOff_[b].x, r.y * blkSc_[b] + blkOff_[b].y, r.w * blkSc_[b], r.h * blkSc_[b]};
+    }
     int blkCur_ = -1;
     void blk(int b);   // la suite est dessinée dans le bloc b (décalé)
     void blkEnd();

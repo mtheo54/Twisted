@@ -90,7 +90,7 @@ canvas#pv{width:100%;height:auto;display:block;aspect-ratio:4/3;touch-action:non
 .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .hint{color:var(--muted);font-size:10.5px}
 .blist{display:flex;flex-direction:column;gap:6px}
-.bl{display:grid;grid-template-columns:1fr 58px 58px 26px;gap:6px;align-items:center;padding:5px 6px;border:1px solid var(--line);background:var(--panel2);border-radius:2px;cursor:pointer}
+.bl{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px 50px 26px;gap:6px;align-items:center;padding:5px 6px;border:1px solid var(--line);background:var(--panel2);border-radius:2px;cursor:pointer}
 .bl.sel{border-color:var(--acc)}
 .bl.bad{border-color:#FF5A4F}
 .bl span{font-size:10.5px;letter-spacing:.08em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -132,7 +132,8 @@ footer b{color:var(--ink)}
       <button class="btn sm on" id="tOutline">Contours</button>
       <button class="btn sm on" id="tSnap">Aimant 8 px</button>
       <button class="btn sm" id="tResetPage">Réinitialiser la page</button>
-      <span class="hint">glisse un bloc pour le déplacer · flèches : 1 px · maj + flèches : 8 px</span>
+      <b id="vis" class="hint" style="font-weight:700"></b>
+      <span class="hint">glisse un bloc pour le déplacer · son coin ◢ pour le rapetisser · flèches, + et −</span>
     </div>
   </section>
 </main>
@@ -201,17 +202,33 @@ function setAccent(hex){
   S.colors.onAcc = lum(c) > 0.55 ? "#0D0D0D" : "#FFFFFF";
 }
 const blocksOf = t => DATA.blocks.filter(b => b.tab === t && (t !== 2 || (modSide === 1) === (b.key === "mod.rack")));
-const posOf = b => S.layout[b.key] ? {x:S.layout[b.key][0], y:S.layout[b.key][1]} : {x:b.r[0], y:b.r[1]};
-function setPos(b, x, y){
-  x = clamp(Math.round(x), 8, 1272 - b.r[2]); y = clamp(Math.round(y), 64, 940 - b.r[3]);
-  if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5) delete S.layout[b.key];
-  else S.layout[b.key] = [x, y];
+// place d'un bloc : coin haut gauche et échelle (RAW 2 dessine le bloc rapetissé ou agrandi)
+const SMIN = 0.5, SMAX = 1.6;
+const posOf = b => { const l = S.layout[b.key]; return l ? {x:l[0], y:l[1], s:l[2] ?? 1} : {x:b.r[0], y:b.r[1], s:1}; };
+const rectOf = (b, p = posOf(b)) => ({x:p.x, y:p.y, w:b.r[2]*p.s, h:b.r[3]*p.s});
+const hits = (a, c) => a.x < c.x + c.w - 1 && c.x < a.x + a.w - 1 && a.y < c.y + c.h - 1 && c.y < a.y + a.h - 1;
+const inside = r => r.x >= 8 - 0.5 && r.y >= 64 - 0.5 && r.x + r.w <= 1272.5 && r.y + r.h <= 940.5;
+function overlapsAt(b, r){ return blocksOf(b.tab).some(o => o !== b && hits(r, rectOf(o))); }
+function overlaps(b){ return overlapsAt(b, rectOf(b)); }
+const maxScale = (b, x, y) => Math.min(SMAX, (1272 - x)/b.r[2], (940 - y)/b.r[3]);
+function setPos(b, x, y, sc){
+  let s = clamp(sc ?? posOf(b).s, SMIN, Math.min(SMAX, 1264/b.r[2], 876/b.r[3])); s = Math.round(s*100)/100;
+  x = clamp(Math.round(x), 8, Math.round(1272 - b.r[2]*s)); y = clamp(Math.round(y), 64, Math.round(940 - b.r[3]*s));
+  if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5 && Math.abs(s - 1) < 0.005) delete S.layout[b.key];
+  else S.layout[b.key] = Math.abs(s - 1) < 0.005 ? [x, y] : [x, y, s];
 }
-function overlaps(b){
-  const p = posOf(b);
-  return blocksOf(b.tab).some(o => o !== b && (() => { const q = posOf(o);
-    return p.x < q.x + o.r[2] - 1 && q.x < p.x + b.r[2] - 1 && p.y < q.y + o.r[3] - 1 && q.y < p.y + b.r[3] - 1; })());
+// place libre la plus proche (tous les blocs restent visibles : aucun ne doit en cacher un autre)
+function freeSpot(b, x, y, s){
+  const w = b.r[2]*s, h = b.r[3]*s;
+  for (let rad = 0; rad <= 1000; rad += 8) {
+    const c = [];
+    for (let d = -rad; d <= rad; d += 8) c.push([x + d, y - rad], [x + d, y + rad], [x - rad, y + d], [x + rad, y + d]);
+    c.sort((a, b2) => Math.hypot(a[0] - x, a[1] - y) - Math.hypot(b2[0] - x, b2[1] - y));
+    for (const [cx, cy] of c) { const r = {x:cx, y:cy, w, h}; if (inside(r) && !overlapsAt(b, r)) return {x:cx, y:cy}; }
+  }
+  return null;
 }
+const hidden = t => blocksOf(t).filter(overlaps).length;
 
 // ---------------------------------------------------------------------------------- vignettes
 const sprImg = {};
@@ -391,21 +408,34 @@ function render(){
   if (src) { ctx.fillStyle = rgba({...T.chassis, a:0.8}); ctx.fillRect(0, 938, W, 22); }
   if (sp) { ctx.drawImage(sp, 0, 0, sp.width, 64*SPR, 0, 0, W, 64); ctx.drawImage(sp, 0, 938*SPR, sp.width, 22*SPR, 0, 938, W, 22); }
   for (const b of blocksOf(tab)) {
-    const p = posOf(b), [ox, oy, bw, bh] = b.r;
-    pane(T, p.x, p.y, bw, bh, src, !!glassImg);
-    if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, bw, bh);
+    const p = posOf(b), [ox, oy, bw, bh] = b.r, w = bw*p.s, hh = bh*p.s;
+    pane(T, p.x, p.y, w, hh, src, !!glassImg);
+    if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, w, hh);
     else { ctx.fillStyle = rgba(T.ink || {r:240,g:240,b:240,a:1}); ctx.font = "16px Pix"; ctx.fillText(b.name, p.x + 16, p.y + 32); }
   }
-  if (outline) for (const b of blocksOf(tab)) {
-    const p = posOf(b), bad = overlaps(b), on = sel === b.key;
+  // guides d'alignement pendant un glisser
+  if (drag && drag.guides) { ctx.save(); ctx.strokeStyle = rgba(accent()); ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+    for (const g of drag.guides) { ctx.beginPath(); if (g.x !== undefined) { ctx.moveTo(g.x, 64); ctx.lineTo(g.x, 940); } else { ctx.moveTo(0, g.y); ctx.lineTo(W, g.y); } ctx.stroke(); }
+    ctx.restore(); }
+  if (outline || drag) for (const b of blocksOf(tab)) {
+    const p = posOf(b), r = rectOf(b, p), bad = overlaps(b), on = sel === b.key || (drag && drag.b === b), hov = hover === b.key;
     ctx.save(); ctx.lineWidth = on ? 3 : 1.5; ctx.setLineDash(on ? [] : [6, 5]);
-    ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(255,255,255,.55)";
-    ctx.strokeRect(p.x + 1, p.y + 1, b.r[2] - 2, b.r[3] - 2);
-    const label = b.name + (S.layout[b.key] ? "  ·  " + p.x + ", " + p.y : "");
-    ctx.font = "bold 13px JBM"; const lw = ctx.measureText(label).width + 16, ly = p.y + b.r[3] - 28;
-    ctx.fillStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(10,10,12,.78)"; ctx.fillRect(p.x + 4, ly, lw, 22);
-    ctx.fillStyle = on || bad ? "#0D0D0D" : "#F0F0F0"; ctx.fillText(label, p.x + 12, ly + 16); ctx.restore();
+    ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : hov ? "#FFFFFF" : "rgba(255,255,255,.5)";
+    ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+    const label = b.name + (p.s !== 1 ? "  ·  " + Math.round(p.s*100) + " %" : "");
+    ctx.font = "bold 13px JBM"; const lw = Math.min(r.w - 8, ctx.measureText(label).width + 16), ly = r.y + r.h - 28;
+    if (lw > 30 && r.h > 40) { ctx.fillStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(10,10,12,.78)"; ctx.fillRect(r.x + 4, ly, lw, 22);
+      ctx.save(); ctx.beginPath(); ctx.rect(r.x + 4, ly, lw, 22); ctx.clip();
+      ctx.fillStyle = on || bad ? "#0D0D0D" : "#F0F0F0"; ctx.fillText(label, r.x + 12, ly + 16); ctx.restore(); }
+    if (on || hov) {   // poignée de taille (coin bas droit)
+      const hx = r.x + r.w, hy = r.y + r.h;
+      ctx.setLineDash([]); ctx.fillStyle = bad ? "#FF5A4F" : rgba(accent()); ctx.fillRect(hx - 22, hy - 22, 22, 22);
+      ctx.strokeStyle = "#0D0D0D"; ctx.lineWidth = 2; ctx.beginPath();
+      for (const k of [6, 11, 16]) { ctx.moveTo(hx - 3, hy - k - 3); ctx.lineTo(hx - k - 3, hy - 3); } ctx.stroke();
+    }
+    ctx.restore();
   }
+  updateVis();
 }
 function pane(T, x, y, w, h, src, glass){
   const card = T.card;
@@ -429,45 +459,94 @@ function loop(){
   requestAnimationFrame(loop);
 }
 
-// ---------------------------------------------------------------------------------- déplacement des blocs
-let drag = null;
+// ---------------------------------------------------------------------------------- déplacement et taille des blocs
+let drag = null, hover = null;
 function canvasPt(e){ const r = pv.getBoundingClientRect(); return {x:(e.clientX - r.left)*W/r.width, y:(e.clientY - r.top)*H/r.height}; }
-function blockAt(p){ const bs = blocksOf(tab); for (let i = bs.length - 1; i >= 0; i--) { const b = bs[i], q = posOf(b); if (p.x >= q.x && p.x < q.x + b.r[2] && p.y >= q.y && p.y < q.y + b.r[3]) return b; } return null; }
+function blockAt(p){ const bs = blocksOf(tab); for (let i = bs.length - 1; i >= 0; i--) { const r = rectOf(bs[i]); if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) return bs[i]; } return null; }
+function handleAt(p){   // poignée de taille du bloc choisi ou survolé
+  for (const k of [sel, hover]) { const b = k && blocksOf(tab).find(x => x.key === k); if (!b) continue; const r = rectOf(b);
+    if (p.x >= r.x + r.w - 26 && p.x <= r.x + r.w + 4 && p.y >= r.y + r.h - 26 && p.y <= r.y + r.h + 4) return b; }
+  return null;
+}
 pv.addEventListener("pointerdown", e => {
-  const p = canvasPt(e), b = blockAt(p);
+  const p = canvasPt(e), hb = handleAt(p), b = hb || blockAt(p);
   sel = b ? b.key : null; buildBlocks(); dirty = true;
   if (!b) return;
-  const q = posOf(b); drag = {b, dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y}; pv.setPointerCapture(e.pointerId); pv.style.cursor = "grabbing";
+  const q = posOf(b);
+  drag = {b, mode:hb ? "size" : "move", dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y, s0:q.s, px:p.x, py:p.y, moved:false, guides:[]};
+  pv.setPointerCapture(e.pointerId); pv.style.cursor = hb ? "nwse-resize" : "grabbing";
 });
 pv.addEventListener("pointermove", e => {
   const p = canvasPt(e);
-  if (!drag) { pv.style.cursor = blockAt(p) ? "grab" : "default"; return; }
+  if (!drag) { const hb = handleAt(p), b = blockAt(p), k = (hb || b) ? (hb || b).key : null;
+    if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = hb ? "nwse-resize" : b ? "grab" : "default"; return; }
+  const b = drag.b; drag.guides = [];
+  if (!drag.moved) { if (Math.hypot(p.x - drag.px, p.y - drag.py) < 4) return; drag.moved = true; }  // un simple clic ne déplace rien
+  if (drag.mode === "size") {
+    // échelle depuis le coin haut gauche (fixe), proportions gardées ; jamais par-dessus un autre bloc
+    let s = Math.max((p.x - drag.x0)/b.r[2], (p.y - drag.y0)/b.r[3]);
+    if (snap) s = Math.round(s*20)/20;
+    s = clamp(s, SMIN, maxScale(b, drag.x0, drag.y0));
+    if (s > drag.s0 && overlapsAt(b, {x:drag.x0, y:drag.y0, w:b.r[2]*s, h:b.r[3]*s})) {
+      let lo = drag.s0, hi = s; for (let i = 0; i < 14; i++) { const m = (lo + hi)/2; if (overlapsAt(b, {x:drag.x0, y:drag.y0, w:b.r[2]*m, h:b.r[3]*m})) hi = m; else lo = m; }
+      s = Math.floor(lo*100)/100;
+    }
+    setPos(b, drag.x0, drag.y0, s); dirty = true; syncBlockInputs(); return;
+  }
+  const s = posOf(b).s, w = b.r[2]*s, h = b.r[3]*s;
   let x = p.x - drag.dx, y = p.y - drag.dy;
-  if (snap) { x = Math.round(x/8)*8; y = Math.round(y/8)*8;
-    for (const o of blocksOf(tab)) if (o !== drag.b) { const q = posOf(o);   // aimant sur les bords des autres blocs
-      for (const [a, c] of [[x, q.x], [x, q.x + o.r[2] + 12], [x + drag.b.r[2] + 12, q.x], [x + drag.b.r[2], q.x + o.r[2]]]) if (Math.abs(a - c) < 7) x += c - a;
-      for (const [a, c] of [[y, q.y], [y, q.y + o.r[3] + 12], [y + drag.b.r[3] + 12, q.y], [y + drag.b.r[3], q.y + o.r[3]]]) if (Math.abs(a - c) < 7) y += c - a; }
-    const d = drag.b.r; if (Math.abs(x - d[0]) < 7) x = d[0]; if (Math.abs(y - d[1]) < 7) y = d[1]; }
-  setPos(drag.b, x, y); dirty = true; syncBlockInputs();
+  if (snap) {
+    x = Math.round(x/8)*8; y = Math.round(y/8)*8;
+    let gx = null, gy = null;
+    for (const o of blocksOf(tab)) if (o !== b) { const q = rectOf(o);   // aimant : bords des autres blocs, avec ou sans écart de 12 px
+      // [bord du bloc déplacé, position visée, ligne de repère]
+      for (const [a, c, g] of [[x, q.x, q.x], [x + w, q.x + q.w, q.x + q.w], [x, q.x + q.w + 12, q.x + q.w + 12], [x + w + 12, q.x, q.x - 12]]) if (gx === null && Math.abs(a - c) < 8) { x += c - a; gx = g; }
+      for (const [a, c, g] of [[y, q.y, q.y], [y + h, q.y + q.h, q.y + q.h], [y, q.y + q.h + 12, q.y + q.h + 12], [y + h + 12, q.y, q.y - 12]]) if (gy === null && Math.abs(a - c) < 8) { y += c - a; gy = g; } }
+    if (gx !== null) drag.guides.push({x:gx}); if (gy !== null) drag.guides.push({y:gy});
+  }
+  setPos(b, x, y); dirty = true; syncBlockInputs();
 });
-pv.addEventListener("pointerup", () => {
+function endDrag(){
   if (!drag) return;
-  // lâché en grande partie sur un autre bloc : les deux échangent leur place
-  const b = drag.b, p = posOf(b);
-  let best = null, area = 0;
-  for (const o of blocksOf(tab)) if (o !== b) { const q = posOf(o);
-    const ix = Math.min(p.x + b.r[2], q.x + o.r[2]) - Math.max(p.x, q.x), iy = Math.min(p.y + b.r[3], q.y + o.r[3]) - Math.max(p.y, q.y);
-    const a = ix > 0 && iy > 0 ? ix*iy / Math.min(b.r[2]*b.r[3], o.r[2]*o.r[3]) : 0; if (a > area) { area = a; best = o; } }
-  const same = best && Math.abs(best.r[2] - b.r[2]) < 0.15*b.r[2] && Math.abs(best.r[3] - b.r[3]) < 0.15*b.r[3];
-  if (best && same && area > 0.45) { const q = posOf(best); setPos(best, drag.x0, drag.y0); setPos(b, q.x, q.y); toast(b.name + " ⇄ " + best.name); }
+  const b = drag.b, p = posOf(b), r = rectOf(b, p);
+  if (drag.mode === "move" && overlaps(b)) {
+    // lâché sur un bloc de même taille : les deux échangent leur place ; sinon place libre la plus proche
+    let best = null, area = 0;
+    for (const o of blocksOf(tab)) if (o !== b) { const q = rectOf(o);
+      const ix = Math.min(r.x + r.w, q.x + q.w) - Math.max(r.x, q.x), iy = Math.min(r.y + r.h, q.y + q.h) - Math.max(r.y, q.y);
+      const a = ix > 0 && iy > 0 ? ix*iy / Math.min(r.w*r.h, q.w*q.h) : 0; if (a > area) { area = a; best = o; } }
+    const q = best && rectOf(best);
+    if (best && area > 0.45 && Math.abs(q.w - r.w) < 0.15*r.w && Math.abs(q.h - r.h) < 0.15*r.h) {
+      const bp = posOf(best); setPos(best, drag.x0, drag.y0); setPos(b, bp.x, bp.y); toast(b.name + " ⇄ " + best.name);
+    } else {
+      const f = freeSpot(b, p.x, p.y, p.s);
+      if (f) { setPos(b, f.x, f.y); toast(b.name + " : posé à la place libre la plus proche"); }
+      else { setPos(b, drag.x0, drag.y0); toast("pas de place libre ici : rapetisse un bloc"); }
+    }
+  }
   drag = null; pv.style.cursor = "grab"; dirty = true; buildBlocks(); save();
-});
+}
+pv.addEventListener("pointerup", endDrag);
+pv.addEventListener("pointercancel", endDrag);
+pv.addEventListener("pointerleave", () => { if (!drag && hover) { hover = null; dirty = true; } });
+function nudge(b, dx, dy, ds){
+  const p = posOf(b);
+  let s = clamp(Math.round((p.s + ds)*100)/100, SMIN, maxScale(b, p.x, p.y));
+  const r = {x:p.x + dx, y:p.y + dy, w:b.r[2]*s, h:b.r[3]*s};
+  if (!inside(r) || (overlapsAt(b, r) && !overlaps(b))) { toast(ds ? "plus de place pour l'agrandir" : "un autre bloc est là"); return; }
+  setPos(b, r.x, r.y, s); dirty = true; syncBlockInputs(); save();
+}
 document.addEventListener("keydown", e => {
   if (!sel || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
-  const d = {ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1]}[e.key]; if (!d) return;
-  e.preventDefault(); const b = DATA.blocks.find(b => b.key === sel), p = posOf(b), s = e.shiftKey ? 8 : 1;
-  setPos(b, p.x + d[0]*s, p.y + d[1]*s); dirty = true; syncBlockInputs(); save();
+  const b = DATA.blocks.find(b => b.key === sel); if (!b) return;
+  const st = e.shiftKey ? 8 : 1, d = {ArrowLeft:[-st,0,0], ArrowRight:[st,0,0], ArrowUp:[0,-st,0], ArrowDown:[0,st,0], "+":[0,0,0.05], "=":[0,0,0.05], "-":[0,0,-0.05]}[e.key];
+  if (!d) return; e.preventDefault(); nudge(b, d[0], d[1], d[2]);
 });
+function updateVis(){
+  const el = $("#vis"); if (!el) return; const n = blocksOf(tab).length, k = hidden(tab);
+  el.textContent = k ? k + " bloc" + (k > 1 ? "s" : "") + " en partie caché" + (k > 1 ? "s" : "") : n + " / " + n + " blocs visibles";
+  el.style.color = k ? "#FF5A4F" : "var(--ok)";
+}
 
 // ---------------------------------------------------------------------------------- interface
 function h(tag, attrs, ...kids){
@@ -571,20 +650,22 @@ function buildSide(){
   // 05 BLOCS
   side.append(section("05", "Blocs de la page", open[4] ?? true, h("div", {class:"blist", id:"blist"}),
     h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
-    h("div", {class:"info"}, "Les blocs gardent leur taille. Un bloc rouge en chevauche un autre : RAW 2 l'accepte, mais l'un cachera l'autre.")));
+    h("div", {class:"info"}, "Glisse un bloc pour le déplacer, son coin bas droit pour le rapetisser ou l'agrandir (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Clavier : flèches, + et −.")));
   buildBlocks();
 }
 function buildBlocks(){
   const list = $("#blist"); if (!list) return; list.innerHTML = "";
   for (const b of blocksOf(tab)) {
     const p = posOf(b);
-    const num = (v, i) => h("input", {type:"number", value:v, step:1, onchange:e => { const q = posOf(b); setPos(b, i ? q.x : +e.target.value, i ? +e.target.value : q.y); dirty = true; save(); buildBlocks(); }});
-    list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (e.target.tagName !== "INPUT") { sel = b.key; dirty = true; buildBlocks(); } }},
-      h("span", {}, b.name), num(p.x, 0), num(p.y, 1),
-      h("button", {class:"btn sm", title:"place d'origine", onclick:e => { e.stopPropagation(); delete S.layout[b.key]; dirty = true; save(); buildBlocks(); }}, "↺")));
+    const num = (v, i) => h("input", {type:"number", value:v, step:i === 2 ? 5 : 1, title:["x", "y", "taille %"][i], onchange:e => {
+      const q = posOf(b), v2 = +e.target.value; if (i === 2) nudge(b, 0, 0, v2/100 - q.s); else nudge(b, i ? 0 : v2 - q.x, i ? v2 - q.y : 0, 0); buildBlocks(); }});
+    list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (!/INPUT|BUTTON/.test(e.target.tagName)) { sel = b.key; dirty = true; buildBlocks(); } }},
+      h("span", {}, b.name), num(p.x, 0), num(p.y, 1), num(Math.round(p.s*100), 2),
+      h("button", {class:"btn sm", title:"place et taille d'origine", onclick:e => { e.stopPropagation(); const keep = S.layout[b.key]; delete S.layout[b.key];
+        if (overlaps(b)) { S.layout[b.key] = keep; toast("un autre bloc occupe sa place d'origine"); } dirty = true; save(); buildBlocks(); }}, "↺")));
   }
 }
-function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; el.classList.toggle("bad", overlaps(b)); } }
+function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
 function buildTabs(){
   const t = $("#tabs"); t.innerHTML = "";
   for (const [id, name] of TABS) t.append(h("button", {class:"btn sm" + (tab === id ? " on" : ""), onclick:() => { tab = id; sel = null; buildTabs(); buildBlocks(); dirty = true; }}, name));
@@ -794,7 +875,7 @@ $("#fOpen").onchange = e => e.target.files[0] && openSkin(e.target.files[0]);
 $("#bNew").onclick = () => { S = fresh(); file = null; lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("nouveau skin"); };
 $("#tOutline").onclick = e => { outline = !outline; e.target.classList.toggle("on", outline); dirty = true; };
 $("#tSnap").onclick = e => { snap = !snap; e.target.classList.toggle("on", snap); };
-$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; dirty = true; save(); buildBlocks(); };
+$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; dirty = true; save(); buildBlocks(); toast("page remise comme dans RAW 2"); };
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => { if (e.defaultPrevented) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
   if (/\.(raw2skin|zip)$/i.test(f.name)) openSkin(f); else loadMedia(f); });

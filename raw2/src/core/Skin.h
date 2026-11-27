@@ -11,7 +11,7 @@
 //     "background": { "file": "fond.mp4", "voile": 0.35, "grille": true },
 //     "glass": { "on": true, "flou": 0.6, "teinte": 0.35, "reflet": 0.6 },
 //     "cards": { "opacite": 0.85 },
-//     "layout": { "son.oscA": [24, 73], ... }  // position (haut gauche) de chaque bloc déplacé
+//     "layout": { "son.oscA": [24, 73, 0.8], ... }  // coin haut gauche et échelle (1 si absente) de chaque bloc placé
 //   }
 // Installé dans Documents/Raw 2/Skins/<nom> ; les skins d'usine sont dans le dossier d'usine.
 #include "core/Color.h"
@@ -34,7 +34,10 @@ struct Skin {
     bool glass = false;
     float blur = 0.6f, tint = 0.35f, edge = 0.6f;  // flou (0..1), teinte des cartes, reflets
     float cards = 0.85f;              // opacité des cartes sans verre (0,5..1)
-    std::vector<std::pair<std::string, std::pair<float, float>>> layout;
+    struct Place {
+        float x = 0.f, y = 0.f, scale = 1.f;
+    };
+    std::vector<std::pair<std::string, Place>> layout;
 };
 
 bool parseColor(const std::string& s, Color& out);   // #RGB, #RRGGBB, #RRGGBBAA, rgb(), rgba()

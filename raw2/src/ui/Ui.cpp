@@ -92,6 +92,7 @@ void Ui::beginFrame(Canvas& c, const Theme& t, const Input& in) {
     t_ = &t;
     in_ = in;
     off_ = Pt{0.f, 0.f};
+    sc_ = 1.f;
     offStack_.clear();
     layer_ = 0;
     cursor_ = Cursor::Arrow;
@@ -111,26 +112,35 @@ bool Ui::hit(const Rect& r) const {
     return true;
 }
 
-void Ui::pushOffset(float dx, float dy) {
-    offStack_.push_back(Pt{dx, dy});
-    off_.x += dx;
-    off_.y += dy;
-    in_.mouse.x -= dx; in_.mouse.y -= dy;
-    in_.dragPos.x -= dx; in_.dragPos.y -= dy;
-    in_.dropPos.x -= dx; in_.dropPos.y -= dy;
+void Ui::pushOffset(float dx, float dy, float s) {
+    if (s <= 0.f) s = 1.f;
+    offStack_.push_back(Xform{off_, sc_});
+    // points locaux du nouveau repère : p -> p × s + d (dans le repère courant)
+    auto toLocal = [&](Pt& p) { p.x = (p.x - dx) / s; p.y = (p.y - dy) / s; };
+    toLocal(in_.mouse);
+    toLocal(in_.dragPos);
+    toLocal(in_.dropPos);
+    off_.x += dx * sc_;
+    off_.y += dy * sc_;
+    sc_ *= s;
     c_->save();
     c_->translate(dx, dy);
+    if (s != 1.f) c_->scale(s);
 }
 
 void Ui::popOffset() {
     if (offStack_.empty()) return;
-    const Pt d = offStack_.back();
+    const Xform prev = offStack_.back();
     offStack_.pop_back();
-    off_.x -= d.x;
-    off_.y -= d.y;
-    in_.mouse.x += d.x; in_.mouse.y += d.y;
-    in_.dragPos.x += d.x; in_.dragPos.y += d.y;
-    in_.dropPos.x += d.x; in_.dropPos.y += d.y;
+    // retour au repère précédent : local × (sc_ / prev.sc) + (off_ - prev.off) / prev.sc
+    const float k = sc_ / prev.sc;
+    const float ox = (off_.x - prev.off.x) / prev.sc, oy = (off_.y - prev.off.y) / prev.sc;
+    auto toParent = [&](Pt& p) { p.x = p.x * k + ox; p.y = p.y * k + oy; };
+    toParent(in_.mouse);
+    toParent(in_.dragPos);
+    toParent(in_.dropPos);
+    off_ = prev.off;
+    sc_ = prev.sc;
     c_->restore();
 }
 
@@ -457,12 +467,12 @@ bool Ui::knob(Id id, Pt p, float size, float& v, float mod, bool* began, bool* e
     const Interact it = interact(id, r, Cursor::ResizeNS);
     bool changed = false;
     if (it.pressed) {
-        dragStartY_ = in_.mouse.y;
+        dragStartY_ = mouseAbs().y;  // en pixels d'écran : même sensibilité dans un bloc rapetissé
         dragStartV_ = v;
         if (began) *began = true;
     }
     if (it.held && !it.pressed) {
-        const float nv = std::clamp(dragStartV_ + (dragStartY_ - in_.mouse.y) / 160.f, 0.f, 1.f);
+        const float nv = std::clamp(dragStartV_ + (dragStartY_ - mouseAbs().y) / 160.f, 0.f, 1.f);
         if (nv != v) { v = nv; changed = true; }
     }
     if (it.released && ended) *ended = true;

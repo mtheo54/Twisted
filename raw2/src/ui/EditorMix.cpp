@@ -303,7 +303,8 @@ void Editor::drawMix() {
     const int prof = std::clamp(st_.mixProf, 0, 4);
     if (st_.acts.empty() && st_.aiPhase != 1) genActs(st_.aiPhase == 2);
     if (mixMenu_ != 0 && ui_.in().pressed) {  // un clic hors du menu et de son bouton le referme
-        const Pt p{ui_.mouseAbs().x - blkOff_[kBMixAssistant].x, ui_.mouseAbs().y - blkOff_[kBMixAssistant].y};
+        const float s = blkSc_[kBMixAssistant];
+        const Pt p{(ui_.mouseAbs().x - blkOff_[kBMixAssistant].x) / s, (ui_.mouseAbs().y - blkOff_[kBMixAssistant].y) / s};
         const Rect menu = mixMenu_ == 1 ? Rect{889.f, 164.f, 150.f, 182.f} : Rect{1065.8f, 164.f, 150.f, 152.f};
         if (!menu.contains(p) && !Rect{889.f, 136.f, 326.8f, 25.f}.contains(p)) mixMenu_ = 0;
     }

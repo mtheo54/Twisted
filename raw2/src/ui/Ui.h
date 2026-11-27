@@ -54,17 +54,19 @@ public:
     // calques : un bloqueur empêche les widgets des calques inférieurs de réagir
     void setLayer(int l) { layer_ = l; }
     int layer() const { return layer_; }
-    void addBlocker(const Rect& r, int layer) { blockers_.push_back({r.moved(off_.x, off_.y), layer}); }  // stocké en absolu
+    void addBlocker(const Rect& r, int layer) { blockers_.push_back({toAbs(r), layer}); }  // stocké en absolu
     void clearBlockers() { blockers_.clear(); }
     bool hit(const Rect& r) const;
 
-    // Blocs déplacés par un skin : tout ce qui est dessiné entre pushOffset et popOffset est décalé, la
-    // souris (in()) est rendue en coordonnées locales ; les bloqueurs restent en coordonnées absolues.
-    void pushOffset(float dx, float dy);
+    // Blocs placés par un skin : tout ce qui est dessiné entre pushOffset et popOffset est décalé puis mis
+    // à l'échelle (absolu = local × échelle + décalage) ; la souris (in()) est rendue en coordonnées
+    // locales ; les bloqueurs restent en coordonnées absolues.
+    void pushOffset(float dx, float dy, float scale = 1.f);
     void popOffset();
     Pt offset() const { return off_; }
-    Rect toAbs(const Rect& r) const { return r.moved(off_.x, off_.y); }
-    Pt mouseAbs() const { return Pt{in_.mouse.x + off_.x, in_.mouse.y + off_.y}; }
+    float scale() const { return sc_; }
+    Rect toAbs(const Rect& r) const { return Rect{r.x * sc_ + off_.x, r.y * sc_ + off_.y, r.w * sc_, r.h * sc_}; }
+    Pt mouseAbs() const { return Pt{in_.mouse.x * sc_ + off_.x, in_.mouse.y * sc_ + off_.y}; }
 
     // Effet verre d'un skin : les cartes montrent le fond flouté qui est derrière elles.
     struct Glass {
@@ -145,7 +147,12 @@ private:
     const Theme* t_ = nullptr;
     Input in_;
     Pt off_{0.f, 0.f};
-    std::vector<Pt> offStack_;
+    float sc_ = 1.f;
+    struct Xform {
+        Pt off;
+        float sc;
+    };
+    std::vector<Xform> offStack_;
     Glass glass_;
     int layer_ = 0;
     std::vector<Blocker> blockers_;

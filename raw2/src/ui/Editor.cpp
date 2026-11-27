@@ -83,15 +83,21 @@ void Editor::pickTheme() {
     gridOn_ = sk ? skin_.grid : true;
 
     // place des blocs (bornée à la fenêtre)
-    for (Pt& o : blkOff_) o = Pt{0.f, 0.f};
+    for (int b = 0; b < kNumBlocks; ++b) {
+        blkOff_[b] = Pt{0.f, 0.f};
+        blkSc_[b] = 1.f;
+    }
     if (sk)
         for (const auto& kv : skin_.layout) {
             const int b = blockByKey(kv.first.c_str());
             if (b < 0) continue;
             const Rect& d = kBlocks[b].r;
-            const float x = std::clamp(kv.second.first, kBlockLeft, std::max(kBlockLeft, kBlockRight - d.w));
-            const float y = std::clamp(kv.second.second, kBlockTop, std::max(kBlockTop, kBlockBottom - d.h));
-            blkOff_[b] = Pt{std::round(x - d.x), std::round(y - d.y)};
+            // échelle : jamais plus grand que la zone utile
+            const float s = std::min({kv.second.scale, (kBlockRight - kBlockLeft) / d.w, (kBlockBottom - kBlockTop) / d.h});
+            const float x = std::clamp(kv.second.x, kBlockLeft, std::max(kBlockLeft, kBlockRight - d.w * s));
+            const float y = std::clamp(kv.second.y, kBlockTop, std::max(kBlockTop, kBlockBottom - d.h * s));
+            blkSc_[b] = s;
+            blkOff_[b] = Pt{std::round(x) - d.x * s, std::round(y) - d.y * s};
         }
 
     // verre : le fond flouté, recadré comme le fond net (voir le dessin de la plaque)
@@ -188,7 +194,7 @@ void Editor::setBackground(const std::string& path) {
 void Editor::blk(int b) {
     blkEnd();
     if (b < 0 || b >= kNumBlocks) return;
-    ui_.pushOffset(blkOff_[b].x, blkOff_[b].y);
+    ui_.pushOffset(blkOff_[b].x, blkOff_[b].y, blkSc_[b]);
     blkCur_ = b;
 }
 
@@ -410,10 +416,9 @@ void Editor::frame(Canvas& c, const Input& in) {
     }
     if (roleOpen_ && tab_ == 0) ui_.addBlocker(Rect{1061.f, 707.2f, 174.f, 190.f}, 3);
     {
-        const Pt ma = blkOff_[kBMixAssistant], sv = blkOff_[kBSonVie];
-        if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(Rect{889.f, 164.f, 153.f, 185.f}.moved(ma.x, ma.y), 3);
-        if (mixMenu_ == 2 && tab_ == 5) ui_.addBlocker(Rect{1065.8f, 164.f, 153.f, 155.f}.moved(ma.x, ma.y), 3);
-        if (seedOpen_ && tab_ == 0) ui_.addBlocker(Rect{877.2f, 313.2f, 134.f, 128.f}.moved(sv.x, sv.y), 3);
+        if (mixMenu_ == 1 && tab_ == 5) ui_.addBlocker(blkRect(kBMixAssistant, Rect{889.f, 164.f, 153.f, 185.f}), 3);
+        if (mixMenu_ == 2 && tab_ == 5) ui_.addBlocker(blkRect(kBMixAssistant, Rect{1065.8f, 164.f, 153.f, 155.f}), 3);
+        if (seedOpen_ && tab_ == 0) ui_.addBlocker(blkRect(kBSonVie, Rect{877.2f, 313.2f, 134.f, 128.f}), 3);
     }
     if (fxMenu_ != 0 && tab_ == 4) ui_.addBlocker(Rect{fxMenuRect_.x, fxMenuRect_.y, fxMenuRect_.w + 3.f, fxMenuRect_.h + 3.f}, 3);
 
@@ -1791,9 +1796,8 @@ void Editor::drawFx() {
 void Editor::handleDrops() {
     const Input& in = ui_.in();
     // zones de dépôt, à la place de leur bloc
-    const Pt oa = blkOff_[kBSonOscA], ob = blkOff_[kBSonOscB], oi = blkOff_[kBWtImport];
-    const Rect scrA = Rect{39.f, 126.f, 331.8f, 306.2f}.moved(oa.x, oa.y), scrB = Rect{909.2f, 126.f, 331.8f, 306.2f}.moved(ob.x, ob.y);
-    const Rect dz = Rect{381.f, 782.2f, 556.f, 99.8f}.moved(oi.x, oi.y);
+    const Rect scrA = blkRect(kBSonOscA, Rect{39.f, 126.f, 331.8f, 306.2f}), scrB = blkRect(kBSonOscB, Rect{909.2f, 126.f, 331.8f, 306.2f});
+    const Rect dz = blkRect(kBWtImport, Rect{381.f, 782.2f, 556.f, 99.8f});
     dropA_ = in.dragOver && tab_ == 0 && scrA.contains(in.dragPos);
     dropB_ = in.dragOver && tab_ == 0 && scrB.contains(in.dragPos);
     dropWt_ = in.dragOver && tab_ == 6 && dz.contains(in.dragPos);
