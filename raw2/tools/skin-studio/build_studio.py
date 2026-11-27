@@ -72,7 +72,8 @@ def fonts():
 
 
 def main():
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "dist", "ABRASION-Skin-Studio.html")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    out = args[0] if args else os.path.join(ROOT, "dist", "ABRASION-Skin-Studio.html")
     themes = json.load(open(os.path.join(ROOT, "resources/data/themes.json"), encoding="utf-8"))
     version = re.search(r"project\(RAW2 VERSION ([0-9.]+)", open(os.path.join(ROOT, "CMakeLists.txt")).read()).group(1)
     data = {"themes": themes, "blocks": blocks(), "sprites": sprites(), "version": version}
@@ -81,6 +82,11 @@ def main():
     html = html.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     for k, v in f.items():
         html = html.replace("__FONT_%s__" % k.upper(), v)
+    if "--page" in sys.argv:  # page publiée : le squelette (doctype, head, body) est ajouté à la publication
+        for tag in ('<!doctype html>\n', '<html lang="fr">\n', '<head>\n', '<meta charset="utf-8">\n',
+                    '<meta name="viewport" content="width=device-width, initial-scale=1">\n', '</head>\n', '<body>\n', '</body>\n', '</html>\n'):
+            assert tag in html, tag
+            html = html.replace(tag, "", 1)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     open(out, "w", encoding="utf-8").write(html)
     print(out, "%.1f Mo" % (len(html.encode()) / 1e6))

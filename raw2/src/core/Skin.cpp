@@ -213,14 +213,15 @@ bool loadSkin(const std::string& dir, Skin& out, std::string& error) {
 }
 
 bool isSkinFile(const std::string& path) {
-    if (endsWith(path, ".raw2skin")) return true;
+    // .zip : un skin exporté depuis la version web du studio (le navigateur n'enregistre pas .raw2skin)
+    if (endsWith(path, ".raw2skin") || endsWith(path, ".zip")) return true;
     if (files::baseName(path) == "skin.json") return true;
     return files::isDir(path) && files::exists(files::join(path, "skin.json"));
 }
 
 bool installSkin(const std::string& path, std::string& dir, std::string& error) {
     std::vector<zip::Entry> entries;
-    if (endsWith(path, ".raw2skin")) {
+    if (endsWith(path, ".raw2skin") || endsWith(path, ".zip")) {
         std::vector<unsigned char> data;
         if (!files::read(path, data)) { error = "fichier illisible"; return false; }
         if (!zip::read(data, entries, error)) return false;

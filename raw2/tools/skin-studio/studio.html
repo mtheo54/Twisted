@@ -120,7 +120,7 @@ footer b{color:var(--ink)}
   <button class="btn" id="bNew" title="Repartir de zéro">Nouveau</button>
   <button class="btn" id="bOpen" title="Ouvrir un .raw2skin pour le modifier">Ouvrir</button>
   <button class="btn acc" id="bExport">Exporter .raw2skin</button>
-  <input type="file" id="fOpen" accept=".raw2skin" hidden>
+  <input type="file" id="fOpen" accept=".raw2skin,.zip" hidden>
 </header>
 
 <main class="app">
@@ -751,10 +751,19 @@ async function exportSkin(){
     const entries = [{name:"skin.json", data:new TextEncoder().encode(JSON.stringify(skinJson(bg && bg.name), null, 2))}];
     if (bg) entries.push(bg);
     const fname = (S.name.trim() || "skin").replace(/[<>:"/\\|?*\x00-\x1f]/g, "") + ".raw2skin";
-    const blob = new File([zipStore(entries)], fname, {type:"application/octet-stream"}), a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = fname;
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    toast("exporté · " + (blob.size/1e6).toFixed(1) + " Mo · glisse-le sur RAW 2");
+    const zip = zipStore(entries);
+    // page publiée sur claude.ai : l'enregistrement passe par la plateforme, qui n'accepte que .zip
+    // (RAW 2 lit aussi les skins .zip) ; fichier ouvert directement : téléchargement classique
+    const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(() => null) : null;
+    if (dl) {
+      try { await dl.save({filename:fname + ".zip", data:zip}); toast("enregistré · " + (zip.size/1e6).toFixed(1) + " Mo · glisse le .zip sur RAW 2"); }
+      catch (e) { toast(e && e.code === "declined" ? "enregistrement annulé" : "enregistrement impossible ici (" + (e && e.code || "?") + ")"); }
+    } else {
+      const blob = new File([zip], fname, {type:"application/octet-stream"}), a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = fname;
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast("exporté · " + (blob.size/1e6).toFixed(1) + " Mo · glisse-le sur RAW 2");
+    }
   } catch (e) { toast("export impossible : " + e.message); }
   btn.disabled = false; btn.textContent = label;
 }
@@ -788,7 +797,7 @@ $("#tSnap").onclick = e => { snap = !snap; e.target.classList.toggle("on", snap)
 $("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; dirty = true; save(); buildBlocks(); };
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => { if (e.defaultPrevented) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
-  if (/\.raw2skin$/i.test(f.name)) openSkin(f); else loadMedia(f); });
+  if (/\.(raw2skin|zip)$/i.test(f.name)) openSkin(f); else loadMedia(f); });
 $("#ver").textContent = DATA.version;
 document.fonts && document.fonts.ready.then(() => dirty = true);
 S = fresh(); restore(); buildTabs(); buildSide(); loop();

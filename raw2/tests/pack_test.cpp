@@ -226,6 +226,10 @@ int main() {
         const std::string file = files::join(home, "Test.raw2skin");
         CHECK(files::write(file, arc));
         CHECK(isSkinFile(file));
+        const std::string zipFile = files::join(home, "Test.raw2skin.zip");  // export de la version web du studio
+        CHECK(files::write(zipFile, arc) && isSkinFile(zipFile));
+        std::string zdir;
+        CHECK(installSkin(zipFile, zdir, err));
         std::string dir;
         CHECK(installSkin(file, dir, err));
         CHECK(dir == files::join(files::join(root, "Skins"), "N\xC3\xA9on  test"));

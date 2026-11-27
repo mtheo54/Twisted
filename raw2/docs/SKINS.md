@@ -34,7 +34,7 @@ L'aperçu utilise les vraies vignettes de l'interface (rendues par RAW 2, `make_
 place des blocs, l'accent, les cartes, le verre et le fond sont ceux que RAW 2 affichera. Les autres
 jetons de couleur ne s'y voient pas mais s'appliquent dans RAW 2.
 
-**Exporter .raw2skin** télécharge le fichier ; **Ouvrir** reprend un skin exporté.
+**Exporter .raw2skin** télécharge le fichier (`.raw2skin.zip` depuis la version en ligne : RAW 2 lit aussi les `.zip`) ; **Ouvrir** reprend un skin exporté.
 
 ## Format
 

@@ -50,7 +50,7 @@ bool loadSkin(const std::string& dir, Skin& out, std::string& error);  // dir/sk
 // Installe un .raw2skin, un dossier de skin ou un skin.json dans Documents/Raw 2/Skins ; dir reçoit
 // le dossier installé (un skin du même nom est remplacé).
 bool installSkin(const std::string& path, std::string& dir, std::string& error);
-bool isSkinFile(const std::string& path);  // .raw2skin, skin.json, ou dossier contenant skin.json
+bool isSkinFile(const std::string& path);  // .raw2skin, .zip, skin.json, ou dossier contenant skin.json
 // Skins disponibles : ceux de l'utilisateur puis ceux d'usine (dossiers), triés par nom.
 std::vector<std::string> listSkins();
 
