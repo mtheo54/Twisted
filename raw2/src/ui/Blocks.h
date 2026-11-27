@@ -18,12 +18,27 @@ enum BlockId : int {
     kNumBlocks
 };
 
+// Comment un bloc change de taille (comme un widget) : son contenu se réorganise au lieu d'être zoomé.
+enum BlockResize : int {
+    kRsScale = 0,  // seulement à l'échelle (proportions gardées)
+    kRsWidth = 1,  // largeur seule (clavier : 1 à 3 octaves)
+    kRsFree = 2,   // largeur et hauteur (OSC : écran agrandi, infos en plus)
+    kRsStack = 3,  // largeur ; les cases passent en colonnes ou en lignes (modules), hauteur déduite
+};
+
 struct BlockDef {
     const char* key;   // "son.oscA"
     int tab;           // onglet (0 SON, 1 VIE, 2 MODULES, 3 ENV / LFO, 4 EFX, 5 MIX IA, 6 WAVETABLE, 7 JEU, 8 SYNTH)
     const char* name;  // nom affiché dans le studio
     Rect r;            // place d'origine (fenêtre 1280 x 960)
+    int resize = kRsScale;
+    float minW = 0.f, minH = 0.f, maxW = 0.f, maxH = 0.f;  // bornes de taille (kRsWidth, kRsFree, kRsStack)
 };
+
+// modules en kRsStack : cases d'au moins 260 px, 56 px par ligne
+constexpr float kModCellMin = 260.f, kModRowH = 56.f;
+inline int modCols(float w) { const int c = (int)(w / kModCellMin); return c < 1 ? 1 : (c > 3 ? 3 : c); }
+inline float modHeight(float w) { const int c = modCols(w); return (float)((3 + c - 1) / c) * kModRowH; }
 
 extern const BlockDef kBlocks[kNumBlocks];
 int blockByKey(const char* key);  // -1 si inconnu

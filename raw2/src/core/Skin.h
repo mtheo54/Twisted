@@ -11,7 +11,8 @@
 //     "background": { "file": "fond.mp4", "voile": 0.35, "grille": true },
 //     "glass": { "on": true, "flou": 0.6, "teinte": 0.35, "reflet": 0.6 },
 //     "cards": { "opacite": 0.85 },
-//     "layout": { "son.oscA": [24, 73, 0.8], ... }  // coin haut gauche et échelle (1 si absente) de chaque bloc placé
+//     "layout": { "son.vie": [24, 73, 0.8],          // coin haut gauche et échelle (1 si absente)
+//                 "son.oscA": {"x": 24, "y": 73, "w": 420, "h": 600}, ... }  // bloc adaptatif : taille
 //     "hidden": [ "son.modules", ... ]               // blocs retirés
 //   }
 // Installé dans Documents/Raw 2/Skins/<nom> ; les skins d'usine sont dans le dossier d'usine.
@@ -37,6 +38,7 @@ struct Skin {
     float cards = 0.85f;              // opacité des cartes sans verre (0,5..1)
     struct Place {
         float x = 0.f, y = 0.f, scale = 1.f;
+        float w = 0.f, h = 0.f;  // taille d'un bloc adaptatif (0 : celle d'origine)
     };
     std::vector<std::pair<std::string, Place>> layout;
     std::vector<std::string> hidden;  // blocs retirés de leur page (ni dessinés ni cliquables)

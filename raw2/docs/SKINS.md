@@ -26,7 +26,15 @@ RAW 2 pour l'installer.
    Grain, Glitch ; 3 couleurs, échelle, vitesse, tirage) fixe (PNG 1600 × 1200) ou animé (GIF en
    boucle, 480 × 360, 12 i/s) ; voile, grille de points.
 4. **Verre** : flou, teinte, reflets ; opacité des cartes sans verre.
-5. **Blocs** : dans l'aperçu, glisser un bloc pour le déplacer (aimant 8 px et bords des autres
+5. **Blocs** — ils se comportent comme des **widgets** (Android, iOS) : chacun change de taille à sa
+   façon et son contenu se réorganise au lieu d'être zoomé :
+   - **SORTIE (clavier)** : largeur seule (poignée sur le bord droit), 1 à 3 octaves, MASTER gardé ;
+   - **OSC A / OSC B** : taille libre (300 × 430 à 640 × 867) ; l'écran s'agrandit, et une carte haute
+     ajoute un panneau d'infos (source, frame, position, warp, phase, réglages, aperçu des frames) ;
+     **si un OSC est retiré, l'autre affiche un sélecteur A | B et règle les deux** ;
+   - **HARMONIQUES · ESPACE · TEXTURE** : largeur, sur 1, 2 ou 3 colonnes (hauteur déduite) ;
+   - les autres blocs : à l'échelle (50 à 160 %, proportions gardées).
+   Dans l'aperçu, glisser un bloc pour le déplacer (aimant 8 px et bords des autres
    blocs, avec lignes de repère) et son **coin bas droit** pour le **rapetisser ou l'agrandir**
    (50 à 160 %, proportions gardées). **Tous les blocs restent visibles** : un bloc ne peut pas
    grandir par-dessus un autre ; lâché sur un autre, il va à la place libre la plus proche, ou
@@ -67,7 +75,9 @@ Une archive ZIP **sans compression** (ce qu'écrit le studio) ou un dossier, ave
   MOV, M4V ; AVI, WMV sous Windows), décodée par le système. Vidéo : 10 s en boucle, 480 × 360,
   12 i/s ; image : jusqu'à 1600 × 1200.
 - `layout` : coin haut gauche de chaque bloc placé (fenêtre 1280 × 960, bornée à la zone utile) et,
-  en option, son échelle (0,4 à 1,6 ; 1 si absente). RAW 2 dessine le bloc à cette taille ; ses
+  en option, son échelle (0,4 à 1,6 ; 1 si absente) : `[x, y, échelle]`. Les widgets adaptatifs
+  (`son.oscA`, `son.oscB`, `son.modules`, `son.sortie`) prennent `{"x", "y", "w", "h"}` ; leurs
+  bornes et leur façon de changer de taille sont dans `src/ui/Blocks.cpp`. RAW 2 dessine le bloc à cette taille ; ses
   boutons, potards (même sensibilité), menus et zones de dépôt suivent.
 - `hidden` : blocs retirés de leur page (ni dessinés, ni cliquables). Leurs réglages restent
   actifs et automatisables depuis la DAW.

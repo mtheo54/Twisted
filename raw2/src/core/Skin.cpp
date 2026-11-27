@@ -162,7 +162,15 @@ bool parseSkin(const std::string& text, Skin& s, std::string& error) {
     s.cards = clampf(v["cards"]["opacite"].num(0.85), 0.5f, 1.f);
     for (const auto& kv : v["layout"].members()) {
         const json::Value& p = kv.second;
-        if (p.isArray() && p.size() >= 2 && p[(size_t)0].isNumber() && p[(size_t)1].isNumber()) {
+        if (p.isObject()) {  // bloc adaptatif : {"x", "y", "w", "h"}
+            Skin::Place pl;
+            pl.x = (float)p["x"].num();
+            pl.y = (float)p["y"].num();
+            pl.w = std::max(0.f, (float)p["w"].num(0));
+            pl.h = std::max(0.f, (float)p["h"].num(0));
+            pl.scale = clampf(p["s"].num(1.0), 0.4f, 1.6f);
+            s.layout.emplace_back(kv.first, pl);
+        } else if (p.isArray() && p.size() >= 2 && p[(size_t)0].isNumber() && p[(size_t)1].isNumber()) {
             Skin::Place pl;
             pl.x = (float)p[(size_t)0].num();
             pl.y = (float)p[(size_t)1].num();
@@ -202,9 +210,17 @@ std::string skinToJson(const Skin& s) {
     json::Value l = json::Value::object();
     for (const auto& kv : s.layout) {
         json::Value p = json::Value::array();
-        p.push(kv.second.x);
-        p.push(kv.second.y);
-        if (std::fabs(kv.second.scale - 1.f) > 1e-4f) p.push(kv.second.scale);
+        if (kv.second.w > 0.f || kv.second.h > 0.f) {
+            p = json::Value::object();
+            p.set("x", kv.second.x);
+            p.set("y", kv.second.y);
+            p.set("w", kv.second.w);
+            p.set("h", kv.second.h);
+        } else {
+            p.push(kv.second.x);
+            p.push(kv.second.y);
+            if (std::fabs(kv.second.scale - 1.f) > 1e-4f) p.push(kv.second.scale);
+        }
         l.set(kv.first, p);
     }
     v.set("layout", l);

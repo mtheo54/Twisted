@@ -209,8 +209,26 @@ function setAccent(hex){
 const blocksOf = t => DATA.blocks.filter(b => b.tab === t && (t !== 2 || (modSide === 1) === (b.key === "mod.rack")));
 // place d'un bloc : coin haut gauche et échelle (RAW 2 dessine le bloc rapetissé ou agrandi)
 const SMIN = 0.5, SMAX = 1.6;
-const posOf = b => { const l = S.layout[b.key]; return l ? {x:l[0], y:l[1], s:l[2] ?? 1} : {x:b.r[0], y:b.r[1], s:1}; };
-const rectOf = (b, p = posOf(b)) => ({x:p.x, y:p.y, w:b.r[2]*p.s, h:b.r[3]*p.s});
+// Comme des widgets : chaque bloc change de taille à sa façon (même règles que RAW 2, Blocks.cpp).
+// 0 échelle (proportions gardées) · 1 largeur seule (clavier) · 2 libre (OSC) · 3 colonnes / lignes (modules)
+const RS = b => b.rs || 0;
+const modCols = w => clamp(Math.floor(w / 260), 1, 3), modHeight = w => Math.ceil(3 / modCols(w)) * 56;
+function fitSize(b, w, h){   // taille permise la plus proche
+  const [mnW, mnH, mxW, mxH] = b.min || [b.r[2], b.r[3], b.r[2], b.r[3]];
+  w = Math.round(clamp(w, mnW, Math.min(mxW, 1264)));
+  if (RS(b) === 1) h = b.r[3];
+  else if (RS(b) === 3) h = modHeight(w);
+  else h = Math.round(clamp(h, mnH, Math.min(mxH, 876)));
+  return {w, h};
+}
+const posOf = b => {
+  const l = S.layout[b.key];
+  if (RS(b)) { const o = l && !Array.isArray(l) ? l : null, f = fitSize(b, o ? o.w : b.r[2], o ? o.h : b.r[3]);
+    return {x:o ? o.x : b.r[0], y:o ? o.y : b.r[1], s:1, w:f.w, h:f.h}; }
+  const s = Array.isArray(l) ? (l[2] ?? 1) : 1;
+  return Array.isArray(l) ? {x:l[0], y:l[1], s, w:b.r[2]*s, h:b.r[3]*s} : {x:b.r[0], y:b.r[1], s:1, w:b.r[2], h:b.r[3]};
+};
+const rectOf = (b, p = posOf(b)) => ({x:p.x, y:p.y, w:p.w, h:p.h});
 const hits = (a, c) => a.x < c.x + c.w - 1 && c.x < a.x + a.w - 1 && a.y < c.y + c.h - 1 && c.y < a.y + a.h - 1;
 const inside = r => r.x >= 8 - 0.5 && r.y >= 64 - 0.5 && r.x + r.w <= 1272.5 && r.y + r.h <= 940.5;
 const isHidden = b => S.hidden.includes(b.key);
@@ -218,15 +236,24 @@ const shown = t => blocksOf(t).filter(b => !isHidden(b));   // blocs présents s
 function overlapsAt(b, r){ return shown(b.tab).some(o => o !== b && hits(r, rectOf(o))); }
 function overlaps(b){ return overlapsAt(b, rectOf(b)); }
 const maxScale = (b, x, y) => Math.min(SMAX, (1272 - x)/b.r[2], (940 - y)/b.r[3]);
-function setPos(b, x, y, sc){
-  let s = clamp(sc ?? posOf(b).s, SMIN, Math.min(SMAX, 1264/b.r[2], 876/b.r[3])); s = Math.round(s*100)/100;
+// sz : {s} pour un bloc à l'échelle, {w, h} pour un widget adaptatif
+function setPos(b, x, y, sz){
+  const p = posOf(b);
+  if (RS(b)) {
+    const f = fitSize(b, sz && sz.w !== undefined ? sz.w : p.w, sz && sz.h !== undefined ? sz.h : p.h);
+    x = clamp(Math.round(x), 8, 1272 - f.w); y = clamp(Math.round(y), 64, Math.round(940 - f.h));
+    const def = fitSize(b, b.r[2], b.r[3]);
+    if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5 && f.w === def.w && f.h === def.h) delete S.layout[b.key];
+    else S.layout[b.key] = {x, y, w:f.w, h:f.h};
+    return;
+  }
+  let s = clamp(sz && sz.s !== undefined ? sz.s : p.s, SMIN, Math.min(SMAX, 1264/b.r[2], 876/b.r[3])); s = Math.round(s*100)/100;
   x = clamp(Math.round(x), 8, Math.round(1272 - b.r[2]*s)); y = clamp(Math.round(y), 64, Math.round(940 - b.r[3]*s));
   if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5 && Math.abs(s - 1) < 0.005) delete S.layout[b.key];
   else S.layout[b.key] = Math.abs(s - 1) < 0.005 ? [x, y] : [x, y, s];
 }
 // place libre la plus proche (tous les blocs restent visibles : aucun ne doit en cacher un autre)
-function freeSpot(b, x, y, s){
-  const w = b.r[2]*s, h = b.r[3]*s;
+function freeSpot(b, x, y, w, h){
   for (let rad = 0; rad <= 1000; rad += 8) {
     const c = [];
     for (let d = -rad; d <= rad; d += 8) c.push([x + d, y - rad], [x + d, y + rad], [x - rad, y + d], [x + rad, y + d]);
@@ -234,6 +261,14 @@ function freeSpot(b, x, y, s){
     for (const [cx, cy] of c) { const r = {x:cx, y:cy, w, h}; if (inside(r) && !overlapsAt(b, r)) return {x:cx, y:cy}; }
   }
   return null;
+}
+// taille d'un bloc : la plus grande vers la cible sans toucher un autre bloc (depuis une taille libre)
+function growTo(b, x0, y0, from, to){
+  const at = t => RS(b) ? fitSize(b, from.w + (to.w - from.w)*t, from.h + (to.h - from.h)*t) : {s:from.s + (to.s - from.s)*t};
+  const rect = z => ({x:x0, y:y0, w:z.w ?? b.r[2]*z.s, h:z.h ?? b.r[3]*z.s});
+  if (!overlapsAt(b, rect(at(1))) && inside(rect(at(1)))) return at(1);
+  let lo = 0, hi = 1; for (let i = 0; i < 16; i++) { const m = (lo + hi)/2, r = rect(at(m)); if (overlapsAt(b, r) || !inside(r)) hi = m; else lo = m; }
+  return at(lo);
 }
 const hidden = t => shown(t).filter(overlaps).length;
 
@@ -415,9 +450,10 @@ function render(){
   if (src) { ctx.fillStyle = rgba({...T.chassis, a:0.8}); ctx.fillRect(0, 938, W, 22); }
   if (sp) { ctx.drawImage(sp, 0, 0, sp.width, 64*SPR, 0, 0, W, 64); ctx.drawImage(sp, 0, 938*SPR, sp.width, 22*SPR, 0, 938, W, 22); }
   for (const b of shown(tab)) {
-    const p = posOf(b), [ox, oy, bw, bh] = b.r, w = bw*p.s, hh = bh*p.s;
-    pane(T, p.x, p.y, w, hh, src, !!glassImg);
-    if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, w, hh);
+    const p = posOf(b), [ox, oy, bw, bh] = b.r;
+    pane(T, p.x, p.y, p.w, p.h, src, !!glassImg);
+    if (sp && RS(b)) drawWidget(sp, b, p, T);
+    else if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, p.w, p.h);
     else { ctx.fillStyle = rgba(T.ink || {r:240,g:240,b:240,a:1}); ctx.font = "16px Pix"; ctx.fillText(b.name, p.x + 16, p.y + 32); }
   }
   // guides d'alignement pendant un glisser
@@ -429,16 +465,18 @@ function render(){
     ctx.save(); ctx.lineWidth = on ? 3 : 1.5; ctx.setLineDash(on ? [] : [6, 5]);
     ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : hov ? "#FFFFFF" : "rgba(255,255,255,.5)";
     ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-    const label = b.name + (p.s !== 1 ? "  ·  " + Math.round(p.s*100) + " %" : "");
+    const label = b.name + (RS(b) ? (S.layout[b.key] ? "  ·  " + p.w + " × " + Math.round(p.h) : "") : p.s !== 1 ? "  ·  " + Math.round(p.s*100) + " %" : "");
     ctx.font = "bold 13px JBM"; const lw = Math.min(r.w - 8, ctx.measureText(label).width + 16), ly = r.y + r.h - 28;
     if (lw > 30 && r.h > 40) { ctx.fillStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(10,10,12,.78)"; ctx.fillRect(r.x + 4, ly, lw, 22);
       ctx.save(); ctx.beginPath(); ctx.rect(r.x + 4, ly, lw, 22); ctx.clip();
       ctx.fillStyle = on || bad ? "#0D0D0D" : "#F0F0F0"; ctx.fillText(label, r.x + 12, ly + 16); ctx.restore(); }
-    if (on || hov) {   // poignée de taille (coin bas droit)
-      const hx = r.x + r.w, hy = r.y + r.h;
-      ctx.setLineDash([]); ctx.fillStyle = bad ? "#FF5A4F" : rgba(accent()); ctx.fillRect(hx - 22, hy - 22, 22, 22);
+    if (on || hov) {   // poignée de taille : coin (échelle, libre) ou bord droit (largeur)
+      const q = handleRect(b, r);
+      ctx.setLineDash([]); ctx.fillStyle = bad ? "#FF5A4F" : rgba(accent()); ctx.fillRect(q.x, q.y, q.w, q.h);
       ctx.strokeStyle = "#0D0D0D"; ctx.lineWidth = 2; ctx.beginPath();
-      for (const k of [6, 11, 16]) { ctx.moveTo(hx - 3, hy - k - 3); ctx.lineTo(hx - k - 3, hy - 3); } ctx.stroke();
+      if (edgeHandle(b)) for (const k of [4, 8]) { ctx.moveTo(q.x + k + 1, q.y + 14); ctx.lineTo(q.x + k + 1, q.y + q.h - 14); }
+      else { const hx = r.x + r.w, hy = r.y + r.h; for (const k of [6, 11, 16]) { ctx.moveTo(hx - 3, hy - k - 3); ctx.lineTo(hx - k - 3, hy - 3); } }
+      ctx.stroke();
       // bouton ✕ (coin haut droit) : retirer le bloc de la page
       const xx = r.x + r.w - 26, xy = r.y + 4;
       ctx.fillStyle = "#0D0D0D"; ctx.fillRect(xx, xy, 22, 22); ctx.strokeStyle = "#FF5A4F"; ctx.lineWidth = 2.2; ctx.beginPath();
@@ -447,6 +485,63 @@ function render(){
     ctx.restore();
   }
   updateVis();
+}
+// Aperçu d'un widget adaptatif : recomposé à partir des vraies vignettes, avec la même mise en page
+// que RAW 2 (en-tête et commandes fixes, écran / rail / cases qui s'étirent ou se réorganisent).
+function slice(sp, sx, sy, sw, sh, dx, dy, dw, dh){ if (sw > 0 && sh > 0 && dw > 0 && dh > 0) ctx.drawImage(sp, sx*SPR, sy*SPR, sw*SPR, sh*SPR, dx, dy, dw, dh); }
+function drawWidget(sp, b, p, T){
+  const [ox, oy, bw, bh] = b.r, x = p.x, y = p.y, w = p.w, hh = p.h;
+  if (b.key === "son.sortie") {
+    slice(sp, ox, oy, 160, 50, x, y, 160, 50);                                   // titre SORTIE
+    slice(sp, ox + bw - 300, oy, 300, 50, x + w - 300, y, 300, 50);              // GLISSER EN .WAV, clavier
+    const area = w - 172, nw = clamp(Math.floor(area / 46 / 7), 1, 3) * 7;       // 1 à 3 octaves, comme RAW 2
+    const srcW = 22 + 1060 * nw / 21;
+    slice(sp, ox + 15, oy + 57.2, srcW, 194, x + 15, y + 57.2, w - 150, 194);    // rail et touches
+    slice(sp, ox + 15 + 1082 - 6, oy + 57.2, 6, 194, x + 15 + w - 150 - 6, y + 57.2, 6, 194);  // bord droit du rail
+    slice(sp, ox + bw - 135, oy + 50, 135, bh - 50, x + w - 135, y + 50, 135, hh - 50);         // MASTER
+    return;
+  }
+  if (b.key === "son.modules") {
+    const cols = modCols(w), cw = (w - 2) / cols;
+    for (let i = 0; i < 3; i++) {
+      const cx = x + 1 + (i % cols) * cw, cy = y + 1 + Math.floor(i / cols) * 56, sx = ox + 1 + i * 410;
+      slice(sp, sx, oy + 1, 200, 54, cx, cy, 200, 54);
+      slice(sp, sx + 410 - 112, oy + 1, 110, 54, cx + cw - 112, cy, 110, 54);
+      ctx.fillStyle = rgba(T.rule || {r:60,g:60,b:60,a:1});
+      if (i % cols < cols - 1 && i < 2) ctx.fillRect(cx + cw - 1, cy, 1, 54);
+      if (i >= cols && i % cols === 0) ctx.fillRect(x + 1, cy - 1, w - 2, 1);
+    }
+    return;
+  }
+  // OSC : en-tête, écran (étiré), infos si la carte est haute, modes et potards collés en bas
+  const other = b.key === "son.oscA" ? "son.oscB" : "son.oscA", merged = S.hidden.includes(other);
+  slice(sp, ox, oy, merged ? 62 : 120, 50, x, y, merged ? 62 : 120, 50);
+  slice(sp, ox + bw - 270, oy, 270, 50, x + w - 270, y, 270, 50);
+  if (merged) for (let k = 0; k < 2; k++) {   // sélecteur A | B de RAW 2
+    const bx = x + 15 + 58 + k*26, by = y + 13; ctx.fillStyle = rgba(k ? (T.btnBg || T.card) : T.ink); ctx.fillRect(bx, by, 24, 21);
+    ctx.strokeStyle = rgba(T.btnEdge || T.ink); ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, 23, 20);
+    ctx.fillStyle = rgba(k ? T.ink : (T.btnBg || T.card)); ctx.font = "bold 10px JBM"; ctx.fillText(k ? "B" : "A", bx + 8.5, by + 14.5); }
+  const info = hh >= 600, infoH = info ? (hh >= 700 ? 150 : 92) : 0, scrB = hh - 134 - 6 - (info ? infoH + 8 : 0);
+  slice(sp, ox + 15, oy + 53, 331.8, 306.2, x + 15, y + 53, w - 30, scrB - 53);
+  if (info) {
+    const r = {x:x + 15, y:y + scrB + 8, w:w - 30, h:infoH};
+    ctx.fillStyle = rgba(T.scr); ctx.fillRect(r.x, r.y, r.w, r.h); ctx.strokeStyle = rgba(T.scrLine || T.scr); ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+    ctx.font = "bold 10px JBM"; ctx.fillStyle = rgba(T.scrText || T.ink); ctx.fillText("WAVETABLE · TABLE DU PRESET", r.x + 10, r.y + 18);
+    ctx.font = "10px JBM"; ctx.fillStyle = rgba(T.scrMuted || T.muted);
+    ctx.fillText("FRAME 17 / 64 · POS 25 % · WARP CLASSIQUE 25 %", r.x + 10, r.y + 35); ctx.fillText("PHASE SYNC · +0 OCT +0 ST · PAN C · -4.0 dB", r.x + 10, r.y + 51);
+    ctx.fillStyle = rgba(T.acc); ctx.fillRect(r.x + 10, r.y + 66, (r.w - 20) * 0.25, 2);
+    if (infoH > 100) { const n = clamp(Math.floor((r.w - 20) / 46), 4, 16), cw = (r.w - 20) / n, ch = r.h - 92;
+      for (let k = 0; k < n; k++) { const cx = r.x + 10 + k*cw + 2, cy = r.y + 82, cur = k === Math.round((n - 1)*0.25);
+        ctx.strokeStyle = rgba(cur ? T.acc : (T.scrGrid || T.scrLine || T.scr)); ctx.lineWidth = 1; ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 5, ch - 1);
+        ctx.strokeStyle = rgba(cur ? (T.waveB || T.acc) : {...(T.waveA || T.ink), a:0.55}); ctx.beginPath();
+        for (let i = 0; i <= 24; i++) { const u = i / 24, v = Math.sin(u*6.283*(1 + k*0.25)) * (1 - 0.4*u*k/n);
+          const px = cx + 3 + (cw - 10)*u, py = cy + ch/2 - v*ch*0.36; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); } }
+  }
+  const hw0 = (bw - 36)/2, hw = (w - 36)/2, my = hh - 134;
+  slice(sp, ox + 15, oy + 365.2, hw0, 25, x + 15, y + my, hw, 25);
+  slice(sp, ox + 21 + hw0, oy + 365.2, hw0, 25, x + 21 + hw, y + my, hw, 25);
+  const cw0 = (bw - 36)/4, cw = (w - 36)/4;
+  for (let k = 0; k < 4; k++) slice(sp, ox + 15 + k*(cw0 + 2), oy + 398.2 - 6, cw0, 95, x + 15 + k*(cw + 2) + (cw - cw0)/2, y + hh - 101 - 6, cw0, 95);
 }
 function pane(T, x, y, w, h, src, glass){
   const card = T.card;
@@ -487,14 +582,19 @@ function removeBlock(b){
 function restoreBlock(b){
   const p = posOf(b);
   S.hidden = S.hidden.filter(k => k !== b.key);
-  if (overlaps(b)) { const f = freeSpot(b, p.x, p.y, p.s) || freeSpot(b, p.x, p.y, SMIN);
+  if (overlaps(b)) {
+    const small = RS(b) ? fitSize(b, 0, 0) : {w:b.r[2]*SMIN, h:b.r[3]*SMIN, s:SMIN};
+    const f1 = freeSpot(b, p.x, p.y, p.w, p.h), f = f1 || freeSpot(b, p.x, p.y, small.w, small.h);
     if (!f) { S.hidden.push(b.key); toast("pas de place pour " + b.name + " : rapetisse ou retire un bloc"); return; }
-    setPos(b, f.x, f.y, freeSpot(b, p.x, p.y, p.s) ? p.s : SMIN); }
+    setPos(b, f.x, f.y, f1 ? (RS(b) ? {w:p.w, h:p.h} : {s:p.s}) : (RS(b) ? {w:small.w, h:small.h} : {s:SMIN})); }
   sel = b.key; dirty = true; save(); buildBlocks(); toast(b.name + " remis sur la page");
 }
-function handleAt(p){   // poignée de taille du bloc choisi ou survolé
-  for (const k of [sel, hover]) { const b = k && shown(tab).find(x => x.key === k); if (!b) continue; const r = rectOf(b);
-    if (p.x >= r.x + r.w - 26 && p.x <= r.x + r.w + 4 && p.y >= r.y + r.h - 26 && p.y <= r.y + r.h + 4) return b; }
+// poignée de taille : coin bas droit (échelle, libre) ou bord droit (largeur seule, colonnes)
+const edgeHandle = b => RS(b) === 1 || RS(b) === 3;
+function handleRect(b, r){ return edgeHandle(b) ? {x:r.x + r.w - 14, y:r.y + r.h/2 - 26, w:14, h:52} : {x:r.x + r.w - 22, y:r.y + r.h - 22, w:22, h:22}; }
+function handleAt(p){
+  for (const k of [sel, hover]) { const b = k && shown(tab).find(x => x.key === k); if (!b) continue; const q = handleRect(b, rectOf(b));
+    if (p.x >= q.x - 4 && p.x <= q.x + q.w + 4 && p.y >= q.y - 4 && p.y <= q.y + q.h + 4) return b; }
   return null;
 }
 pv.addEventListener("pointerdown", e => {
@@ -504,27 +604,32 @@ pv.addEventListener("pointerdown", e => {
   sel = b ? b.key : null; buildBlocks(); dirty = true;
   if (!b) return;
   const q = posOf(b);
-  drag = {b, mode:hb ? "size" : "move", dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y, s0:q.s, px:p.x, py:p.y, moved:false, guides:[]};
-  pv.setPointerCapture(e.pointerId); pv.style.cursor = hb ? "nwse-resize" : "grabbing";
+  drag = {b, mode:hb ? "size" : "move", dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y, s0:q.s, w0:q.w, h0:q.h, px:p.x, py:p.y, moved:false, guides:[]};
+  pv.setPointerCapture(e.pointerId); pv.style.cursor = hb ? (edgeHandle(b) ? "ew-resize" : "nwse-resize") : "grabbing";
 });
 pv.addEventListener("pointermove", e => {
   const p = canvasPt(e);
   if (!drag) { const cb = closeAt(p), hb = handleAt(p), b = blockAt(p), k = (hb || b) ? (hb || b).key : null;
-    if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = cb ? "pointer" : hb ? "nwse-resize" : b ? "grab" : "default"; return; }
+    if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = cb ? "pointer" : hb ? (edgeHandle(hb) ? "ew-resize" : "nwse-resize") : b ? "grab" : "default"; return; }
   const b = drag.b; drag.guides = [];
   if (!drag.moved) { if (Math.hypot(p.x - drag.px, p.y - drag.py) < 4) return; drag.moved = true; }  // un simple clic ne déplace rien
   if (drag.mode === "size") {
-    // échelle depuis le coin haut gauche (fixe), proportions gardées ; jamais par-dessus un autre bloc
-    let s = Math.max((p.x - drag.x0)/b.r[2], (p.y - drag.y0)/b.r[3]);
-    if (snap) s = Math.round(s*20)/20;
-    s = clamp(s, SMIN, maxScale(b, drag.x0, drag.y0));
-    if (s > drag.s0 && overlapsAt(b, {x:drag.x0, y:drag.y0, w:b.r[2]*s, h:b.r[3]*s})) {
-      let lo = drag.s0, hi = s; for (let i = 0; i < 14; i++) { const m = (lo + hi)/2; if (overlapsAt(b, {x:drag.x0, y:drag.y0, w:b.r[2]*m, h:b.r[3]*m})) hi = m; else lo = m; }
-      s = Math.floor(lo*100)/100;
+    // depuis le coin haut gauche (fixe) ; jamais par-dessus un autre bloc
+    if (RS(b)) {
+      let w = p.x - drag.x0, hh = p.y - drag.y0;
+      if (snap) { w = Math.round(w/8)*8; hh = Math.round(hh/8)*8; }
+      const z = growTo(b, drag.x0, drag.y0, {w:drag.w0, h:drag.h0}, fitSize(b, w, hh));
+      setPos(b, drag.x0, drag.y0, z);
+    } else {
+      let sc = Math.max((p.x - drag.x0)/b.r[2], (p.y - drag.y0)/b.r[3]);
+      if (snap) sc = Math.round(sc*20)/20;
+      sc = clamp(sc, SMIN, maxScale(b, drag.x0, drag.y0));
+      const z = growTo(b, drag.x0, drag.y0, {s:drag.s0}, {s:sc});
+      setPos(b, drag.x0, drag.y0, {s:Math.floor(z.s*100)/100});
     }
-    setPos(b, drag.x0, drag.y0, s); dirty = true; syncBlockInputs(); return;
+    dirty = true; syncBlockInputs(); return;
   }
-  const s = posOf(b).s, w = b.r[2]*s, h = b.r[3]*s;
+  const pb = posOf(b), w = pb.w, h = pb.h;
   let x = p.x - drag.dx, y = p.y - drag.dy;
   if (snap) {
     x = Math.round(x/8)*8; y = Math.round(y/8)*8;
@@ -550,7 +655,7 @@ function endDrag(){
     if (best && area > 0.45 && Math.abs(q.w - r.w) < 0.15*r.w && Math.abs(q.h - r.h) < 0.15*r.h) {
       const bp = posOf(best); setPos(best, drag.x0, drag.y0); setPos(b, bp.x, bp.y); toast(b.name + " ⇄ " + best.name);
     } else {
-      const f = freeSpot(b, p.x, p.y, p.s);
+      const f = freeSpot(b, p.x, p.y, p.w, p.h);
       if (f) { setPos(b, f.x, f.y); toast(b.name + " : posé à la place libre la plus proche"); }
       else { setPos(b, drag.x0, drag.y0); toast("pas de place libre ici : rapetisse un bloc"); }
     }
@@ -560,12 +665,13 @@ function endDrag(){
 pv.addEventListener("pointerup", endDrag);
 pv.addEventListener("pointercancel", endDrag);
 pv.addEventListener("pointerleave", () => { if (!drag && hover) { hover = null; dirty = true; } });
-function nudge(b, dx, dy, ds){
+function nudge(b, dx, dy, ds){   // ds : ± un cran de taille (5 % ou 16 px)
   const p = posOf(b);
-  let s = clamp(Math.round((p.s + ds)*100)/100, SMIN, maxScale(b, p.x, p.y));
-  const r = {x:p.x + dx, y:p.y + dy, w:b.r[2]*s, h:b.r[3]*s};
+  let z, r;
+  if (RS(b)) { z = fitSize(b, p.w + ds*320, p.h + (RS(b) === 2 ? ds*320 : 0)); r = {x:p.x + dx, y:p.y + dy, w:z.w, h:z.h}; }
+  else { const sc = clamp(Math.round((p.s + ds)*100)/100, SMIN, maxScale(b, p.x, p.y)); z = {s:sc}; r = {x:p.x + dx, y:p.y + dy, w:b.r[2]*sc, h:b.r[3]*sc}; }
   if (!inside(r) || (overlapsAt(b, r) && !overlaps(b))) { toast(ds ? "plus de place pour l'agrandir" : "un autre bloc est là"); return; }
-  setPos(b, r.x, r.y, s); dirty = true; syncBlockInputs(); save();
+  setPos(b, r.x, r.y, z); dirty = true; syncBlockInputs(); save();
 }
 document.addEventListener("keydown", e => {
   if (!sel || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
@@ -686,7 +792,7 @@ function buildSide(){
   // 05 BLOCS
   side.append(section("05", "Blocs de la page", open[4] ?? true, h("div", {class:"blist", id:"blist"}),
     h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; S.hidden = []; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
-    h("div", {class:"info"}, "Glisse un bloc pour le déplacer, son coin bas droit pour le rapetisser ou l'agrandir (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Pour retirer un bloc : ✕ en haut à droite du bloc (ou touche Suppr) ; « + nom » sous l'aperçu le remet. Clavier : flèches, + et −.")));
+    h("div", {class:"info"}, "Les blocs se comportent comme des widgets : le clavier ne change qu'en largeur (1 à 3 octaves), les OSC prennent la taille voulue (l'écran s'agrandit, des infos s'ajoutent quand ils sont hauts ; un OSC seul règle A et B), les modules passent sur 1 à 3 colonnes, les autres blocs gardent leurs proportions (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Pour retirer un bloc : ✕ en haut à droite du bloc (ou touche Suppr) ; « + nom » sous l'aperçu le remet. Clavier : flèches, + et −.")));
   buildBlocks();
 }
 function buildBlocks(){
@@ -698,16 +804,18 @@ function buildBlocks(){
         h("button", {class:"btn sm", title:"remettre sur la page", onclick:() => restoreBlock(b)}, "+")));
       continue;
     }
-    const num = (v, i) => h("input", {type:"number", value:v, step:i === 2 ? 5 : 1, title:["x", "y", "taille %"][i], onchange:e => {
-      const q = posOf(b), v2 = +e.target.value; if (i === 2) nudge(b, 0, 0, v2/100 - q.s); else nudge(b, i ? 0 : v2 - q.x, i ? v2 - q.y : 0, 0); buildBlocks(); }});
+    const num = (v, i) => h("input", {type:"number", value:v, step:i === 2 ? (RS(b) ? 8 : 5) : 1, title:["x", "y", RS(b) ? "largeur (px)" : "taille %"][i], onchange:e => {
+      const q = posOf(b), v2 = +e.target.value;
+      if (i === 2) { if (RS(b)) { const z = growTo(b, q.x, q.y, {w:q.w, h:q.h}, fitSize(b, v2, q.h)); setPos(b, q.x, q.y, z); dirty = true; save(); } else nudge(b, 0, 0, v2/100 - q.s); }
+      else nudge(b, i ? 0 : v2 - q.x, i ? v2 - q.y : 0, 0); buildBlocks(); }});
     list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (!/INPUT|BUTTON/.test(e.target.tagName)) { sel = b.key; dirty = true; buildBlocks(); } }},
-      h("span", {}, b.name), num(p.x, 0), num(p.y, 1), num(Math.round(p.s*100), 2),
+      h("span", {title:["taille à l'échelle", "largeur seule", "taille libre, contenu adapté", "1 à 3 colonnes"][RS(b)]}, b.name), num(p.x, 0), num(p.y, 1), num(RS(b) ? p.w : Math.round(p.s*100), 2),
       h("button", {class:"btn sm", title:"retirer de la page", onclick:e => { e.stopPropagation(); removeBlock(b); }}, "✕"),
       h("button", {class:"btn sm", title:"place et taille d'origine", onclick:e => { e.stopPropagation(); const keep = S.layout[b.key]; delete S.layout[b.key];
         if (overlaps(b)) { S.layout[b.key] = keep; toast("un autre bloc occupe sa place d'origine"); } dirty = true; save(); buildBlocks(); }}, "↺")));
   }
 }
-function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl:not(.off)")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
+function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl:not(.off)")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = RS(b) ? p.w : Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
 function buildTabs(){
   const t = $("#tabs"); t.innerHTML = "";
   for (const [id, name] of TABS) t.append(h("button", {class:"btn sm" + (tab === id ? " on" : ""), onclick:() => { tab = id; sel = null; buildTabs(); buildBlocks(); dirty = true; }}, name));

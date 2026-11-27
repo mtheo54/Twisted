@@ -206,11 +206,94 @@ void Editor::glowLine(const std::vector<Pt>& pts, Color col, float width) {
     c.polyline(pts.data(), (int)pts.size(), col, width);
 }
 
-void Editor::oscCard(int osc, const Rect& card) {
+// Écran d'un OSC selon la taille de sa carte (widget adaptatif) : en-tête et commandes du bas de
+// hauteur fixe, l'écran prend le reste ; une carte haute ajoute un panneau d'informations.
+Rect Editor::oscScreenRect(const Rect& card, bool info) {
+    const float infoH = info ? (card.h >= 700.f ? 150.f : 92.f) : 0.f;
+    const float bottom = card.b() - 134.f - 6.f - (info ? infoH + 8.f : 0.f);
+    return Rect{card.x + 15.f, card.y + 53.f, card.w - 30.f, bottom - (card.y + 53.f)};
+}
+
+// Panneau d'informations d'un OSC agrandi : source, position, warp, phase, réglages ; aperçu des
+// frames de la table quand il y a la place.
+void Editor::oscInfo(int osc, const Rect& r) {
+    Canvas& c = ui_.c();
+    const Theme& T = *T_;
+    ui_.box(r, T.scr, T.scrLine);
+    const Font f{Face::Mono, 10.f, 0.6f}, fb{Face::MonoBold, 10.f, 0.6f};
+    const uint32_t pPos = osc ? kBPos : kAPos, pWarp = osc ? kBWarp : kAWarp, pPan = osc ? kBPan : kAPan, pLvl = osc ? kBLvl : kALvl;
+    const uint32_t pMode = osc ? kBMode : kAMode, pWm = osc ? kBWarpMode : kAWarpMode;
+    std::string src;
+    int frames = 1;
+    bool table = false;
+    std::vector<std::vector<float>> shapes;
+    {
+        std::lock_guard<std::mutex> lk(m_.tableMutex);
+        const bool mounted = m_.mounted[(size_t)osc];
+        const Wavetable& tab = mounted ? m_.edit[(size_t)osc] : fallbackTable();
+        frames = tab.frames();
+        table = true;
+        src = "WAVETABLE \xC2\xB7 " + (mounted ? tab.name : std::string("FORME DU PRESET"));
+        // formes de quelques frames réparties dans la table (dessinées hors du verrou)
+        const int n = std::clamp((int)(r.w / 46.f), 4, 16);
+        if (r.h >= 140.f)
+            for (int k = 0; k < n; ++k) {
+                std::vector<float> v(33);
+                const float pos = n > 1 ? (float)k / (float)(n - 1) : 0.f;
+                for (int i = 0; i <= 32; ++i) v[(size_t)i] = sampleTable(tab, pos, (float)i / 32.f);
+                shapes.push_back(std::move(v));
+            }
+    }
+    if (!m_.instruments.name(osc).empty() && P(osc ? kBPlay : kAPlay) > 0.5f) { src = "INSTRUMENT \xC2\xB7 " + m_.instruments.name(osc); table = false; }
+    else if (m_.samples.has(osc) && P(osc ? kBPlay : kAPlay) > 0.5f) { src = fmt("AUDIO \xC2\xB7 %s \xC2\xB7 %.2f s", m_.samples.name(osc).c_str(), m_.samples.seconds(osc)); table = false; }
+    const float pos = std::clamp(P(pPos), 0.f, 1.f);
+    const int frame = (int)std::lround(pos * (float)(frames - 1)) + 1;
+    const float x = r.x + 10.f, w = r.w - 20.f;
+    float y = r.y + 9.f;
+    ui_.text(ui_.fit(upper(src), fb, w), x, y, fb, T.scrText);
+    y += 17.f;
+    const std::string l2 = (table ? fmt("FRAME %d / %d \xC2\xB7 ", frame, frames) : std::string()) + "POS " + pct(P(pPos)) + " \xC2\xB7 WARP " +
+                           warpModeName(std::clamp(m_.params.geti(pWm), 0, kNumWarpModes - 1), osc) + " " + pct(P(pWarp));
+    ui_.text(ui_.fit(l2, f, w), x, y, f, T.scrMuted);
+    y += 16.f;
+    const int oct = m_.params.geti(osc ? kBOct : kAOct), st = m_.params.geti(osc ? kBSt : kASt);
+    const std::string l3 = std::string("PHASE ") + oscModeName(m_.params.geti(pMode)) + fmt(" \xC2\xB7 %+d OCT %+d ST \xC2\xB7 PAN ", oct, st) +
+                           panText(P(pPan)) + " \xC2\xB7 " + levelText(P(pLvl));
+    ui_.text(ui_.fit(l3, f, w), x, y, f, T.scrMuted);
+    y += 16.f;
+    // jauge de position dans la table
+    c.fillRect(Rect{x, y + 6.f, w, 2.f}, T.scrGrid);
+    c.fillRect(Rect{x, y + 6.f, w * pos, 2.f}, T.acc);
+    c.fillRect(Rect{x + w * pos - 1.f, y + 2.f, 2.f, 10.f}, T.hl);
+    y += 18.f;
+    if (!shapes.empty() && r.b() - y > 40.f) {
+        const int n = (int)shapes.size();
+        const float cw = w / (float)n, ch = r.b() - y - 10.f;
+        const int cur = (int)std::lround(pos * (float)(n - 1));
+        for (int k = 0; k < n; ++k) {
+            const Rect cell{x + (float)k * cw + 2.f, y, cw - 4.f, ch};
+            ui_.box(cell, Color{0, 0, 0, 0}, k == cur ? T.acc : T.scrGrid);
+            Pt pts[33];
+            for (int i = 0; i <= 32; ++i) pts[i] = Pt{cell.x + 3.f + (cell.w - 6.f) * (float)i / 32.f, cell.cy() - shapes[(size_t)k][(size_t)i] * cell.h * 0.38f};
+            c.polyline(pts, 33, k == cur ? T.waveB : T.waveA.withAlpha(0.55f), k == cur ? 1.6f : 1.f, false);
+        }
+    }
+}
+
+void Editor::oscCard(int osc, const Rect& card, bool merged) {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
     ui_.card(card);
-    ui_.cardHeader(card, osc == 0 ? "OSC A" : "OSC B", false, 14.f, 12.f);
+    ui_.cardHeader(card, merged ? "OSC" : (osc == 0 ? "OSC A" : "OSC B"), false, 14.f, 12.f);
+    if (merged) {
+        // l'autre OSC est retiré du skin : ce bloc règle les deux (sélecteur A | B après le titre)
+        const float tx = card.x + 15.f + ui_.width("OSC", Font{Face::Pixel, 16.f, 1.28f}) + 10.f;
+        for (int k = 0; k < 2; ++k) {
+            ButtonStyle s = ui_.miniStyle(oscView_ == k);
+            s.font = Font{Face::MonoBold, 10.f, 0.4f};
+            if (ui_.button(makeId("oscView", k), Rect{tx + (float)k * 26.f, card.y + 13.f, 24.f, 21.f}, k ? "B" : "A", s)) oscView_ = k;
+        }
+    }
     const uint32_t pOct = osc == 0 ? kAOct : kBOct, pSt = osc == 0 ? kASt : kBSt;
     const uint32_t pPos = osc == 0 ? kAPos : kBPos, pLvl = osc == 0 ? kALvl : kBLvl;
     const uint32_t pWarp = osc == 0 ? kAWarp : kBWarp, pPan = osc == 0 ? kAPan : kBPan, pMode = osc == 0 ? kAMode : kBMode;
@@ -241,7 +324,7 @@ void Editor::oscCard(int osc, const Rect& card) {
     const Font bf{Face::Mono, 10.f, mounted ? 0.2f : 1.f};
     const Font xf{Face::Mono, 10.f, 0.4f};
     const float xw = mounted ? ui_.width("[ x ]", xf) + 4.f : 0.f;
-    const float titleW = ui_.width(osc == 0 ? "OSC A" : "OSC B", Font{Face::Pixel, 16.f, 1.28f});
+    const float titleW = ui_.width(merged ? "OSC" : (osc == 0 ? "OSC A" : "OSC B"), Font{Face::Pixel, 16.f, 1.28f}) + (merged ? 62.f : 0.f);
     const float maxName = std::clamp(card.w - 30.f - titleW - 12.f - (w1 + w2 + 3.f) - 6.f - 18.f - 6.f - xw, 30.f, 120.f);
     const std::string badgeText = mounted ? ui_.fit(tname, bf, maxName) : std::string("WAVETABLE");
     const float lw = ui_.width(badgeText, bf);
@@ -280,7 +363,9 @@ void Editor::oscCard(int osc, const Rect& card) {
     }
 
     // écran : forme d'onde jouée (position modulée, warp, mode de phase), graduation et télémétrie
-    const Rect scr{card.x + 15.f, card.y + 53.f, card.w - 30.f, 306.2f};
+    const bool info = card.h >= 600.f;
+    const Rect scr = oscScreenRect(card, info);
+    if (info) oscInfo(osc, Rect{scr.x, scr.b() + 8.f, scr.w, card.h >= 700.f ? 150.f : 92.f});
     scanScreen(scr);
     const Rect area{scr.x + 7.f, scr.y + 7.f, scr.w - 14.f, scr.h - 14.f};
     const bool liveAudio = m_.readouts.active.load() && m_.readouts.voices.load() > 0;
@@ -445,7 +530,7 @@ void Editor::oscCard(int osc, const Rect& card) {
             if (ui_.button(makeId("soundAs", osc * 3 + k), Rect{strip.x + (float)k * (bw + 4.f), strip.y, bw, strip.h}, lab[k], s) && k != cur) soundAs(osc, k);
         }
     }
-    if (osc == 0 ? dropA_ : dropB_) {
+    if (merged ? (dropA_ || dropB_) : (osc == 0 ? dropA_ : dropB_)) {
         c.fillRect(scr, T.scr.withAlpha(0.85f));
         for (int k = 0; k < 6; ++k) ui_.border(scr.inset((float)k * 2.f), T.acc.withAlpha(k ? 0.35f / (float)k : 1.f), k ? 2.f : 1.f);
         ui_.textCenter("> DROP WAV TO LOAD", scr, Font{Face::Mono, 12.f, 1.44f}, T.hl);
@@ -458,12 +543,13 @@ void Editor::oscCard(int osc, const Rect& card) {
         s.font = Font{Face::Mono, 10.f, 1.4f};
         const std::string lbl = std::string("[ ") + oscModeName(mode) + " ]";
         const float hw = (card.w - 36.f) / 2.f;
-        if (ui_.button(makeId("oscMode", osc), Rect{card.x + 15.f, card.y + 365.2f, hw, 25.f}, lbl, s)) setParam(pMode, (float)((mode + 1) % 5));
+        const float my = card.b() - 134.f;  // commandes du bas : collées au bas de la carte
+        if (ui_.button(makeId("oscMode", osc), Rect{card.x + 15.f, my, hw, 25.f}, lbl, s)) setParam(pMode, (float)((mode + 1) % 5));
         // mode de warp : un clic passe au suivant (le choix complet est sur la page SYNTH)
         const uint32_t pWm = osc == 0 ? kAWarpMode : kBWarpMode;
         const int wm = std::clamp(m_.params.geti(pWm), 0, kNumWarpModes - 1);
         const std::string wl = std::string("[ WARP : ") + warpModeName(wm, osc) + " ]";
-        if (ui_.button(makeId("oscWarpMode", osc), Rect{card.x + 21.f + hw, card.y + 365.2f, hw, 25.f}, wl, s)) setParam(pWm, (float)((wm + 1) % kNumWarpModes));
+        if (ui_.button(makeId("oscWarpMode", osc), Rect{card.x + 21.f + hw, my, hw, 25.f}, wl, s)) setParam(pWm, (float)((wm + 1) % kNumWarpModes));
     }
 
     // potards POSITION / WARP / PAN / NIVEAU
@@ -480,7 +566,7 @@ void Editor::oscCard(int osc, const Rect& card) {
         posMod = std::min(0.5f, posMod);
     }
     const float colW = (card.w - 30.f - 6.f) / 4.f;
-    const float ky = card.y + 398.2f;
+    const float ky = card.b() - 101.f;
     const uint32_t ids[4] = {pPos, pWarp, pPan, pLvl};
     const char* names[4] = {"POSITION", "WARP", "PAN", "NIVEAU"};
     const std::string vals[4] = {pct(P(pPos)), pct(P(pWarp)), panText(P(pPan)), levelText(P(pLvl))};
@@ -933,7 +1019,8 @@ void Editor::keyboard(const Rect& area) {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
     // 2 octaves, ou 3 quand la place le permet (page SON : le clavier occupe toute la largeur)
-    const int NW = area.w > 900.f ? 21 : 14, NB = NW / 7 * 5;
+    // 1, 2 ou 3 octaves selon la largeur (touches d'au moins 46 px)
+    const int NW = std::clamp((int)(area.w / 46.f) / 7, 1, 3) * 7, NB = NW / 7 * 5;
     const float kw = area.w / (float)NW;
     const int WK[7] = {0, 2, 4, 5, 7, 9, 11};
     const int scale = m_.kbScale.load(), ko = m_.kbOct.load() * 12;
@@ -1010,10 +1097,12 @@ void Editor::drawSon() {
     Canvas& c = ui_.c();
     const Theme& T = *T_;
     soundAdvisorFrame();
+    // OSC : widgets adaptatifs ; si l'un est retiré du skin, l'autre règle les deux (A | B)
+    const bool hideA = blkHide_[kBSonOscA], hideB = blkHide_[kBSonOscB];
     blk(kBSonOscA);
-    oscCard(0, Rect{24.f, 73.f, 361.8f, 499.2f});
+    oscCard(hideB && !hideA ? oscView_ : 0, blkLocal(kBSonOscA), hideB && !hideA);
     blk(kBSonOscB);
-    oscCard(1, Rect{894.2f, 73.f, 361.8f, 499.2f});
+    oscCard(hideA && !hideB ? oscView_ : 1, blkLocal(kBSonOscB), hideA && !hideB);
 
     // --- VIE ---
     blk(kBSonVie);
@@ -1071,24 +1160,29 @@ void Editor::drawSon() {
     // --- modules ---
     blk(kBSonModules);
     {
-        const Rect strip{24.f, 582.2f, 1232.f, 56.f};
+        // widget empilable : 3 cases en ligne, ou en colonnes de 2 ou 1 quand il est étroit
+        const Rect strip{24.f, 582.2f, blkW_[kBSonModules], modHeight(blkW_[kBSonModules])};
         if (ui_.glass().on) {
             ui_.glassPane(strip, T.card, false);
             ui_.box(strip, Color{0, 0, 0, 0}, T.rule.withAlpha(0.55f));
         } else {
             ui_.box(strip, T.card, T.rule);
         }
-        const float cw = 1230.f / 3.f;
+        const int cols = modCols(strip.w);
+        const float cw = (strip.w - 2.f) / (float)cols;
         for (int i = 0; i < 3; ++i) {
-            const Rect cell{25.f + (float)i * cw, 583.2f, cw, 54.f};
-            if (i < 2) c.fillRect(Rect{cell.r() - 1.f, cell.y, 1.f, cell.h}, T.rule);
-            depthModule(i, Rect{cell.x, cell.y, cell.w - (i < 2 ? 1.f : 0.f), cell.h});
+            const int col = i % cols, row = i / cols;
+            const Rect cell{strip.x + 1.f + (float)col * cw, strip.y + 1.f + (float)row * kModRowH, cw, kModRowH - 2.f};
+            const bool rightRule = col < cols - 1 && i < 2;
+            if (rightRule) c.fillRect(Rect{cell.r() - 1.f, cell.y, 1.f, cell.h}, T.rule);
+            if (row > 0) c.fillRect(Rect{strip.x + 1.f, cell.y - 1.f, strip.w - 2.f, 1.f}, T.rule);
+            depthModule(i, Rect{cell.x, cell.y, cell.w - (rightRule ? 1.f : 0.f), cell.h});
         }
     }
 
     // --- SORTIE : clavier sur toute la largeur (la PROPOSITION du MIX IA reste dans l'onglet MIX IA) ---
     blk(kBSonSortie);
-    keyboardCard(Rect{24.f, 648.2f, 1232.f, 287.8f});
+    keyboardCard(blkLocal(kBSonSortie));  // widget en largeur : 1 à 3 octaves
 
     // --- menus déroulants (calque 3) ---
     ui_.setLayer(3);

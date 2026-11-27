@@ -34,10 +34,14 @@ def c_string(lits):
 def blocks():
     src = open(os.path.join(ROOT, "src/ui/Blocks.cpp"), encoding="utf-8").read()
     out = []
-    for m in re.finditer(r'\{"([a-z0-9.]+[A-Za-z0-9]*)", (\d), ((?:"(?:[^"\\]|\\.)*"\s*)+), \{([^}]*)\}\}', src):
+    modes = {"kRsScale": 0, "kRsWidth": 1, "kRsFree": 2, "kRsStack": 3}
+    for m in re.finditer(r'\{"([a-z0-9.]+[A-Za-z0-9]*)", (\d), ((?:"(?:[^"\\]|\\.)*"\s*)+), \{([^}]*)\}(?:, (kRs\w+), ([^}]*))?\}', src):
         name = c_string(re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(3)))
         r = [float(v.strip().rstrip("f")) for v in m.group(4).split(",")]
-        out.append({"key": m.group(1), "tab": int(m.group(2)), "name": name, "r": r})
+        b = {"key": m.group(1), "tab": int(m.group(2)), "name": name, "r": r, "rs": modes[m.group(5)] if m.group(5) else 0}
+        if m.group(6):  # bornes de taille d'un widget : minW, minH, maxW, maxH
+            b["min"] = [float(v.strip().rstrip("f")) for v in m.group(6).split(",")]
+        out.append(b)
     assert len(out) >= 37, len(out)
     return out
 

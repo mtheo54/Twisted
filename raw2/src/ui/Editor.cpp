@@ -87,6 +87,8 @@ void Editor::pickTheme() {
         blkOff_[b] = Pt{0.f, 0.f};
         blkSc_[b] = 1.f;
         blkHide_[b] = false;
+        blkW_[b] = kBlocks[b].r.w;
+        blkH_[b] = kBlocks[b].r.h;
     }
     if (sk)
         for (const std::string& k : skin_.hidden) {
@@ -101,7 +103,20 @@ void Editor::pickTheme() {
         for (const auto& kv : skin_.layout) {
             const int b = blockByKey(kv.first.c_str());
             if (b < 0 || blkHide_[b]) continue;
-            const Rect& d = kBlocks[b].r;
+            const BlockDef& bd = kBlocks[b];
+            const Rect& d = bd.r;
+            if (bd.resize != kRsScale) {
+                // bloc adaptatif (widget) : sa taille change, son contenu se réorganise (pas de zoom)
+                float w = kv.second.w > 0.f ? kv.second.w : d.w, h = kv.second.h > 0.f ? kv.second.h : d.h;
+                w = std::clamp(w, bd.minW, std::min(bd.maxW, kBlockRight - kBlockLeft));
+                h = bd.resize == kRsWidth ? d.h : bd.resize == kRsStack ? modHeight(w) : std::clamp(h, bd.minH, std::min(bd.maxH, kBlockBottom - kBlockTop));
+                const float x = std::clamp(kv.second.x, kBlockLeft, kBlockRight - w);
+                const float y = std::clamp(kv.second.y, kBlockTop, kBlockBottom - h);
+                blkW_[b] = std::round(w);
+                blkH_[b] = std::round(h * 10.f) / 10.f;
+                blkOff_[b] = Pt{std::round(x) - d.x, std::round(y) - d.y};
+                continue;
+            }
             // échelle : jamais plus grand que la zone utile
             const float s = std::min({kv.second.scale, (kBlockRight - kBlockLeft) / d.w, (kBlockBottom - kBlockTop) / d.h});
             const float x = std::clamp(kv.second.x, kBlockLeft, std::max(kBlockLeft, kBlockRight - d.w * s));
@@ -1807,7 +1822,10 @@ void Editor::drawFx() {
 void Editor::handleDrops() {
     const Input& in = ui_.in();
     // zones de dépôt, à la place de leur bloc
-    const Rect scrA = blkRect(kBSonOscA, Rect{39.f, 126.f, 331.8f, 306.2f}), scrB = blkRect(kBSonOscB, Rect{909.2f, 126.f, 331.8f, 306.2f});
+    // écrans des OSC (taille adaptative) ; un OSC seul reçoit les sons de l'oscillateur qu'il affiche
+    const Rect scrA = blkRect(kBSonOscA, oscScreenRect(blkLocal(kBSonOscA), blkH_[kBSonOscA] >= 600.f));
+    const Rect scrB = blkRect(kBSonOscB, oscScreenRect(blkLocal(kBSonOscB), blkH_[kBSonOscB] >= 600.f));
+    const bool soloA = blkHide_[kBSonOscB] && !blkHide_[kBSonOscA], soloB = blkHide_[kBSonOscA] && !blkHide_[kBSonOscB];
     const Rect dz = blkRect(kBWtImport, Rect{381.f, 782.2f, 556.f, 99.8f});
     dropA_ = in.dragOver && tab_ == 0 && scrA.contains(in.dragPos);
     dropB_ = in.dragOver && tab_ == 0 && scrB.contains(in.dragPos);
@@ -1835,8 +1853,8 @@ void Editor::handleDrops() {
         pbView_ = 1;
         return;
     }
-    if (tab_ == 0 && scrA.contains(in.dropPos)) wtImport(path, true, 0);
-    else if (tab_ == 0 && scrB.contains(in.dropPos)) wtImport(path, true, 1);
+    if (tab_ == 0 && scrA.contains(in.dropPos)) wtImport(path, true, soloA ? oscView_ : 0);
+    else if (tab_ == 0 && scrB.contains(in.dropPos)) wtImport(path, true, soloB ? oscView_ : 1);
     else if (tab_ == 6 && dz.contains(in.dropPos)) wtImport(path, false, st_.wtTgt);
 }
 

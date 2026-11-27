@@ -157,7 +157,7 @@ private:
     void lifeGrid(LifeEngine::World w, const Rect& area, float pitch, float rAlive, float rEdge, float rRing, Id id, bool big);
     Color stageColor(int k) const;
     void legend(float x, float y);
-    void oscCard(int osc, const Rect& r);
+    void oscCard(int osc, const Rect& card, bool merged = false);
     void spectrumBars(const Rect& r);
     void keyboard(const Rect& area);
     void keyboardCard(const Rect& card);
@@ -240,6 +240,11 @@ private:
     Pt blkOff_[kNumBlocks] = {};   // absolu = position d'origine × blkSc_ + blkOff_
     float blkSc_[kNumBlocks] = {}; // échelle de chaque bloc (1 : taille d'origine)
     bool blkHide_[kNumBlocks] = {}; // bloc retiré par le skin
+    float blkW_[kNumBlocks] = {}, blkH_[kNumBlocks] = {};  // taille d'un bloc adaptatif (repère local)
+    Rect blkLocal(int b) const { return Rect{kBlocks[b].r.x, kBlocks[b].r.y, blkW_[b], blkH_[b]}; }
+    int oscView_ = 0;               // OSC affiché quand l'autre est retiré (sélecteur A | B)
+    static Rect oscScreenRect(const Rect& card, bool info);
+    void oscInfo(int osc, const Rect& r);
     Rect blkRect(int b, const Rect& r) const {  // rectangle d'origine -> place réelle à l'écran
         return Rect{r.x * blkSc_[b] + blkOff_[b].x, r.y * blkSc_[b] + blkOff_[b].y, r.w * blkSc_[b], r.h * blkSc_[b]};
     }
