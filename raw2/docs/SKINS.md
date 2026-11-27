@@ -34,6 +34,11 @@ RAW 2 pour l'installer.
      **si un OSC est retiré, l'autre affiche un sélecteur A | B et règle les deux** ;
    - **HARMONIQUES · ESPACE · TEXTURE** : largeur, sur 1, 2 ou 3 colonnes (hauteur déduite) ;
    - les autres blocs : à l'échelle (50 à 160 %, proportions gardées).
+   **Grille invisible** (comme un écran de téléphone) : 24 colonnes × 12 rangées, 10 px entre les
+   blocs. Au premier glisser, la page se range sur la grille (même proportions qu'à l'origine) ;
+   ensuite les blocs se posent et s'étirent **case par case**. Pendant un glisser, le bloc suit le
+   pointeur et ses cases d'arrivée s'affichent (rouges si elles sont prises). Les blocs à l'échelle
+   sont centrés dans leurs cases.
    Dans l'aperçu, glisser un bloc pour le déplacer (aimant 8 px et bords des autres
    blocs, avec lignes de repère) et son **coin bas droit** pour le **rapetisser ou l'agrandir**
    (50 à 160 %, proportions gardées). **Tous les blocs restent visibles** : un bloc ne peut pas

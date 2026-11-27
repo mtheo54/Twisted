@@ -132,13 +132,13 @@ footer b{color:var(--ink)}
     <div class="view"><canvas id="pv" width="1280" height="960" aria-label="Aperçu de RAW 2 avec le skin"></canvas></div>
     <div class="bar">
       <button class="btn sm on" id="tOutline">Contours</button>
-      <button class="btn sm on" id="tSnap">Aimant 8 px</button>
+      
       <button class="btn sm" id="tResetPage">Réinitialiser la page</button>
       <b id="vis" class="hint" style="font-weight:700"></b>
     </div>
     <div class="bar" id="tray" hidden aria-label="Blocs retirés de cette page"></div>
     <div class="bar">
-      <span class="hint">glisse un bloc pour le déplacer · son coin ◢ pour le rapetisser · ✕ pour le retirer · flèches, + et −, Suppr</span>
+      <span class="hint">les blocs se rangent sur une grille invisible, case par case · glisse un bloc pour le déplacer · son coin ◢ ou son bord pour l'étirer · ✕ pour le retirer · flèches, + et −, Suppr</span>
     </div>
   </section>
 </main>
@@ -185,7 +185,7 @@ const DEF = () => ({
   name:"Mon skin", author:"", base:"nothing", colors:{},
   bg:{kind:"gen", voile:0.30, grille:false,
       gen:{style:"liquide", c1:"#FF4D00", c2:"#3A0F6B", c3:"#0A0A10", scale:0.5, speed:0.5, seed:7, anim:true, dur:6}},
-  glass:{on:true, flou:0.65, teinte:0.40, reflet:0.65}, cards:0.85, layout:{}, hidden:[]
+  glass:{on:true, flou:0.65, teinte:0.40, reflet:0.65}, cards:0.85, layout:{}, hidden:[], cells:{}
 });
 function fresh(){ const s = DEF(); const keep = S; S = s; setAccent("#FF4D00"); S.colors.scr = "#050508A0"; const r = S; S = keep; return r; }
 let S = DEF();
@@ -216,9 +216,9 @@ const modCols = w => clamp(Math.floor(w / 260), 1, 3), modHeight = w => Math.cei
 function fitSize(b, w, h){   // taille permise la plus proche
   const [mnW, mnH, mxW, mxH] = b.min || [b.r[2], b.r[3], b.r[2], b.r[3]];
   w = Math.round(clamp(w, mnW, Math.min(mxW, 1264)));
-  if (RS(b) === 1) h = b.r[3];
-  else if (RS(b) === 3) h = modHeight(w);
-  else h = Math.round(clamp(h, mnH, Math.min(mxH, 876)));
+  if (RS(b) === 3) h = Math.max(modHeight(w), Math.min(h, mxH));
+  else h = clamp(h, mnH, Math.min(mxH, 876));
+  h = Math.round(h*100)/100;
   return {w, h};
 }
 const posOf = b => {
@@ -251,24 +251,6 @@ function setPos(b, x, y, sz){
   x = clamp(Math.round(x), 8, Math.round(1272 - b.r[2]*s)); y = clamp(Math.round(y), 64, Math.round(940 - b.r[3]*s));
   if (Math.abs(x - b.r[0]) < 0.5 && Math.abs(y - b.r[1]) < 0.5 && Math.abs(s - 1) < 0.005) delete S.layout[b.key];
   else S.layout[b.key] = Math.abs(s - 1) < 0.005 ? [x, y] : [x, y, s];
-}
-// place libre la plus proche (tous les blocs restent visibles : aucun ne doit en cacher un autre)
-function freeSpot(b, x, y, w, h){
-  for (let rad = 0; rad <= 1000; rad += 8) {
-    const c = [];
-    for (let d = -rad; d <= rad; d += 8) c.push([x + d, y - rad], [x + d, y + rad], [x - rad, y + d], [x + rad, y + d]);
-    c.sort((a, b2) => Math.hypot(a[0] - x, a[1] - y) - Math.hypot(b2[0] - x, b2[1] - y));
-    for (const [cx, cy] of c) { const r = {x:cx, y:cy, w, h}; if (inside(r) && !overlapsAt(b, r)) return {x:cx, y:cy}; }
-  }
-  return null;
-}
-// taille d'un bloc : la plus grande vers la cible sans toucher un autre bloc (depuis une taille libre)
-function growTo(b, x0, y0, from, to){
-  const at = t => RS(b) ? fitSize(b, from.w + (to.w - from.w)*t, from.h + (to.h - from.h)*t) : {s:from.s + (to.s - from.s)*t};
-  const rect = z => ({x:x0, y:y0, w:z.w ?? b.r[2]*z.s, h:z.h ?? b.r[3]*z.s});
-  if (!overlapsAt(b, rect(at(1))) && inside(rect(at(1)))) return at(1);
-  let lo = 0, hi = 1; for (let i = 0; i < 16; i++) { const m = (lo + hi)/2, r = rect(at(m)); if (overlapsAt(b, r) || !inside(r)) hi = m; else lo = m; }
-  return at(lo);
 }
 const hidden = t => shown(t).filter(overlaps).length;
 
@@ -449,23 +431,31 @@ function render(){
   // en-tête et pied de page : fixes
   if (src) { ctx.fillStyle = rgba({...T.chassis, a:0.8}); ctx.fillRect(0, 938, W, 22); }
   if (sp) { ctx.drawImage(sp, 0, 0, sp.width, 64*SPR, 0, 0, W, 64); ctx.drawImage(sp, 0, 938*SPR, sp.width, 22*SPR, 0, 938, W, 22); }
+  if (drag && drag.moved) {   // grille (repères discrets) et cases d'arrivée pendant un glisser
+    ctx.save(); ctx.fillStyle = "rgba(255,255,255,.22)";
+    for (let r = 0; r <= NR; r++) for (let c = 0; c <= NC; c++) ctx.fillRect(GX + c*PX - GAP/2 - 1, GY + r*PY - GAP/2 - 1, 2, 2);
+    if (drag.mode === "move" && drag.target) { const R = spanRect(drag.target);
+      ctx.fillStyle = drag.ok ? rgba({...accent(), a:0.18}) : "rgba(255,90,79,.18)"; ctx.fillRect(R.x, R.y, R.w, R.h);
+      ctx.strokeStyle = drag.ok ? rgba(accent()) : "#FF5A4F"; ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.strokeRect(R.x + 1, R.y + 1, R.w - 2, R.h - 2); }
+    ctx.restore();
+  }
   for (const b of shown(tab)) {
-    const p = posOf(b), [ox, oy, bw, bh] = b.r;
+    let p = posOf(b); const [ox, oy, bw, bh] = b.r;
+    const lifted = drag && drag.moved && drag.mode === "move" && drag.b === b && drag.raw;
+    if (lifted) { p = {...p, x:drag.raw.x, y:drag.raw.y}; ctx.save(); ctx.globalAlpha = 0.9; ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10; }
     pane(T, p.x, p.y, p.w, p.h, src, !!glassImg);
     if (sp && RS(b)) drawWidget(sp, b, p, T);
     else if (sp && !(tab === 2 && modSide === 1)) ctx.drawImage(sp, ox*SPR, oy*SPR, bw*SPR, bh*SPR, p.x, p.y, p.w, p.h);
     else { ctx.fillStyle = rgba(T.ink || {r:240,g:240,b:240,a:1}); ctx.font = "16px Pix"; ctx.fillText(b.name, p.x + 16, p.y + 32); }
+    if (lifted) ctx.restore();
   }
-  // guides d'alignement pendant un glisser
-  if (drag && drag.guides) { ctx.save(); ctx.strokeStyle = rgba(accent()); ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
-    for (const g of drag.guides) { ctx.beginPath(); if (g.x !== undefined) { ctx.moveTo(g.x, 64); ctx.lineTo(g.x, 940); } else { ctx.moveTo(0, g.y); ctx.lineTo(W, g.y); } ctx.stroke(); }
-    ctx.restore(); }
   if (outline || drag) for (const b of shown(tab)) {
+    if (drag && drag.moved && drag.mode === "move" && drag.b === b) continue;   // le bloc soulevé n'a pas de contour
     const p = posOf(b), r = rectOf(b, p), bad = overlaps(b), on = sel === b.key || (drag && drag.b === b), hov = hover === b.key;
     ctx.save(); ctx.lineWidth = on ? 3 : 1.5; ctx.setLineDash(on ? [] : [6, 5]);
     ctx.strokeStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : hov ? "#FFFFFF" : "rgba(255,255,255,.5)";
     ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-    const label = b.name + (RS(b) ? (S.layout[b.key] ? "  ·  " + p.w + " × " + Math.round(p.h) : "") : p.s !== 1 ? "  ·  " + Math.round(p.s*100) + " %" : "");
+    const gs = S.cells && S.cells[b.key], label = b.name + (gs ? "  ·  " + gs.nc + " × " + gs.nr + " cases" : "");
     ctx.font = "bold 13px JBM"; const lw = Math.min(r.w - 8, ctx.measureText(label).width + 16), ly = r.y + r.h - 28;
     if (lw > 30 && r.h > 40) { ctx.fillStyle = bad ? "#FF5A4F" : on ? rgba(accent()) : "rgba(10,10,12,.78)"; ctx.fillRect(r.x + 4, ly, lw, 22);
       ctx.save(); ctx.beginPath(); ctx.rect(r.x + 4, ly, lw, 22); ctx.clip();
@@ -580,15 +570,76 @@ function removeBlock(b){
   dirty = true; save(); buildBlocks(); toast(b.name + " retiré de la page · « + » sous l'aperçu pour le remettre");
 }
 function restoreBlock(b){
-  const p = posOf(b);
   S.hidden = S.hidden.filter(k => k !== b.key);
-  if (overlaps(b)) {
-    const small = RS(b) ? fitSize(b, 0, 0) : {w:b.r[2]*SMIN, h:b.r[3]*SMIN, s:SMIN};
-    const f1 = freeSpot(b, p.x, p.y, p.w, p.h), f = f1 || freeSpot(b, p.x, p.y, small.w, small.h);
-    if (!f) { S.hidden.push(b.key); toast("pas de place pour " + b.name + " : rapetisse ou retire un bloc"); return; }
-    setPos(b, f.x, f.y, f1 ? (RS(b) ? {w:p.w, h:p.h} : {s:p.s}) : (RS(b) ? {w:small.w, h:small.h} : {s:SMIN})); }
-  sel = b.key; dirty = true; save(); buildBlocks(); toast(b.name + " remis sur la page");
+  ensureGrid(tab);
+  let g = spanOf(b);
+  if (!spanFree(b, g)) { const sm = legalSpan(b, 1, 1);
+    g = nearestSpan(b, g.c, g.r, g.nc, g.nr) || nearestSpan(b, g.c, g.r, sm.nc, sm.nr); }
+  if (!g) { S.hidden.push(b.key); toast("pas de place pour " + b.name + " : rapetisse ou retire un bloc"); return; }
+  applySpan(b, g); sel = b.key; dirty = true; save(); buildBlocks(); toast(b.name + " remis sur la page");
 }
+
+// ---------------------------------------------------------------------------------- grille invisible
+// Comme l'écran d'un téléphone : 24 colonnes × 12 rangées, mêmes espaces partout. Un bloc occupe un
+// rectangle de cases ; on le déplace et on l'étire case par case, jamais au pixel près.
+const GX = 24, GY = 73, CW = 41.75, RH = 62.75, GAP = 10, PX = CW + GAP, PY = RH + GAP, NC = 24, NR = 12;
+const spanW = n => n*CW + (n - 1)*GAP, spanH = n => n*RH + (n - 1)*GAP;
+const spanRect = g => ({x:GX + g.c*PX, y:GY + g.r*PY, w:spanW(g.nc), h:spanH(g.nr)});
+const spansHit = (a, b) => a.c < b.c + b.nc && b.c < a.c + a.nc && a.r < b.r + b.nr && b.r < a.r + a.nr;
+function deriveSpan(b){   // cases les plus proches de la place actuelle (blocs pas encore rangés)
+  const p = posOf(b);
+  const c = clamp(Math.round((p.x - GX)/PX), 0, NC - 1), r = clamp(Math.round((p.y - GY)/PY), 0, NR - 1);
+  const c1 = clamp(Math.round((p.x + p.w + GAP - GX)/PX), c + 1, NC), r1 = clamp(Math.round((p.y + p.h + GAP - GY)/PY), r + 1, NR);
+  return {c, r, nc:c1 - c, nr:r1 - r};
+}
+const spanOf = b => (S.cells && S.cells[b.key]) || deriveSpan(b);
+function spanFree(b, g){
+  return g.c >= 0 && g.r >= 0 && g.c + g.nc <= NC && g.r + g.nr <= NR && !shown(b.tab).some(o => o !== b && spansHit(g, spanOf(o)));
+}
+function legalSpan(b, nc, nr){   // tailles permises, en cases, selon le type de widget
+  nc = clamp(Math.round(nc), 1, NC); nr = clamp(Math.round(nr), 1, NR);
+  const [mnW, mnH, mxW, mxH] = b.min || [0, 0, 1e9, 1e9];
+  const cMin = Math.ceil((mnW + GAP)/PX - 1e-6), cMax = Math.max(cMin, Math.floor((Math.min(mxW, 1232) + GAP)/PX + 1e-6));
+  const rMin = Math.ceil((mnH + GAP)/PY - 1e-6), rMax = Math.max(rMin, Math.floor((Math.min(mxH, 863) + GAP)/PY + 1e-6));
+  if (RS(b)) nc = clamp(nc, cMin, cMax);
+  if (RS(b) === 1) nr = clamp(Math.round((b.r[3] + GAP)/PY), rMin, rMax);        // clavier : hauteur fixe (4 rangées)
+  else if (RS(b) === 3) { const need = Math.ceil(3 / modCols(spanW(nc))); nr = clamp(nr, need, Math.max(need, rMax)); }  // modules
+  else if (RS(b) === 2) nr = clamp(nr, rMin, rMax);                                // OSC
+  else {   // à l'échelle : les cases doivent contenir le bloc entre 50 et 160 %
+    const sOf = (a, c) => Math.min(spanW(a)/b.r[2], spanH(c)/b.r[3]);
+    while (sOf(nc, nr) < SMIN && nc < NC) nc++;
+    while (sOf(nc, nr) < SMIN && nr < NR) nr++;
+    while (Math.min(spanW(nc)/b.r[2], spanH(nr)/b.r[3]) > SMAX && nc > 1) nc--;
+  }
+  return {nc, nr};
+}
+function applySpan(b, g){
+  S.cells = S.cells || {};
+  S.cells[b.key] = {c:g.c, r:g.r, nc:g.nc, nr:g.nr};
+  const R = spanRect(g);
+  if (RS(b)) setPos(b, R.x, R.y, {w:R.w, h:R.h});
+  else { const sc = Math.floor(clamp(Math.min(R.w/b.r[2], R.h/b.r[3]), SMIN, SMAX)*100)/100;
+    setPos(b, R.x + (R.w - b.r[2]*sc)/2, R.y, {s:sc}); }   // centré dans ses cases
+}
+function nearestSpan(b, c, r, nc, nr){
+  const out = [];
+  for (let rr = 0; rr + nr <= NR; rr++) for (let cc = 0; cc + nc <= NC; cc++) out.push({c:cc, r:rr, nc, nr, d:Math.hypot(cc - c, (rr - r)*1.4)});
+  out.sort((a, b2) => a.d - b2.d);
+  for (const g of out) if (spanFree(b, g)) return {c:g.c, r:g.r, nc, nr};
+  return null;
+}
+// une page touchée pour la première fois est rangée sur la grille (même espaces partout)
+function ensureGrid(t){
+  S.cells = S.cells || {};
+  const bs = shown(t);
+  if (bs.every(b => S.cells[b.key])) return;
+  for (const b of bs) if (!S.cells[b.key]) {
+    let g = deriveSpan(b); g = {...g, ...legalSpan(b, g.nc, g.nr)};
+    if (!spanFree(b, g)) g = nearestSpan(b, g.c, g.r, g.nc, g.nr) || g;
+    applySpan(b, g);
+  }
+}
+
 // poignée de taille : coin bas droit (échelle, libre) ou bord droit (largeur seule, colonnes)
 const edgeHandle = b => RS(b) === 1 || RS(b) === 3;
 function handleRect(b, r){ return edgeHandle(b) ? {x:r.x + r.w - 14, y:r.y + r.h/2 - 26, w:14, h:52} : {x:r.x + r.w - 22, y:r.y + r.h - 22, w:22, h:22}; }
@@ -604,60 +655,50 @@ pv.addEventListener("pointerdown", e => {
   sel = b ? b.key : null; buildBlocks(); dirty = true;
   if (!b) return;
   const q = posOf(b);
-  drag = {b, mode:hb ? "size" : "move", dx:p.x - q.x, dy:p.y - q.y, x0:q.x, y0:q.y, s0:q.s, w0:q.w, h0:q.h, px:p.x, py:p.y, moved:false, guides:[]};
+  drag = {b, mode:hb ? "size" : "move", dx:p.x - q.x, dy:p.y - q.y, px:p.x, py:p.y, moved:false};
   pv.setPointerCapture(e.pointerId); pv.style.cursor = hb ? (edgeHandle(b) ? "ew-resize" : "nwse-resize") : "grabbing";
 });
 pv.addEventListener("pointermove", e => {
   const p = canvasPt(e);
   if (!drag) { const cb = closeAt(p), hb = handleAt(p), b = blockAt(p), k = (hb || b) ? (hb || b).key : null;
     if (k !== hover) { hover = k; dirty = true; } pv.style.cursor = cb ? "pointer" : hb ? (edgeHandle(hb) ? "ew-resize" : "nwse-resize") : b ? "grab" : "default"; return; }
-  const b = drag.b; drag.guides = [];
-  if (!drag.moved) { if (Math.hypot(p.x - drag.px, p.y - drag.py) < 4) return; drag.moved = true; }  // un simple clic ne déplace rien
-  if (drag.mode === "size") {
-    // depuis le coin haut gauche (fixe) ; jamais par-dessus un autre bloc
-    if (RS(b)) {
-      let w = p.x - drag.x0, hh = p.y - drag.y0;
-      if (snap) { w = Math.round(w/8)*8; hh = Math.round(hh/8)*8; }
-      const z = growTo(b, drag.x0, drag.y0, {w:drag.w0, h:drag.h0}, fitSize(b, w, hh));
-      setPos(b, drag.x0, drag.y0, z);
-    } else {
-      let sc = Math.max((p.x - drag.x0)/b.r[2], (p.y - drag.y0)/b.r[3]);
-      if (snap) sc = Math.round(sc*20)/20;
-      sc = clamp(sc, SMIN, maxScale(b, drag.x0, drag.y0));
-      const z = growTo(b, drag.x0, drag.y0, {s:drag.s0}, {s:sc});
-      setPos(b, drag.x0, drag.y0, {s:Math.floor(z.s*100)/100});
-    }
+  const b = drag.b;
+  if (!drag.moved) {   // un simple clic ne déplace rien ; au premier glisser, la page se range sur la grille
+    if (Math.hypot(p.x - drag.px, p.y - drag.py) < 4) return;
+    drag.moved = true; ensureGrid(tab); drag.g0 = {...spanOf(b)};
+    const q = posOf(b); drag.dx = p.x - q.x; drag.dy = p.y - q.y;
+  }
+  if (drag.mode === "size") {   // case par case, depuis le coin haut gauche ; jamais sur un autre bloc
+    const R = spanRect(drag.g0), want = legalSpan(b, (p.x - R.x + GAP)/PX, (p.y - R.y + GAP)/PY);
+    let best = null;
+    for (let nc = want.nc; !best && nc !== drag.g0.nc - Math.sign(want.nc - drag.g0.nc || 1); nc -= Math.sign(want.nc - drag.g0.nc || 1))
+      for (let nr = want.nr; ; nr -= Math.sign(want.nr - drag.g0.nr || 1)) {
+        const l = legalSpan(b, nc, nr), g = {c:drag.g0.c, r:drag.g0.r, ...l};
+        if (spanFree(b, g)) { best = g; break; }
+        if (nr === drag.g0.nr) break;
+      }
+    if (best) applySpan(b, best);
     dirty = true; syncBlockInputs(); return;
   }
-  const pb = posOf(b), w = pb.w, h = pb.h;
-  let x = p.x - drag.dx, y = p.y - drag.dy;
-  if (snap) {
-    x = Math.round(x/8)*8; y = Math.round(y/8)*8;
-    let gx = null, gy = null;
-    for (const o of shown(tab)) if (o !== b) { const q = rectOf(o);   // aimant : bords des autres blocs, avec ou sans écart de 12 px
-      // [bord du bloc déplacé, position visée, ligne de repère]
-      for (const [a, c, g] of [[x, q.x, q.x], [x + w, q.x + q.w, q.x + q.w], [x, q.x + q.w + 12, q.x + q.w + 12], [x + w + 12, q.x, q.x - 12]]) if (gx === null && Math.abs(a - c) < 8) { x += c - a; gx = g; }
-      for (const [a, c, g] of [[y, q.y, q.y], [y + h, q.y + q.h, q.y + q.h], [y, q.y + q.h + 12, q.y + q.h + 12], [y + h + 12, q.y, q.y - 12]]) if (gy === null && Math.abs(a - c) < 8) { y += c - a; gy = g; } }
-    if (gx !== null) drag.guides.push({x:gx}); if (gy !== null) drag.guides.push({y:gy});
-  }
-  setPos(b, x, y); dirty = true; syncBlockInputs();
+  // déplacement : le bloc suit le pointeur, sa place d'arrivée (cases) est montrée en dessous
+  const sp = spanOf(b);
+  drag.raw = {x:p.x - drag.dx, y:p.y - drag.dy};
+  const g = {c:clamp(Math.round((drag.raw.x - GX)/PX), 0, NC - sp.nc), r:clamp(Math.round((drag.raw.y - GY)/PY), 0, NR - sp.nr), nc:sp.nc, nr:sp.nr};
+  drag.target = g; drag.ok = spanFree(b, g);
+  dirty = true;
 });
 function endDrag(){
   if (!drag) return;
-  const b = drag.b, p = posOf(b), r = rectOf(b, p);
-  if (drag.mode === "move" && overlaps(b)) {
-    // lâché sur un bloc de même taille : les deux échangent leur place ; sinon place libre la plus proche
-    let best = null, area = 0;
-    for (const o of shown(tab)) if (o !== b) { const q = rectOf(o);
-      const ix = Math.min(r.x + r.w, q.x + q.w) - Math.max(r.x, q.x), iy = Math.min(r.y + r.h, q.y + q.h) - Math.max(r.y, q.y);
-      const a = ix > 0 && iy > 0 ? ix*iy / Math.min(r.w*r.h, q.w*q.h) : 0; if (a > area) { area = a; best = o; } }
-    const q = best && rectOf(best);
-    if (best && area > 0.45 && Math.abs(q.w - r.w) < 0.15*r.w && Math.abs(q.h - r.h) < 0.15*r.h) {
-      const bp = posOf(best); setPos(best, drag.x0, drag.y0); setPos(b, bp.x, bp.y); toast(b.name + " ⇄ " + best.name);
-    } else {
-      const f = freeSpot(b, p.x, p.y, p.w, p.h);
-      if (f) { setPos(b, f.x, f.y); toast(b.name + " : posé à la place libre la plus proche"); }
-      else { setPos(b, drag.x0, drag.y0); toast("pas de place libre ici : rapetisse un bloc"); }
+  const b = drag.b;
+  if (drag.moved && drag.mode === "move" && drag.target) {
+    const g = drag.target;
+    if (drag.ok) applySpan(b, g);
+    else {
+      // posé sur un bloc de même taille : échange ; sinon cases libres les plus proches
+      const hit = shown(tab).filter(o => o !== b && spansHit(g, spanOf(o)));
+      const o = hit.length === 1 ? hit[0] : null, og = o && spanOf(o);
+      if (o && og.nc === g.nc && og.nr === g.nr) { applySpan(o, drag.g0); applySpan(b, og); toast(b.name + " ⇄ " + o.name); }
+      else { const f = nearestSpan(b, g.c, g.r, g.nc, g.nr); if (f) { applySpan(b, f); toast(b.name + " : posé sur les cases libres les plus proches"); } else toast("pas de place libre ici"); }
     }
   }
   drag = null; pv.style.cursor = "grab"; dirty = true; buildBlocks(); save();
@@ -665,19 +706,18 @@ function endDrag(){
 pv.addEventListener("pointerup", endDrag);
 pv.addEventListener("pointercancel", endDrag);
 pv.addEventListener("pointerleave", () => { if (!drag && hover) { hover = null; dirty = true; } });
-function nudge(b, dx, dy, ds){   // ds : ± un cran de taille (5 % ou 16 px)
-  const p = posOf(b);
-  let z, r;
-  if (RS(b)) { z = fitSize(b, p.w + ds*320, p.h + (RS(b) === 2 ? ds*320 : 0)); r = {x:p.x + dx, y:p.y + dy, w:z.w, h:z.h}; }
-  else { const sc = clamp(Math.round((p.s + ds)*100)/100, SMIN, maxScale(b, p.x, p.y)); z = {s:sc}; r = {x:p.x + dx, y:p.y + dy, w:b.r[2]*sc, h:b.r[3]*sc}; }
-  if (!inside(r) || (overlapsAt(b, r) && !overlaps(b))) { toast(ds ? "plus de place pour l'agrandir" : "un autre bloc est là"); return; }
-  setPos(b, r.x, r.y, z); dirty = true; syncBlockInputs(); save();
+function nudge(b, dc, dr, dn){   // clavier et liste : une case de déplacement ou de taille
+  ensureGrid(tab);
+  const g0 = spanOf(b), l = dn ? legalSpan(b, g0.nc + dn, g0.nr + (RS(b) === 2 || !RS(b) ? dn : 0)) : {nc:g0.nc, nr:g0.nr};
+  const g = {c:g0.c + dc, r:g0.r + dr, ...l};
+  if (!spanFree(b, g)) { toast(dn ? "plus de place pour l'agrandir" : "un autre bloc est là"); return; }
+  applySpan(b, g); dirty = true; syncBlockInputs(); save();
 }
 document.addEventListener("keydown", e => {
   if (!sel || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
   const b = DATA.blocks.find(b => b.key === sel); if (!b) return;
   if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeBlock(b); return; }
-  const st = e.shiftKey ? 8 : 1, d = {ArrowLeft:[-st,0,0], ArrowRight:[st,0,0], ArrowUp:[0,-st,0], ArrowDown:[0,st,0], "+":[0,0,0.05], "=":[0,0,0.05], "-":[0,0,-0.05]}[e.key];
+  const d = {ArrowLeft:[-1,0,0], ArrowRight:[1,0,0], ArrowUp:[0,-1,0], ArrowDown:[0,1,0], "+":[0,0,1], "=":[0,0,1], "-":[0,0,-1]}[e.key];
   if (!d) return; e.preventDefault(); nudge(b, d[0], d[1], d[2]);
 });
 function updateVis(){
@@ -791,8 +831,8 @@ function buildSide(){
     h("div", {class:"info"}, "Verre : les cartes montrent le fond flouté derrière elles. Sans verre, CARTES règle leur opacité sur le fond. Mets les écrans en partie transparents (02 · Écrans) pour un effet complet.")));
   // 05 BLOCS
   side.append(section("05", "Blocs de la page", open[4] ?? true, h("div", {class:"blist", id:"blist"}),
-    h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; S.hidden = []; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
-    h("div", {class:"info"}, "Les blocs se comportent comme des widgets : le clavier ne change qu'en largeur (1 à 3 octaves), les OSC prennent la taille voulue (l'écran s'agrandit, des infos s'ajoutent quand ils sont hauts ; un OSC seul règle A et B), les modules passent sur 1 à 3 colonnes, les autres blocs gardent leurs proportions (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Pour retirer un bloc : ✕ en haut à droite du bloc (ou touche Suppr) ; « + nom » sous l'aperçu le remet. Clavier : flèches, + et −.")));
+    h("div", {class:"seg"}, h("button", {class:"btn sm", onclick:() => { S.layout = {}; S.cells = {}; S.hidden = []; dirty = true; save(); buildBlocks(); }}, "Tout réinitialiser")),
+    h("div", {class:"info"}, "Les blocs se rangent sur une grille invisible de 24 × 12 cases, comme sur un téléphone : ils se posent et s'étirent case par case, avec les mêmes espaces partout. Ce sont des widgets : le clavier ne change qu'en largeur (1 à 3 octaves), les OSC prennent la taille voulue (l'écran s'agrandit, des infos s'ajoutent quand ils sont hauts ; un OSC seul règle A et B), les modules passent sur 1 à 3 colonnes, les autres blocs gardent leurs proportions (50 à 160 %). Tous les blocs restent visibles : un bloc lâché sur un autre va à la place libre la plus proche, ou échange sa place avec un bloc de même taille. Pour retirer un bloc : ✕ en haut à droite du bloc (ou touche Suppr) ; « + nom » sous l'aperçu le remet. Clavier : flèches, + et −.")));
   buildBlocks();
 }
 function buildBlocks(){
@@ -804,18 +844,24 @@ function buildBlocks(){
         h("button", {class:"btn sm", title:"remettre sur la page", onclick:() => restoreBlock(b)}, "+")));
       continue;
     }
-    const num = (v, i) => h("input", {type:"number", value:v, step:i === 2 ? (RS(b) ? 8 : 5) : 1, title:["x", "y", RS(b) ? "largeur (px)" : "taille %"][i], onchange:e => {
-      const q = posOf(b), v2 = +e.target.value;
-      if (i === 2) { if (RS(b)) { const z = growTo(b, q.x, q.y, {w:q.w, h:q.h}, fitSize(b, v2, q.h)); setPos(b, q.x, q.y, z); dirty = true; save(); } else nudge(b, 0, 0, v2/100 - q.s); }
-      else nudge(b, i ? 0 : v2 - q.x, i ? v2 - q.y : 0, 0); buildBlocks(); }});
+    const g = spanOf(b);
+    const num = (v, i) => h("input", {type:"number", value:v, step:1, min:1, title:["colonne (1 à 24)", "rangée (1 à 12)", "largeur en cases"][i], onchange:e => {
+      const q = spanOf(b), v2 = Math.round(+e.target.value);
+      if (i === 2) nudge(b, 0, 0, v2 - q.nc); else nudge(b, i ? 0 : v2 - 1 - q.c, i ? v2 - 1 - q.r : 0, 0); buildBlocks(); }});
     list.append(h("div", {class:"bl" + (sel === b.key ? " sel" : "") + (overlaps(b) ? " bad" : ""), "data-k":b.key, onclick:e => { if (!/INPUT|BUTTON/.test(e.target.tagName)) { sel = b.key; dirty = true; buildBlocks(); } }},
-      h("span", {title:["taille à l'échelle", "largeur seule", "taille libre, contenu adapté", "1 à 3 colonnes"][RS(b)]}, b.name), num(p.x, 0), num(p.y, 1), num(RS(b) ? p.w : Math.round(p.s*100), 2),
+      h("span", {title:["taille à l'échelle", "largeur seule", "taille libre, contenu adapté", "1 à 3 colonnes"][RS(b)]}, b.name), num(g.c + 1, 0), num(g.r + 1, 1), num(g.nc, 2),
       h("button", {class:"btn sm", title:"retirer de la page", onclick:e => { e.stopPropagation(); removeBlock(b); }}, "✕"),
-      h("button", {class:"btn sm", title:"place et taille d'origine", onclick:e => { e.stopPropagation(); const keep = S.layout[b.key]; delete S.layout[b.key];
-        if (overlaps(b)) { S.layout[b.key] = keep; toast("un autre bloc occupe sa place d'origine"); } dirty = true; save(); buildBlocks(); }}, "↺")));
+      h("button", {class:"btn sm", title:"place et taille d'origine", onclick:e => { e.stopPropagation();
+        const keepL = S.layout[b.key], keepC = S.cells && S.cells[b.key]; delete S.layout[b.key]; if (S.cells) delete S.cells[b.key];
+        const g0 = deriveSpan(b);
+        if (S.cells && Object.keys(S.cells).some(k => blocksOf(tab).some(o => o.key === k))) {   // page rangée : place d'origine sur la grille
+          const g = {...g0, ...legalSpan(b, g0.nc, g0.nr)};
+          if (spanFree(b, g)) applySpan(b, g); else { if (keepL) S.layout[b.key] = keepL; if (keepC) S.cells[b.key] = keepC; toast("un autre bloc occupe sa place d'origine"); }
+        }
+        dirty = true; save(); buildBlocks(); }}, "↺")));
   }
 }
-function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl:not(.off)")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const p = posOf(b), ins = el.querySelectorAll("input"); ins[0].value = p.x; ins[1].value = p.y; ins[2].value = RS(b) ? p.w : Math.round(p.s*100); el.classList.toggle("bad", overlaps(b)); } }
+function syncBlockInputs(){ for (const el of document.querySelectorAll(".bl:not(.off)")) { const b = DATA.blocks.find(x => x.key === el.dataset.k); if (!b) continue; const g = spanOf(b), ins = el.querySelectorAll("input"); ins[0].value = g.c + 1; ins[1].value = g.r + 1; ins[2].value = g.nc; el.classList.toggle("bad", overlaps(b)); } }
 function buildTabs(){
   const t = $("#tabs"); t.innerHTML = "";
   for (const [id, name] of TABS) t.append(h("button", {class:"btn sm" + (tab === id ? " on" : ""), onclick:() => { tab = id; sel = null; buildTabs(); buildBlocks(); dirty = true; }}, name));
@@ -973,7 +1019,7 @@ function skinJson(bgName){
   return {format:"raw2skin", version:1, name:S.name.trim() || "Skin", author:S.author.trim(), base:S.base, colors,
     background:{file:bgName || "", voile:+S.bg.voile.toFixed(3), grille:S.bg.grille},
     glass:{on:S.glass.on, flou:+S.glass.flou.toFixed(3), teinte:+S.glass.teinte.toFixed(3), reflet:+S.glass.reflet.toFixed(3)},
-    cards:{opacite:+S.cards.toFixed(3)}, layout, hidden:[...S.hidden], studio:{bg:S.bg.kind === "gen" ? S.bg.gen : null}};
+    cards:{opacite:+S.cards.toFixed(3)}, layout, hidden:[...S.hidden], studio:{bg:S.bg.kind === "gen" ? S.bg.gen : null, cells:S.cells || {}}};
 }
 async function exportSkin(){
   const btn = $("#bExport"); btn.disabled = true; const label = btn.textContent;
@@ -1004,6 +1050,7 @@ async function openSkin(f){
     const j = JSON.parse(new TextDecoder().decode(js)); if (j.format && j.format !== "raw2skin") throw new Error("ce n'est pas un skin RAW 2");
     S = DEF(); S.name = j.name || "Skin"; S.author = j.author || ""; if (DATA.themes[j.base]) S.base = j.base;
     S.colors = j.colors || {}; S.layout = j.layout || {}; S.hidden = Array.isArray(j.hidden) ? j.hidden.filter(k => typeof k === "string") : [];
+    S.cells = (j.studio && j.studio.cells && typeof j.studio.cells === "object") ? j.studio.cells : {};
     const bg = j.background || {}; S.bg.voile = bg.voile ?? 0.35; S.bg.grille = bg.grille ?? true;
     const gl = j.glass || {}; S.glass = {on:!!gl.on, flou:gl.flou ?? 0.6, teinte:gl.teinte ?? 0.35, reflet:gl.reflet ?? 0.6}; S.cards = (j.cards || {}).opacite ?? 0.85;
     file = null; S.bg.kind = "none";
@@ -1018,14 +1065,14 @@ async function openSkin(f){
 let toastT = 0;
 function toast(m){ const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3200); }
 function save(){ try { localStorage.setItem("abrasion-skin-studio", JSON.stringify(S)); } catch (e) {} }
-function restore(){ try { const s = JSON.parse(localStorage.getItem("abrasion-skin-studio") || "null"); if (s && s.bg && s.glass) { S = {...DEF(), ...s}; if (!Array.isArray(S.hidden)) S.hidden = []; if (S.bg.kind === "file") S.bg.kind = "none"; } } catch (e) {} }
+function restore(){ try { const s = JSON.parse(localStorage.getItem("abrasion-skin-studio") || "null"); if (s && s.bg && s.glass) { S = {...DEF(), ...s}; if (!Array.isArray(S.hidden)) S.hidden = []; if (!S.cells || typeof S.cells !== "object") S.cells = {}; if (S.bg.kind === "file") S.bg.kind = "none"; } } catch (e) {} }
 $("#bExport").onclick = exportSkin;
 $("#bOpen").onclick = () => $("#fOpen").click();
 $("#fOpen").onchange = e => e.target.files[0] && openSkin(e.target.files[0]);
 $("#bNew").onclick = () => { S = fresh(); file = null; lifeState = null; recolorCache.clear(); dirty = true; save(); buildSide(); toast("nouveau skin"); };
 $("#tOutline").onclick = e => { outline = !outline; e.target.classList.toggle("on", outline); dirty = true; };
-$("#tSnap").onclick = e => { snap = !snap; e.target.classList.toggle("on", snap); };
-$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) delete S.layout[b.key]; S.hidden = S.hidden.filter(k => !blocksOf(tab).some(b => b.key === k)); dirty = true; save(); buildBlocks(); toast("page remise comme dans RAW 2"); };
+
+$("#tResetPage").onclick = () => { for (const b of blocksOf(tab)) { delete S.layout[b.key]; if (S.cells) delete S.cells[b.key]; } S.hidden = S.hidden.filter(k => !blocksOf(tab).some(b => b.key === k)); dirty = true; save(); buildBlocks(); toast("page remise comme dans RAW 2"); };
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => { if (e.defaultPrevented) return; e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
   if (/\.(raw2skin|zip)$/i.test(f.name)) openSkin(f); else loadMedia(f); });

@@ -21,9 +21,9 @@ enum BlockId : int {
 // Comment un bloc change de taille (comme un widget) : son contenu se réorganise au lieu d'être zoomé.
 enum BlockResize : int {
     kRsScale = 0,  // seulement à l'échelle (proportions gardées)
-    kRsWidth = 1,  // largeur seule (clavier : 1 à 3 octaves)
+    kRsWidth = 1,  // largeur (clavier : 1 à 3 octaves) ; hauteur seulement ajustée à la grille (minH..maxH)
     kRsFree = 2,   // largeur et hauteur (OSC : écran agrandi, infos en plus)
-    kRsStack = 3,  // largeur ; les cases passent en colonnes ou en lignes (modules), hauteur déduite
+    kRsStack = 3,  // largeur ; les cases passent en colonnes ou en lignes (modules) ; hauteur au moins celle des lignes
 };
 
 struct BlockDef {

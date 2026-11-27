@@ -109,7 +109,8 @@ void Editor::pickTheme() {
                 // bloc adaptatif (widget) : sa taille change, son contenu se réorganise (pas de zoom)
                 float w = kv.second.w > 0.f ? kv.second.w : d.w, h = kv.second.h > 0.f ? kv.second.h : d.h;
                 w = std::clamp(w, bd.minW, std::min(bd.maxW, kBlockRight - kBlockLeft));
-                h = bd.resize == kRsWidth ? d.h : bd.resize == kRsStack ? modHeight(w) : std::clamp(h, bd.minH, std::min(bd.maxH, kBlockBottom - kBlockTop));
+                if (bd.resize == kRsStack) h = std::clamp(kv.second.h > 0.f ? h : 0.f, modHeight(w), std::max(modHeight(w), bd.maxH));
+                else h = std::clamp(h, bd.minH, std::min(bd.maxH, kBlockBottom - kBlockTop));
                 const float x = std::clamp(kv.second.x, kBlockLeft, kBlockRight - w);
                 const float y = std::clamp(kv.second.y, kBlockTop, kBlockBottom - h);
                 blkW_[b] = std::round(w);

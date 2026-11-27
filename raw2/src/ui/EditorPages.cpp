@@ -1161,18 +1161,18 @@ void Editor::drawSon() {
     blk(kBSonModules);
     {
         // widget empilable : 3 cases en ligne, ou en colonnes de 2 ou 1 quand il est étroit
-        const Rect strip{24.f, 582.2f, blkW_[kBSonModules], modHeight(blkW_[kBSonModules])};
+        const Rect strip{24.f, 582.2f, blkW_[kBSonModules], blkH_[kBSonModules]};
         if (ui_.glass().on) {
             ui_.glassPane(strip, T.card, false);
             ui_.box(strip, Color{0, 0, 0, 0}, T.rule.withAlpha(0.55f));
         } else {
             ui_.box(strip, T.card, T.rule);
         }
-        const int cols = modCols(strip.w);
-        const float cw = (strip.w - 2.f) / (float)cols;
+        const int cols = modCols(strip.w), rows = (3 + cols - 1) / cols;
+        const float cw = (strip.w - 2.f) / (float)cols, rh = (strip.h - 2.f) / (float)rows;  // lignes réparties sur la hauteur
         for (int i = 0; i < 3; ++i) {
             const int col = i % cols, row = i / cols;
-            const Rect cell{strip.x + 1.f + (float)col * cw, strip.y + 1.f + (float)row * kModRowH, cw, kModRowH - 2.f};
+            const Rect cell{strip.x + 1.f + (float)col * cw, strip.y + 1.f + (float)row * rh, cw, rh - (row < rows - 1 ? 1.f : 0.f)};
             const bool rightRule = col < cols - 1 && i < 2;
             if (rightRule) c.fillRect(Rect{cell.r() - 1.f, cell.y, 1.f, cell.h}, T.rule);
             if (row > 0) c.fillRect(Rect{strip.x + 1.f, cell.y - 1.f, strip.w - 2.f, 1.f}, T.rule);

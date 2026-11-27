@@ -5,11 +5,11 @@
 namespace raw2::ui {
 
 const BlockDef kBlocks[kNumBlocks] = {
-    {"son.oscA", 0, "OSC A", {24.f, 73.f, 361.8f, 499.2f}, kRsFree, 300.f, 430.f, 640.f, 867.f},
+    {"son.oscA", 0, "OSC A", {24.f, 73.f, 361.8f, 499.2f}, kRsFree, 300.f, 420.f, 640.f, 867.f},
     {"son.vie", 0, "VIE", {395.8f, 73.f, 488.4f, 499.2f}},
-    {"son.oscB", 0, "OSC B", {894.2f, 73.f, 361.8f, 499.2f}, kRsFree, 300.f, 430.f, 640.f, 867.f},
-    {"son.modules", 0, "HARMONIQUES \xC2\xB7 ESPACE \xC2\xB7 TEXTURE", {24.f, 582.2f, 1232.f, 56.f}, kRsStack, 260.f, 56.f, 1232.f, 168.f},
-    {"son.sortie", 0, "SORTIE (CLAVIER)", {24.f, 648.2f, 1232.f, 287.8f}, kRsWidth, 520.f, 287.8f, 1232.f, 287.8f},
+    {"son.oscB", 0, "OSC B", {894.2f, 73.f, 361.8f, 499.2f}, kRsFree, 300.f, 420.f, 640.f, 867.f},
+    {"son.modules", 0, "HARMONIQUES \xC2\xB7 ESPACE \xC2\xB7 TEXTURE", {24.f, 582.2f, 1232.f, 56.f}, kRsStack, 260.f, 56.f, 1232.f, 270.f},
+    {"son.sortie", 0, "SORTIE (CLAVIER)", {24.f, 648.2f, 1232.f, 287.8f}, kRsWidth, 520.f, 280.f, 1232.f, 290.f},
     {"vie.automate", 1, "AUTOMATE", {24.f, 73.f, 880.f, 863.f}},
     {"vie.controles", 1, "CONTR\xC3\x94LES", {916.f, 73.f, 340.f, 863.f}},
     {"mod.matrice", 2, "MATRICE", {24.f, 115.f, 880.f, 821.f}},
